@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
 from catcher_llm.config.settings import Settings, get_settings
@@ -18,32 +19,53 @@ def discover_source_files(settings: Settings | None = None) -> list[Path]:
     return iter_source_files(config.raw_data_dir)
 
 
-def ingest_local_documents(settings: Settings | None = None) -> dict[str, str | int]:
+def _build_manifest(
+    documents: Sequence,
+    chunks: Sequence,
+) -> list[dict[str, str | int]]:
+    chunk_counts = Counter(str(chunk.metadata["source"]) for chunk in chunks)
+    source_stats: dict[str, dict[str, str | int]] = {}
+    for document in documents:
+        source = str(document.metadata["source"])
+        if source not in source_stats:
+            source_stats[source] = {
+                "source": source,
+                "chars": 0,
+                "chunks": chunk_counts.get(source, 0),
+            }
+        source_stats[source]["chars"] += len(document.page_content)
+    return list(source_stats.values())
+
+
+def ingest_selected_documents(
+    source_files: Sequence[Path],
+    *,
+    settings: Settings | None = None,
+    manifest_name: str = "ingestion_manifest.json",
+) -> dict[str, str | int]:
     config = settings or get_settings()
     config.processed_data_dir.mkdir(parents=True, exist_ok=True)
     ensure_vectorstore_dir(config)
 
-    documents = load_local_documents(config.raw_data_dir)
+    documents = load_local_documents(config.raw_data_dir, source_files=source_files)
     chunks = load_split_local_documents(
         config.raw_data_dir,
         chunk_size=config.rag_chunk_size,
         chunk_overlap=config.rag_chunk_overlap,
+        source_files=source_files,
     )
-    chunk_counts = Counter(chunk.metadata["source"] for chunk in chunks)
-    manifest = [
-        {
-            "source": document.metadata["source"],
-            "chars": len(document.page_content),
-            "chunks": chunk_counts.get(document.metadata["source"], 0),
-        }
-        for document in documents
-    ]
+    manifest = _build_manifest(documents, chunks)
 
-    manifest_path = config.processed_data_dir / "ingestion_manifest.json"
+    manifest_path = config.processed_data_dir / manifest_name
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     return {
-        "documents": len(documents),
+        "documents": len(manifest),
         "chunks": len(chunks),
         "manifest_path": str(manifest_path),
     }
+
+
+def ingest_local_documents(settings: Settings | None = None) -> dict[str, str | int]:
+    config = settings or get_settings()
+    return ingest_selected_documents(discover_source_files(config), settings=config)

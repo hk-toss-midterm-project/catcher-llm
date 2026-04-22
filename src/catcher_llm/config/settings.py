@@ -30,20 +30,12 @@ class Settings:
     env_name: str = os.getenv("APP_ENV", "local")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-    embedding_model: str = os.getenv(
-        "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
-    )
+    embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
-    langsmith_endpoint: str = os.getenv(
-        "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"
-    )
+    langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "catcher-llm")
-    langsmith_dataset_name: str = os.getenv(
-        "LANGSMITH_DATASET", "catcher-llm-rag-eval"
-    )
-    langsmith_experiment_prefix: str = os.getenv(
-        "LANGSMITH_EXPERIMENT_PREFIX", "catcher-llm-rag"
-    )
+    langsmith_dataset_name: str = os.getenv("LANGSMITH_DATASET", "catcher-llm-rag-eval")
+    langsmith_experiment_prefix: str = os.getenv("LANGSMITH_EXPERIMENT_PREFIX", "catcher-llm-rag")
     langsmith_tracing: bool = _get_bool("LANGSMITH_TRACING", True)
     rag_chunk_size: int = _get_int("RAG_CHUNK_SIZE", 800)
     rag_chunk_overlap: int = _get_int("RAG_CHUNK_OVERLAP", 120)
