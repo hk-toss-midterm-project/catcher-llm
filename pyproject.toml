@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "catcher-llm"
+version = "0.1.0"
+description = "Streamlit and LangChain starter for the Catcher LLM project"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.17.0",
+    "apscheduler>=3.11.1",
+    "chromadb>=1.5.6",
+    "duckdb>=1.4.1",
+    "langchain-chroma>=1.1.0",
+    "langchain-core>=1.3.0",
+    "langchain-community>=0.4.1",
+    "langchain-openai>=1.1.14",
+    "langchain-text-splitters>=1.0.0",
+    "langsmith>=0.4.26",
+    "numpy>=2.3.4",
+    "pandas>=2.3.3",
+    "pandera>=0.26.1",
+    "plotly>=6.4.0",
+    "psycopg[binary]>=3.2.12",
+    "pydantic>=2.12.3",
+    "pydantic-settings>=2.11.0",
+    "pyarrow>=21.0.0",
+    "python-dotenv>=1.2.2",
+    "ragas>=0.3.9",
+    "rapidfuzz>=3.14.3",
+    "sqlalchemy>=2.0.44",
+    "streamlit>=1.45.1",
+    "tenacity>=9.1.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/catcher_llm"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.15.11",
+]
+upstage = [
+    "langchain-upstage>=0.7.7",
+]
+huggingface = [
+    "langchain-huggingface>=1.2.1",
+]
+ml = [
+    "scikit-learn>=1.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle 에러
+    "F",   # Pyflakes (문법 오류 등)
+    "W",   # pycodestyle 경고
+    "I",   # isort (import 순서 정렬!)
+    "B",   # flake8-bugbear (잠재적 버그 방지)
+    "UP",  # pyupgrade (최신 파이썬 문법 권장)
+    "N",   # pep8-naming (함수/변수 이름 규칙)
+]
+ignore = [
+    "E501",
+    "B008",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
