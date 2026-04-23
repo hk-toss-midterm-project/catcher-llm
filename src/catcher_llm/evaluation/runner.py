@@ -18,6 +18,7 @@ def run_rag_evaluation(
     experiment_prefix: str | None = None,
     max_concurrency: int = 4,
 ):
+    """LangSmith 데이터셋과 평가기를 사용해 RAG 파이프라인 평가를 실행한다."""
     config = settings or get_settings()
     if not config.has_langsmith_key:
         raise ValueError("LANGSMITH_API_KEY is not set.")

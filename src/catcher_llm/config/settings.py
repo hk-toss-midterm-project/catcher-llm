@@ -14,10 +14,12 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 
 def _get_bool(name: str, default: bool) -> bool:
+    """환경 변수 값을 불리언 설정값으로 해석한다."""
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _get_int(name: str, default: int) -> int:
+    """환경 변수 값을 정수로 읽고, 변환에 실패하면 기본값을 반환한다."""
     try:
         return int(os.getenv(name, str(default)))
     except ValueError:
@@ -48,13 +50,16 @@ class Settings:
 
     @property
     def has_openai_key(self) -> bool:
+        """OpenAI API 키가 설정되어 있는지 확인한다."""
         return bool(self.openai_api_key.strip())
 
     @property
     def has_langsmith_key(self) -> bool:
+        """LangSmith API 키가 설정되어 있는지 확인한다."""
         return bool(self.langsmith_api_key.strip())
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """환경 변수 기반 앱 설정을 한 번 생성한 뒤 캐시해서 반환한다."""
     return Settings()

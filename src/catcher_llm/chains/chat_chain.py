@@ -12,5 +12,6 @@ def build_chat_chain(
     settings: Settings | None = None,
     llm: BaseChatModel | None = None,
 ):
+    """채팅 프롬프트, LLM, 문자열 파서를 연결한 기본 대화 체인을 생성한다."""
     chat_model = llm or get_chat_model(settings)
     return build_chat_prompt() | chat_model | StrOutputParser()

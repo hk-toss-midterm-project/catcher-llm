@@ -15,6 +15,7 @@ from catcher_llm.retrievers.vectorstore import ensure_vectorstore_dir
 
 
 def discover_source_files(settings: Settings | None = None) -> list[Path]:
+    """설정된 원본 데이터 디렉터리에서 적재 가능한 파일을 찾는다."""
     config = settings or get_settings()
     return iter_source_files(config.raw_data_dir)
 
@@ -23,6 +24,7 @@ def _build_manifest(
     documents: Sequence,
     chunks: Sequence,
 ) -> list[dict[str, str | int]]:
+    """원본 문서별 문자 수와 청크 수를 집계한 적재 매니페스트를 만든다."""
     chunk_counts = Counter(str(chunk.metadata["source"]) for chunk in chunks)
     source_stats: dict[str, dict[str, str | int]] = {}
     for document in documents:
@@ -43,6 +45,7 @@ def ingest_selected_documents(
     settings: Settings | None = None,
     manifest_name: str = "ingestion_manifest.json",
 ) -> dict[str, str | int]:
+    """선택된 원본 문서를 로드, 청킹하고 적재 결과 매니페스트를 저장한다."""
     config = settings or get_settings()
     config.processed_data_dir.mkdir(parents=True, exist_ok=True)
     ensure_vectorstore_dir(config)
@@ -67,5 +70,6 @@ def ingest_selected_documents(
 
 
 def ingest_local_documents(settings: Settings | None = None) -> dict[str, str | int]:
+    """설정된 원본 데이터 디렉터리의 모든 지원 문서를 적재한다."""
     config = settings or get_settings()
     return ingest_selected_documents(discover_source_files(config), settings=config)
