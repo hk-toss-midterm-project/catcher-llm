@@ -41,9 +41,9 @@ def retrieve_context_records(
 
 def generate_rag_reply(
     question: str,
-    chunk_size: int,
-    chunk_overlap: int,
-    top_k: int,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    top_k: int = 4,
     *,
     history: Sequence[ChatMessage] | None = None,
     settings: Settings | None = None,

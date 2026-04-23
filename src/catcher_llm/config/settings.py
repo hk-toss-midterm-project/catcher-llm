@@ -12,6 +12,13 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 load_dotenv(PROJECT_ROOT / ".env")
 
+_LANGCHAIN_ENV_KEYS = (
+    "LANGCHAIN_TRACING_V2",
+    "LANGCHAIN_API_KEY",
+    "LANGCHAIN_PROJECT",
+    "LANGCHAIN_ENDPOINT",
+)
+
 
 def _get_bool(name: str, default: bool) -> bool:
     """환경 변수 값을 불리언 설정값으로 해석한다."""
@@ -60,3 +67,18 @@ class Settings:
 def get_settings() -> Settings:
     """환경 변수 기반 앱 설정을 한 번 생성한 뒤 캐시해서 반환한다."""
     return Settings()
+
+
+def configure_langsmith_env(settings: Settings | None = None) -> Settings:
+    """LangSmith tracing에 필요한 LangChain 환경변수를 현재 설정값으로 반영한다."""
+    config = settings or get_settings()
+    if config.langsmith_tracing:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = config.langsmith_api_key
+        os.environ["LANGCHAIN_PROJECT"] = config.langsmith_project
+        os.environ["LANGCHAIN_ENDPOINT"] = config.langsmith_endpoint
+    else:
+        for key in _LANGCHAIN_ENV_KEYS:
+            os.environ.pop(key, None)
+
+    return config

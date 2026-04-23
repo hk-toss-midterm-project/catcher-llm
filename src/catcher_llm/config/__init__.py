@@ -1,3 +1,3 @@
-from catcher_llm.config.settings import Settings, get_settings
+from catcher_llm.config.settings import Settings, configure_langsmith_env, get_settings
 
-__all__ = ["Settings", "get_settings"]
+__all__ = ["Settings", "configure_langsmith_env", "get_settings"]

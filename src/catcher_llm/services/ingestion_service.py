@@ -44,8 +44,8 @@ def _build_manifest(
 
 def ingest_selected_documents(
     source_files: Sequence[Path],
-    chunk_size: int,
-    chunk_overlap: int,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
     *,
     settings: Settings | None = None,
     manifest_name: str = "ingestion_manifest.json",
