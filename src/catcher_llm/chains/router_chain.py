@@ -20,6 +20,7 @@ RAG_KEYWORDS = (
 
 
 def route_request(user_input: str) -> RouteName:
+    """사용자 입력의 키워드를 기준으로 채팅, RAG, 요약 흐름 중 하나를 선택한다."""
     normalized = user_input.lower()
     if any(keyword in normalized for keyword in SUMMARY_KEYWORDS):
         return "summary"

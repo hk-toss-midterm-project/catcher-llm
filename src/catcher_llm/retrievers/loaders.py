@@ -11,6 +11,7 @@ SUPPORTED_EXTENSIONS = {".md", ".pdf", ".txt"}
 
 
 def iter_source_files(raw_dir: Path) -> list[Path]:
+    """원본 문서 디렉터리에서 지원하는 확장자의 파일 목록을 정렬해 반환한다."""
     if not raw_dir.exists():
         return []
 
@@ -22,6 +23,7 @@ def iter_source_files(raw_dir: Path) -> list[Path]:
 
 
 def load_source_documents(path: Path) -> list[Document]:
+    """단일 원본 파일을 LangChain Document 목록으로 변환한다."""
     suffix = path.suffix.lower()
     if suffix in {".md", ".txt"}:
         return [
@@ -43,6 +45,7 @@ def load_local_documents(
     *,
     source_files: Sequence[Path] | None = None,
 ) -> list[Document]:
+    """로컬 원본 파일들을 순회하며 Document 목록으로 로드한다."""
     documents: list[Document] = []
     files = source_files or iter_source_files(raw_dir)
     for path in files:
@@ -56,6 +59,7 @@ def split_documents(
     chunk_size: int,
     chunk_overlap: int,
 ) -> list[Document]:
+    """Document 목록을 RAG 검색에 사용할 청크 단위로 분할한다."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -73,6 +77,7 @@ def load_split_local_documents(
     chunk_overlap: int,
     source_files: Sequence[Path] | None = None,
 ) -> list[Document]:
+    """로컬 문서를 로드한 뒤 지정한 크기와 중복 범위로 청킹한다."""
     return split_documents(
         load_local_documents(raw_dir, source_files=source_files),
         chunk_size=chunk_size,

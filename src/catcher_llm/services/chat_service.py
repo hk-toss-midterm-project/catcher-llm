@@ -16,6 +16,7 @@ def generate_reply(
     history: Sequence[ChatMessage] | None = None,
     settings: Settings | None = None,
 ) -> ChatTurnResult:
+    """사용자 입력을 라우팅한 뒤 채팅, 요약, RAG 중 알맞은 응답을 생성한다."""
     config = settings or get_settings()
     route = route_request(user_input)
 

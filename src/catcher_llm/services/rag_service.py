@@ -15,6 +15,7 @@ def retrieve_context_records(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, str]]:
+    """질문과 관련된 로컬 문서 청크를 검색해 출처와 본문 형태로 반환한다."""
     config = settings or get_settings()
     retriever = get_local_retriever(config)
     if retriever is None:
@@ -36,6 +37,7 @@ def generate_rag_reply(
     history: Sequence[ChatMessage] | None = None,
     settings: Settings | None = None,
 ) -> RAGResponse:
+    """문서 검색 결과를 컨텍스트로 사용해 RAG 답변과 출처 정보를 생성한다."""
     config = settings or get_settings()
     if not config.has_openai_key:
         return RAGResponse(
@@ -92,6 +94,7 @@ def rag_target(
     *,
     settings: Settings | None = None,
 ) -> dict[str, object]:
+    """LangSmith 평가기가 호출할 수 있도록 RAG 응답을 dict 형태로 변환한다."""
     result = generate_rag_reply(inputs["question"], settings=settings)
     return {
         "answer": result.answer,

@@ -3,6 +3,7 @@ from catcher_llm.config.settings import get_settings
 
 
 def build_hello_world_chain() -> str:
+    """기본 채팅 체인으로 간단한 인사 요청을 실행해 연결 상태를 확인한다."""
     settings = get_settings()
     if not settings.has_openai_key:
         return "OPENAI_API_KEY is not set. Add it to .env before using hello world."
