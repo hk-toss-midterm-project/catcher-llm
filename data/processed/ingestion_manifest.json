@@ -1,0 +1,57 @@
+[
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/0417_kca_split.pdf",
+    "chars": 79314,
+    "chunks": 140
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/2026_hope_ladder_selected.pdf",
+    "chars": 33903,
+    "chunks": 62
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/consumer_spending_report_v2.pdf",
+    "chars": 14524,
+    "chunks": 25
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/1.pdf",
+    "chars": 5551,
+    "chunks": 9
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/2.pdf",
+    "chars": 4439,
+    "chunks": 8
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/3.pdf",
+    "chars": 5000,
+    "chunks": 9
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/4.pdf",
+    "chars": 7101,
+    "chunks": 17
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/5.pdf",
+    "chars": 4453,
+    "chunks": 8
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/6.pdf",
+    "chars": 5569,
+    "chunks": 11
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/7.pdf",
+    "chars": 6017,
+    "chunks": 12
+  },
+  {
+    "source": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/project_overview.md",
+    "chars": 377,
+    "chunks": 1
+  }
+]
