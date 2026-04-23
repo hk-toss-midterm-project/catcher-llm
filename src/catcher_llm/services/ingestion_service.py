@@ -14,7 +14,7 @@ from catcher_llm.retrievers.loaders import (
     load_local_documents,
     load_split_local_documents,
 )
-from catcher_llm.retrievers.vectorstore import ensure_vectorstore_dir
+from catcher_llm.retrievers.vectorstore import build_local_vectorstore, ensure_vectorstore_dir
 
 
 def discover_source_files(settings: Settings | None = None) -> list[Path]:
@@ -66,6 +66,12 @@ def ingest_selected_documents(
 
     manifest_path = config.processed_data_dir / manifest_name
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    build_local_vectorstore(
+        config.raw_data_dir,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        settings=config,
+    )
 
     return {
         "documents": len(manifest),
