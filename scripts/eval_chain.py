@@ -1,3 +1,5 @@
+"""CLI에서 채팅 서비스를 한 번 실행해 라우팅과 응답을 확인한다."""
+
 from __future__ import annotations
 
 import argparse

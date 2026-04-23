@@ -1,3 +1,5 @@
+"""선택한 원본 문서 하나를 적재하고 파일별 매니페스트를 기록한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,6 +25,8 @@ def main() -> None:
 
     result = ingest_selected_documents(
         [source_path],
+        chunk_size=600,
+        chunk_overlap=60,
         settings=get_settings(),
         manifest_name=f"{source_path.stem}_ingestion_manifest.json",
     )

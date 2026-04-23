@@ -1,3 +1,5 @@
+"""RAG 평가 예제를 위한 LangSmith 데이터셋을 생성하거나 재사용한다."""
+
 from __future__ import annotations
 
 import argparse

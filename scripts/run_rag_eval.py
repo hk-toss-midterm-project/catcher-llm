@@ -1,3 +1,5 @@
+"""설정된 데이터셋과 옵션으로 LangSmith에 RAG 평가 실행을 제출한다."""
+
 from __future__ import annotations
 
 import argparse
