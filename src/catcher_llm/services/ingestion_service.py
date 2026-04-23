@@ -4,6 +4,9 @@ import json
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
+
+from langchain_core.documents import Document
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.retrievers.loaders import (
@@ -21,12 +24,12 @@ def discover_source_files(settings: Settings | None = None) -> list[Path]:
 
 
 def _build_manifest(
-    documents: Sequence,
-    chunks: Sequence,
+    documents: Sequence[Document],
+    chunks: Sequence[Document],
 ) -> list[dict[str, str | int]]:
     """원본 문서별 문자 수와 청크 수를 집계한 적재 매니페스트를 만든다."""
     chunk_counts = Counter(str(chunk.metadata["source"]) for chunk in chunks)
-    source_stats: dict[str, dict[str, str | int]] = {}
+    source_stats: dict[str, dict[str, Any]] = {}
     for document in documents:
         source = str(document.metadata["source"])
         if source not in source_stats:
@@ -41,6 +44,8 @@ def _build_manifest(
 
 def ingest_selected_documents(
     source_files: Sequence[Path],
+    chunk_size: int,
+    chunk_overlap: int,
     *,
     settings: Settings | None = None,
     manifest_name: str = "ingestion_manifest.json",
@@ -53,8 +58,8 @@ def ingest_selected_documents(
     documents = load_local_documents(config.raw_data_dir, source_files=source_files)
     chunks = load_split_local_documents(
         config.raw_data_dir,
-        chunk_size=config.rag_chunk_size,
-        chunk_overlap=config.rag_chunk_overlap,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         source_files=source_files,
     )
     manifest = _build_manifest(documents, chunks)
@@ -69,7 +74,16 @@ def ingest_selected_documents(
     }
 
 
-def ingest_local_documents(settings: Settings | None = None) -> dict[str, str | int]:
+def ingest_local_documents(
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    settings: Settings | None = None,
+) -> dict[str, str | int]:
     """설정된 원본 데이터 디렉터리의 모든 지원 문서를 적재한다."""
     config = settings or get_settings()
-    return ingest_selected_documents(discover_source_files(config), settings=config)
+    return ingest_selected_documents(
+        discover_source_files(config),
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        settings=config,
+    )

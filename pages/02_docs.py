@@ -26,7 +26,7 @@ stats_left.metric("Source files", len(source_files))
 stats_right.metric("Vector store dir", 1 if settings.vectorstore_dir.exists() else 0)
 
 if st.button("Build ingestion manifest"):
-    result = ingest_local_documents(settings)
+    result = ingest_local_documents(800, 120, settings)
     st.success(
         f"Indexed {result['documents']} files into {result['chunks']} chunks and wrote {result['manifest_path']}"
     )

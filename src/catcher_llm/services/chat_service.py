@@ -15,6 +15,9 @@ def generate_reply(
     user_input: str,
     history: Sequence[ChatMessage] | None = None,
     settings: Settings | None = None,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    top_k: int = 4,
 ) -> ChatTurnResult:
     """사용자 입력을 라우팅한 뒤 채팅, 요약, RAG 중 알맞은 응답을 생성한다."""
     config = settings or get_settings()
@@ -32,7 +35,14 @@ def generate_reply(
         chain = build_summary_chain(config)
         payload = {"text": user_input}
     elif route == "rag":
-        rag_result = generate_rag_reply(user_input, history=history, settings=config)
+        rag_result = generate_rag_reply(
+            user_input,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            history=history,
+            settings=config,
+        )
         reply = rag_result.answer
         if rag_result.sources and not rag_result.error:
             joined_sources = "\n".join(f"- {source}" for source in rag_result.sources)

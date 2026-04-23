@@ -31,7 +31,7 @@ class Settings:
     app_name: str = "Catcher LLM"
     env_name: str = os.getenv("APP_ENV", "local")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
     langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
@@ -39,9 +39,6 @@ class Settings:
     langsmith_dataset_name: str = os.getenv("LANGSMITH_DATASET", "catcher-llm-rag-eval")
     langsmith_experiment_prefix: str = os.getenv("LANGSMITH_EXPERIMENT_PREFIX", "catcher-llm-rag")
     langsmith_tracing: bool = _get_bool("LANGSMITH_TRACING", True)
-    rag_chunk_size: int = _get_int("RAG_CHUNK_SIZE", 800)
-    rag_chunk_overlap: int = _get_int("RAG_CHUNK_OVERLAP", 120)
-    rag_top_k: int = _get_int("RAG_TOP_K", 4)
     data_dir: Path = DATA_DIR
     raw_data_dir: Path = DATA_DIR / "raw"
     processed_data_dir: Path = DATA_DIR / "processed"

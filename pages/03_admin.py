@@ -34,8 +34,5 @@ st.json(
         "processed_data_dir": str(settings.processed_data_dir),
         "vectorstore_dir": str(settings.vectorstore_dir),
         "eval_data_dir": str(settings.eval_data_dir),
-        "rag_chunk_size": settings.rag_chunk_size,
-        "rag_chunk_overlap": settings.rag_chunk_overlap,
-        "rag_top_k": settings.rag_top_k,
     }
 )

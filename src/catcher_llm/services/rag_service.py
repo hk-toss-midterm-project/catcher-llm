@@ -12,12 +12,20 @@ from catcher_llm.utils.helpers import format_chat_history, format_serialized_con
 
 def retrieve_context_records(
     question: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    top_k: int,
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, str]]:
     """질문과 관련된 로컬 문서 청크를 검색해 출처와 본문 형태로 반환한다."""
     config = settings or get_settings()
-    retriever = get_local_retriever(config)
+    retriever = get_local_retriever(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        top_k=top_k,
+        settings=config,
+    )
     if retriever is None:
         return []
 
@@ -33,6 +41,9 @@ def retrieve_context_records(
 
 def generate_rag_reply(
     question: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    top_k: int,
     *,
     history: Sequence[ChatMessage] | None = None,
     settings: Settings | None = None,
@@ -48,7 +59,13 @@ def generate_rag_reply(
         )
 
     try:
-        context_records = retrieve_context_records(question, settings=config)
+        context_records = retrieve_context_records(
+            question,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            settings=config,
+        )
     except Exception as exc:
         return RAGResponse(
             answer=f"RAG retrieval failed: {exc}",
@@ -90,12 +107,22 @@ def generate_rag_reply(
 
 
 def rag_target(
-    inputs: dict[str, str],
+    inputs: dict[str, str | int],
     *,
     settings: Settings | None = None,
 ) -> dict[str, object]:
     """LangSmith 평가기가 호출할 수 있도록 RAG 응답을 dict 형태로 변환한다."""
-    result = generate_rag_reply(inputs["question"], settings=settings)
+    chunk_size = int(inputs.get("chunk_size", 800))
+    chunk_overlap = int(inputs.get("chunk_overlap", 120))
+    top_k = int(inputs.get("top_k", 4))
+
+    result = generate_rag_reply(
+        str(inputs["question"]),
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        top_k=top_k,
+        settings=settings,
+    )
     return {
         "answer": result.answer,
         "sources": result.sources,
