@@ -14,11 +14,52 @@ from catcher_llm.schemas.chat import ChatMessage
 from catcher_llm.services.chat_service import generate_reply
 from catcher_llm.services.ingestion_service import ingest_local_documents, ingest_selected_documents
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
+from catcher_llm.services.test_service import invoke_retriever_question
 
 logger = logging.getLogger(__name__)
 
 
 class ServiceTests(unittest.TestCase):
+    def test_invoke_retriever_question_returns_serialized_matches(self) -> None:
+        settings = Settings()
+        retriever_documents = [
+            Document(
+                page_content="retrieved content",
+                metadata={"source": "data/raw/guide.md", "page": 2, "chunk_index": 5},
+            )
+        ]
+
+        with patch("catcher_llm.services.test_service.get_local_retriever") as retriever_factory:
+            retriever_factory.return_value.invoke.return_value = retriever_documents
+
+            result = invoke_retriever_question(
+                "보험료 할인 방법이 뭐야?",
+                chunk_size=600,
+                chunk_overlap=60,
+                top_k=3,
+                settings=settings,
+            )
+
+        self.assertEqual(result.question, "보험료 할인 방법이 뭐야?")
+        self.assertIsNone(result.error)
+        self.assertEqual(len(result.contexts), 1)
+        self.assertEqual(result.contexts[0].source, "data/raw/guide.md")
+        self.assertEqual(result.contexts[0].content, "retrieved content")
+        retriever_factory.assert_called_once_with(
+            chunk_size=600,
+            chunk_overlap=60,
+            top_k=3,
+            settings=settings,
+        )
+
+    def test_invoke_retriever_question_handles_missing_documents(self) -> None:
+        with patch("catcher_llm.services.test_service.get_local_retriever", return_value=None):
+            result = invoke_retriever_question("검색 테스트", settings=Settings())
+
+        self.assertEqual(result.question, "검색 테스트")
+        self.assertEqual(result.contexts, [])
+        self.assertEqual(result.error, "missing_documents")
+
     def test_generate_reply_handles_missing_api_key(self) -> None:
         settings = Settings(openai_api_key="")
 
@@ -59,7 +100,7 @@ class ServiceTests(unittest.TestCase):
                 vectorstore_dir=vectorstore_dir,
             )
 
-            result = ingest_local_documents(settings)
+            result = ingest_local_documents(settings=settings)
 
             self.assertEqual(result["documents"], 1)
             self.assertGreaterEqual(int(result["chunks"]), 1)
@@ -90,7 +131,7 @@ class ServiceTests(unittest.TestCase):
                     Document(page_content="page two", metadata={"page": 1}),
                 ]
 
-                result = ingest_local_documents(settings)
+                result = ingest_local_documents(settings=settings)
 
             self.assertEqual(result["documents"], 1)
             self.assertGreaterEqual(int(result["chunks"]), 1)
