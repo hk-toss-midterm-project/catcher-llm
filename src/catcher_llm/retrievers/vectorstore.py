@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_community.vectorstores import FAISS
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.llm.models import get_embeddings_model
 from catcher_llm.retrievers.loaders import iter_source_files, load_split_local_documents
 
-_VECTORSTORE_CACHE: dict[tuple[object, ...], InMemoryVectorStore] = {}
+_VECTORSTORE_CACHE: dict[tuple[object, ...], FAISS] = {}
 
 
 def ensure_vectorstore_dir(settings: Settings | None = None) -> Path:
@@ -32,8 +32,8 @@ def _build_cache_key(config: Settings) -> tuple[object, ...]:
     )
 
 
-def build_local_vectorstore(settings: Settings | None = None) -> InMemoryVectorStore | None:
-    """로컬 문서 청크로 인메모리 벡터스토어를 만들거나 캐시된 값을 반환한다."""
+def build_local_vectorstore(settings: Settings | None = None) -> FAISS | None:
+    """로컬 문서 청크로 FAISS 벡터스토어를 만들거나 캐시된 값을 반환한다."""
     config = settings or get_settings()
     chunks = load_split_local_documents(
         config.raw_data_dir,
@@ -45,7 +45,7 @@ def build_local_vectorstore(settings: Settings | None = None) -> InMemoryVectorS
 
     cache_key = _build_cache_key(config)
     if cache_key not in _VECTORSTORE_CACHE:
-        _VECTORSTORE_CACHE[cache_key] = InMemoryVectorStore.from_documents(
+        _VECTORSTORE_CACHE[cache_key] = FAISS.from_documents(
             chunks,
             embedding=get_embeddings_model(config),
         )
