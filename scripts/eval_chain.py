@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from catcher_llm.config.settings import get_settings
+from catcher_llm.config.settings import configure_langsmith_env, get_settings
 from catcher_llm.services.chat_service import generate_reply
 
 
@@ -17,7 +17,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    result = generate_reply(args.prompt, history=[], settings=get_settings())
+    settings = get_settings()
+    configure_langsmith_env(settings)
+    result = generate_reply(args.prompt, history=[], settings=settings)
     print(f"route={result.route}")
     print(result.reply)
 

@@ -25,8 +25,6 @@ def main() -> None:
 
     result = ingest_selected_documents(
         [source_path],
-        chunk_size=600,
-        chunk_overlap=60,
         settings=get_settings(),
         manifest_name=f"{source_path.stem}_ingestion_manifest.json",
     )

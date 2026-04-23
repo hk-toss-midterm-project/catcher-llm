@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from catcher_llm.config.settings import get_settings
+from catcher_llm.config.settings import configure_langsmith_env, get_settings
 from catcher_llm.evaluation.runner import run_rag_evaluation
 
 
@@ -18,6 +18,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = get_settings()
+    configure_langsmith_env(settings)
     results = run_rag_evaluation(
         settings=settings,
         dataset_name=args.dataset_name,
