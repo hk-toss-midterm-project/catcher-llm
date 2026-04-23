@@ -100,11 +100,20 @@ class ServiceTests(unittest.TestCase):
                 vectorstore_dir=vectorstore_dir,
             )
 
-            result = ingest_local_documents(settings=settings)
+            with patch(
+                "catcher_llm.services.ingestion_service.build_local_vectorstore"
+            ) as build_store:
+                result = ingest_local_documents(settings=settings)
 
             self.assertEqual(result["documents"], 1)
             self.assertGreaterEqual(int(result["chunks"]), 1)
             self.assertTrue((processed_dir / "ingestion_manifest.json").exists())
+            build_store.assert_called_once_with(
+                raw_dir,
+                chunk_size=800,
+                chunk_overlap=120,
+                settings=settings,
+            )
 
     def test_ingest_local_documents_counts_pdf_as_single_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -131,11 +140,20 @@ class ServiceTests(unittest.TestCase):
                     Document(page_content="page two", metadata={"page": 1}),
                 ]
 
-                result = ingest_local_documents(settings=settings)
+                with patch(
+                    "catcher_llm.services.ingestion_service.build_local_vectorstore"
+                ) as build_store:
+                    result = ingest_local_documents(settings=settings)
 
             self.assertEqual(result["documents"], 1)
             self.assertGreaterEqual(int(result["chunks"]), 1)
             self.assertTrue((processed_dir / "ingestion_manifest.json").exists())
+            build_store.assert_called_once_with(
+                raw_dir,
+                chunk_size=800,
+                chunk_overlap=120,
+                settings=settings,
+            )
 
     def test_ingest_selected_documents_logs_execution_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -163,11 +181,14 @@ class ServiceTests(unittest.TestCase):
                 ]
 
                 logger.info("calling ingest_selected_documents with source=%s", pdf_path)
-                result = ingest_selected_documents(
-                    [pdf_path],
-                    settings=settings,
-                    manifest_name="selected_manifest.json",
-                )
+                with patch(
+                    "catcher_llm.services.ingestion_service.build_local_vectorstore"
+                ) as build_store:
+                    result = ingest_selected_documents(
+                        [pdf_path],
+                        settings=settings,
+                        manifest_name="selected_manifest.json",
+                    )
                 logger.info("ingest_selected_documents returned result=%s", result)
 
             manifest_path = processed_dir / "selected_manifest.json"
@@ -178,6 +199,12 @@ class ServiceTests(unittest.TestCase):
             self.assertGreaterEqual(int(result["chunks"]), 1)
             self.assertEqual(result["manifest_path"], str(manifest_path))
             self.assertEqual(manifest[0]["source"], str(pdf_path))
+            build_store.assert_called_once_with(
+                raw_dir,
+                chunk_size=800,
+                chunk_overlap=120,
+                settings=settings,
+            )
 
 
 if __name__ == "__main__":
