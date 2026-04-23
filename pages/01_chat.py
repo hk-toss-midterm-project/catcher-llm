@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from catcher_llm.config.settings import get_settings
+from catcher_llm.config.settings import configure_langsmith_env, get_settings
 from catcher_llm.services.chat_service import generate_reply
 from catcher_llm.ui.components import render_chat_messages, render_sidebar
 from catcher_llm.ui.state import (
@@ -13,6 +13,7 @@ from catcher_llm.ui.state import (
 )
 
 settings = get_settings()
+configure_langsmith_env(settings)
 
 st.set_page_config(page_title=f"{settings.app_name} | Chat", layout="wide")
 
