@@ -21,7 +21,8 @@ st.markdown("""
 # -----------------------------
 # 데이터 경로
 # -----------------------------
-MEMBER_PATH = Path(r"C:\Users\user\catcher\catcher-llm\data\raw\csv\members_v1.csv")
+BASE_DIR = Path(__file__).resolve().parent
+MEMBER_PATH = BASE_DIR / "data" / "raw" / "csv" / "members_v1.csv"
 
 @st.cache_data
 def load_members():
