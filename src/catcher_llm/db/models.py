@@ -5,6 +5,34 @@ from datetime import UTC, datetime
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+USER_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
+    "id": "id",
+    "name": "name",
+    "age": "age",
+    "직업": "job",
+    "성별": "gender",
+    "연봉": "income",
+    "지역": "region",
+    "최상위 카드등급": "card_grade",
+    "페르소나": "persona",
+}
+
+TRANSACTION_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
+    "id": "id",
+    "멤버 id": "user_id",
+    "사용 금액": "amount",
+    "사용 시간": "used_at",
+    "결제 내역": "description",
+    "결제 장소 (가맹점 여부)": "merchant_status",
+    "할부 여부": "installment_flag",
+    "할부 개월": "installment_months",
+    "할부 무/유이자 여부": "installment_interest_type",
+    "거래 상태 (승인 / 취소)": "transaction_status",
+    "해외 결제": "is_overseas",
+    "업종 카테고리": "category",
+    "결제 방식 (온/오프라인)": "payment_channel",
+}
+
 
 class Base(DeclarativeBase):
     pass

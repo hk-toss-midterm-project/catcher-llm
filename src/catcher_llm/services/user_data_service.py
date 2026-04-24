@@ -3,18 +3,32 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import MetaData, Table, func, inspect, select
 
 from catcher_llm.config.settings import Settings, get_settings
-from catcher_llm.db.models import TransactionModel, UserMemoryModel, UserModel
-from catcher_llm.db.session import create_database_tables, dispose_engine, session_scope
+from catcher_llm.db.models import (
+    TRANSACTION_CSV_COLUMN_TO_DB_COLUMN,
+    USER_CSV_COLUMN_TO_DB_COLUMN,
+    TransactionModel,
+    UserMemoryModel,
+    UserModel,
+)
+from catcher_llm.db.session import (
+    create_database_tables,
+    dispose_engine,
+    get_engine,
+    session_scope,
+)
 
 _SEED_METADATA_SUFFIX = ".seed-meta.json"
+_SQLITE_SEED_SCHEMA_VERSION = 2
+type SeedCellValue = int | str | datetime | None
 
 
 @dataclass(slots=True, frozen=True)
@@ -47,6 +61,7 @@ def _hash_file(path: Path) -> str | None:
 def _build_csv_signature(config: Settings) -> dict[str, Any]:
     """회원 CSV와 소비 CSV의 경로 및 해시를 묶은 시드 시그니처를 만든다."""
     return {
+        "seed_schema_version": _SQLITE_SEED_SCHEMA_VERSION,
         "members_csv": {
             "path": str(config.members_csv_path.resolve()),
             "sha256": _hash_file(config.members_csv_path),
@@ -127,6 +142,140 @@ def _parse_datetime(value: str | None) -> datetime | None:
     return datetime.fromisoformat(stripped)
 
 
+def _parse_text(value: str | None) -> str | None:
+    """비어 있을 수 있는 문자열을 공백 제거 후 `str` 또는 `None`으로 변환한다."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    if stripped == "":
+        return None
+    return stripped
+
+
+def _quote_sqlite_identifier(identifier: str) -> str:
+    """SQLite 식별자에 들어갈 큰따옴표를 이스케이프한다."""
+    return identifier.replace('"', '""')
+
+
+def _collect_dynamic_column_names(
+    rows: Sequence[dict[str, SeedCellValue]],
+    *,
+    static_column_names: set[str],
+) -> list[str]:
+    """시드 행 목록에서 정적 스키마에 없는 추가 컬럼 이름만 순서대로 모은다."""
+    collected_columns: list[str] = []
+    seen_columns: set[str] = set()
+    for row in rows:
+        for column_name in row:
+            if column_name in static_column_names or column_name in seen_columns:
+                continue
+            seen_columns.add(column_name)
+            collected_columns.append(column_name)
+    return collected_columns
+
+
+def _ensure_dynamic_sqlite_columns(
+    config: Settings,
+    *,
+    table_name: str,
+    column_names: Sequence[str],
+) -> None:
+    """SQLite 테이블에 아직 없는 CSV 추가 컬럼을 TEXT 컬럼으로 생성한다."""
+    if not column_names:
+        return
+
+    engine = get_engine(config)
+    existing_column_names = {
+        str(column["name"]) for column in inspect(engine).get_columns(table_name)
+    }
+    missing_column_names = [
+        column_name for column_name in column_names if column_name not in existing_column_names
+    ]
+    if not missing_column_names:
+        return
+
+    escaped_table_name = _quote_sqlite_identifier(table_name)
+    with engine.begin() as connection:
+        for column_name in missing_column_names:
+            escaped_column_name = _quote_sqlite_identifier(column_name)
+            connection.exec_driver_sql(
+                f'ALTER TABLE "{escaped_table_name}" ADD COLUMN "{escaped_column_name}" TEXT'
+            )
+
+
+def _reflect_sqlite_table(config: Settings, *, table_name: str) -> Table:
+    """현재 SQLite 스키마를 기준으로 대상 테이블을 반사해 INSERT에 사용한다."""
+    metadata = MetaData()
+    return Table(table_name, metadata, autoload_with=get_engine(config))
+
+
+def _insert_seed_rows(
+    config: Settings,
+    *,
+    table_name: str,
+    rows: Sequence[dict[str, SeedCellValue]],
+) -> None:
+    """반사된 테이블 스키마를 사용해 정적/동적 컬럼이 섞인 시드 행을 저장한다."""
+    if not rows:
+        return
+
+    table = _reflect_sqlite_table(config, table_name=table_name)
+    with session_scope(config) as session:
+        session.execute(table.insert(), list(rows))
+
+
+def _build_user_seed_rows(rows: Sequence[dict[str, str | None]]) -> list[dict[str, SeedCellValue]]:
+    """회원 CSV 행 목록을 사용자 테이블 INSERT용 딕셔너리 목록으로 변환한다."""
+    seed_rows: list[dict[str, SeedCellValue]] = []
+    for row in rows:
+        seed_row: dict[str, SeedCellValue] = {
+            "id": int(row.get("id") or 0),
+            "name": (row.get("name") or "").strip(),
+            "age": _parse_int(row.get("age")),
+            "job": _parse_text(row.get("직업")),
+            "gender": _parse_text(row.get("성별")),
+            "income": _parse_text(row.get("연봉")),
+            "region": _parse_text(row.get("지역")),
+            "card_grade": _parse_text(row.get("최상위 카드등급")),
+            "persona": _parse_text(row.get("페르소나")),
+        }
+        for column_name, value in row.items():
+            if column_name in USER_CSV_COLUMN_TO_DB_COLUMN or column_name == "":
+                continue
+            seed_row[column_name] = _parse_text(value)
+        seed_rows.append(seed_row)
+    return seed_rows
+
+
+def _build_transaction_seed_rows(
+    rows: Sequence[dict[str, str | None]],
+) -> list[dict[str, SeedCellValue]]:
+    """소비 CSV 행 목록을 거래 테이블 INSERT용 딕셔너리 목록으로 변환한다."""
+    seed_rows: list[dict[str, SeedCellValue]] = []
+    for row in rows:
+        seed_row: dict[str, SeedCellValue] = {
+            "id": int(row.get("id") or 0),
+            "user_id": int(row.get("멤버 id") or 0),
+            "amount": _parse_int(row.get("사용 금액")),
+            "used_at": _parse_datetime(row.get("사용 시간")),
+            "description": _parse_text(row.get("결제 내역")),
+            "merchant_status": _parse_text(row.get("결제 장소 (가맹점 여부)")),
+            "installment_flag": _parse_text(row.get("할부 여부")),
+            "installment_months": _parse_int(row.get("할부 개월")),
+            "installment_interest_type": _parse_text(row.get("할부 무/유이자 여부")),
+            "transaction_status": _parse_text(row.get("거래 상태 (승인 / 취소)")),
+            "is_overseas": _parse_text(row.get("해외 결제")),
+            "category": _parse_text(row.get("업종 카테고리")),
+            "payment_channel": _parse_text(row.get("결제 방식 (온/오프라인)")),
+        }
+        for column_name, value in row.items():
+            if column_name in TRANSACTION_CSV_COLUMN_TO_DB_COLUMN or column_name == "":
+                continue
+            seed_row[column_name] = _parse_text(value)
+        seed_rows.append(seed_row)
+    return seed_rows
+
+
 def _build_user_profile(user: UserModel) -> dict[str, int | str | None]:
     """로그인 이후 응답에 사용할 사용자 프로필 딕셔너리를 구성한다."""
     return {
@@ -152,22 +301,16 @@ def _seed_users_if_empty(config: Settings) -> None:
         if existing_count > 0:
             return
 
-        session.add_all(
-            [
-                UserModel(
-                    id=int(row.get("id") or 0),
-                    name=(row.get("name") or "").strip(),
-                    age=_parse_int(row.get("age")),
-                    job=row.get("직업"),
-                    gender=row.get("성별"),
-                    income=row.get("연봉"),
-                    region=row.get("지역"),
-                    card_grade=row.get("최상위 카드등급"),
-                    persona=row.get("페르소나"),
-                )
-                for row in _iter_csv_rows(members_path)
-            ]
-        )
+    seed_rows = _build_user_seed_rows(_iter_csv_rows(members_path))
+    _ensure_dynamic_sqlite_columns(
+        config,
+        table_name=UserModel.__tablename__,
+        column_names=_collect_dynamic_column_names(
+            seed_rows,
+            static_column_names=set(UserModel.__table__.columns.keys()),
+        ),
+    )
+    _insert_seed_rows(config, table_name=UserModel.__tablename__, rows=seed_rows)
 
 
 def _seed_transactions_if_empty(config: Settings) -> None:
@@ -181,26 +324,16 @@ def _seed_transactions_if_empty(config: Settings) -> None:
         if existing_count > 0:
             return
 
-        session.add_all(
-            [
-                TransactionModel(
-                    id=int(row.get("id") or 0),
-                    user_id=int(row.get("멤버 id") or 0),
-                    amount=_parse_int(row.get("사용 금액")),
-                    used_at=_parse_datetime(row.get("사용 시간")),
-                    description=row.get("결제 내역"),
-                    merchant_status=row.get("결제 장소 (가맹점 여부)"),
-                    installment_flag=row.get("할부 여부"),
-                    installment_months=_parse_int(row.get("할부 개월")),
-                    installment_interest_type=row.get("할부 무/유이자 여부"),
-                    transaction_status=row.get("거래 상태 (승인 / 취소)"),
-                    is_overseas=row.get("해외 결제"),
-                    category=row.get("업종 카테고리"),
-                    payment_channel=row.get("결제 방식 (온/오프라인)"),
-                )
-                for row in _iter_csv_rows(consumption_path)
-            ]
-        )
+    seed_rows = _build_transaction_seed_rows(_iter_csv_rows(consumption_path))
+    _ensure_dynamic_sqlite_columns(
+        config,
+        table_name=TransactionModel.__tablename__,
+        column_names=_collect_dynamic_column_names(
+            seed_rows,
+            static_column_names=set(TransactionModel.__table__.columns.keys()),
+        ),
+    )
+    _insert_seed_rows(config, table_name=TransactionModel.__tablename__, rows=seed_rows)
 
 
 def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult:
