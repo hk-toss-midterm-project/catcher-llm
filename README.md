@@ -116,6 +116,8 @@ uv sync --group dev
 uv run pytest
 uv run ruff check .
 uv run ruff format .
+
+uv run streamlit run dev_app.py
 ```
 
 이 저장소의 작업 규칙은 `AGENTS.md`에 정리돼 있다.
