@@ -83,7 +83,20 @@ def profile_page():
         st.metric("페르소나", profile["persona"])
 
     st.markdown("---")
-    st.success("로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.")
+    st.markdown(
+    """
+    <div style="
+        background-color:#E8F2FF;
+        color:#1D4ED8;
+        padding:16px;
+        border-radius:10px;
+        font-weight:500;
+    ">
+        로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 
 # -----------------------------
@@ -137,7 +150,20 @@ with st.sidebar:
 
     else:
         if profile := st.session_state.user_profile:
-            st.success(f"{profile['name']}님")
+            st.markdown(
+    f"""
+    <div style="
+        background-color:#E8F2FF;
+        color:#1D4ED8;
+        padding:12px;
+        border-radius:10px;
+        font-weight:600;
+    ">
+        {profile['name']}님
+    </div>
+    """,
+    unsafe_allow_html=True
+)
             st.caption(f"User ID: {st.session_state.user_id}")
 
         st.markdown("---")

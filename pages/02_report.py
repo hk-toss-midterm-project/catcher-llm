@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import timedelta
 
+
 st.set_page_config(
     page_title="리포트 조회",
     page_icon="📑",
@@ -29,30 +30,6 @@ if "logged_in" not in st.session_state or not st.session_state.logged_in:
 profile = st.session_state.user_profile
 
 # -----------------------------
-# 사이드바
-# -----------------------------
-with st.sidebar:
-    st.title("💸 Catcher")
-
-    st.success(f"{profile['name']}님")
-    st.caption(f"User ID: {st.session_state.user_id}")
-
-    st.markdown("---")
-
-    # ❌ page_link 제거 (에러 원인)
-    st.markdown("👤 프로필")
-    st.markdown("📂 CSV 업로드")
-    st.markdown("📑 리포트 조회")
-
-    st.markdown("---")
-
-    if st.button("로그아웃", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user_id = None
-        st.session_state.user_profile = None
-        st.rerun()
-
-# -----------------------------
 # 메인 UI
 # -----------------------------
 st.title("📑 리포트 조회")
@@ -61,10 +38,41 @@ st.title("📑 리포트 조회")
 selected_date = st.date_input("📅 날짜 선택")
 
 # 리포트 타입 선택
-report_type = st.radio(
-    "리포트 유형 선택",
-    ["일간 레포트", "주간 레포트", "월간 레포트"],
-    horizontal=True
+st.markdown("리포트 유형 선택")
+
+if "report_type" not in st.session_state:
+    st.session_state.report_type = "일간 레포트"
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("일간 레포트", use_container_width=True):
+        st.session_state.report_type = "일간 레포트"
+
+with col2:
+    if st.button("주간 레포트", use_container_width=True):
+        st.session_state.report_type = "주간 레포트"
+
+with col3:
+    if st.button("월간 레포트", use_container_width=True):
+        st.session_state.report_type = "월간 레포트"
+
+report_type = st.session_state.report_type
+
+st.markdown(
+    f"""
+    <div style="
+        background-color:#E8F2FF;
+        color:#1D4ED8;
+        padding:12px 16px;
+        border-radius:12px;
+        font-weight:700;
+        margin-top:10px;
+    ">
+        선택된 리포트: {report_type}
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 st.markdown("---")
