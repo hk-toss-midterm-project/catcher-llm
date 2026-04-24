@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 class ServiceTests(unittest.TestCase):
     def test_invoke_retriever_question_returns_serialized_matches(self) -> None:
         settings = Settings()
+        raw_data_dir = Path("data/raw/pdf/saving_tips")
         retriever_documents = [
             Document(
                 page_content="retrieved content",
@@ -37,6 +38,7 @@ class ServiceTests(unittest.TestCase):
                 chunk_size=600,
                 chunk_overlap=60,
                 top_k=3,
+                raw_data_dir=raw_data_dir,
                 settings=settings,
             )
 
@@ -49,6 +51,7 @@ class ServiceTests(unittest.TestCase):
             chunk_size=600,
             chunk_overlap=60,
             top_k=3,
+            raw_data_dir=raw_data_dir,
             settings=settings,
         )
 

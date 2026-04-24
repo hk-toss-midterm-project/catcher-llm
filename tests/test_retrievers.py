@@ -81,13 +81,14 @@ class RetrieverTests(unittest.TestCase):
     def test_build_local_vectorstore_saves_index_and_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            raw_dir = root / "raw"
+            raw_root = root / "raw"
+            raw_dir = raw_root / "pdf" / "saving_tips"
             vectorstore_dir = root / "vectordb"
-            raw_dir.mkdir()
+            raw_dir.mkdir(parents=True)
             vectorstore_dir.mkdir()
             source_path = raw_dir / "guide.txt"
             source_path.write_text("project guide", encoding="utf-8")
-            settings = Settings(raw_data_dir=raw_dir, vectorstore_dir=vectorstore_dir)
+            settings = Settings(raw_data_dir=raw_root, vectorstore_dir=vectorstore_dir)
             chunks = [Document(page_content="chunk body", metadata={"source": str(source_path)})]
             embeddings = object()
             vectorstore = MagicMock()
@@ -115,9 +116,11 @@ class RetrieverTests(unittest.TestCase):
 
             self.assertIs(result, vectorstore)
             from_documents.assert_called_once_with(chunks, embedding=embeddings)
-            vectorstore.save_local.assert_called_once()
+            vectorstore.save_local.assert_called_once_with(
+                str(vectorstore_dir / "pdf" / "saving_tips")
+            )
 
-            metadata_path = vectorstore_dir / "local_faiss_metadata.json"
+            metadata_path = vectorstore_dir / "pdf" / "saving_tips" / "metadata.json"
             self.assertTrue(metadata_path.exists())
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             self.assertEqual(metadata["embedding_model"], settings.embedding_model)
@@ -128,15 +131,16 @@ class RetrieverTests(unittest.TestCase):
     def test_build_local_vectorstore_loads_saved_index_when_metadata_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            raw_dir = root / "raw"
+            raw_root = root / "raw"
+            raw_dir = raw_root / "pdf" / "saving_tips"
             vectorstore_dir = root / "vectordb"
-            store_dir = vectorstore_dir / "local_faiss"
-            raw_dir.mkdir()
+            store_dir = vectorstore_dir / "pdf" / "saving_tips"
+            raw_dir.mkdir(parents=True)
             store_dir.mkdir(parents=True)
             source_path = raw_dir / "guide.txt"
             source_path.write_text("project guide", encoding="utf-8")
-            settings = Settings(raw_data_dir=raw_dir, vectorstore_dir=vectorstore_dir)
-            metadata_path = vectorstore_dir / "local_faiss_metadata.json"
+            settings = Settings(raw_data_dir=raw_root, vectorstore_dir=vectorstore_dir)
+            metadata_path = store_dir / "metadata.json"
             metadata_path.write_text(
                 json.dumps(
                     {
@@ -185,7 +189,6 @@ class RetrieverTests(unittest.TestCase):
             load_local.assert_called_once_with(
                 str(store_dir),
                 embeddings,
-                index_name="index",
                 allow_dangerous_deserialization=True,
             )
             from_documents.assert_not_called()
