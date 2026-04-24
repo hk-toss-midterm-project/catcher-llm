@@ -1,37 +1,167 @@
 import streamlit as st
+import pandas as pd
+from datetime import timedelta
 
-st.title("📑 리포트 조회")
-
-report_type = st.radio(
-    "조회할 리포트를 선택하세요.", ["일간 레포트", "주간 레포트", "월간 레포트"], horizontal=True
+st.set_page_config(
+    page_title="리포트 조회",
+    page_icon="📑",
+    layout="wide"
 )
 
+# -----------------------------
+# 기본 페이지 메뉴 숨기기
+# -----------------------------
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# -----------------------------
+# 로그인 확인
+# -----------------------------
+if "logged_in" not in st.session_state or not st.session_state.logged_in:
+    st.warning("먼저 로그인해주세요.")
+    st.stop()
+
+profile = st.session_state.user_profile
+
+# -----------------------------
+# 사이드바
+# -----------------------------
+with st.sidebar:
+    st.title("💸 Catcher")
+
+    st.success(f"{profile['name']}님")
+    st.caption(f"User ID: {st.session_state.user_id}")
+
+    st.markdown("---")
+
+    # ❌ page_link 제거 (에러 원인)
+    st.markdown("👤 프로필")
+    st.markdown("📂 CSV 업로드")
+    st.markdown("📑 리포트 조회")
+
+    st.markdown("---")
+
+    if st.button("로그아웃", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.user_id = None
+        st.session_state.user_profile = None
+        st.rerun()
+
+# -----------------------------
+# 메인 UI
+# -----------------------------
+st.title("📑 리포트 조회")
+
+# 날짜 선택 (달력)
+selected_date = st.date_input("📅 날짜 선택")
+
+# 리포트 타입 선택
+report_type = st.radio(
+    "리포트 유형 선택",
+    ["일간 레포트", "주간 레포트", "월간 레포트"],
+    horizontal=True
+)
+
+st.markdown("---")
+
+# -----------------------------
+# 데이터 확인
+# -----------------------------
 if "uploaded_df" not in st.session_state:
     st.info("먼저 CSV 업로드 페이지에서 데이터를 업로드해주세요.")
     st.stop()
 
-df = st.session_state.uploaded_df
-profile = st.session_state.user_profile
+df = st.session_state.uploaded_df.copy()
 
-st.subheader(f"{profile['name']}님의 {report_type}")
+# 👉 너 데이터에 맞게 반드시 수정해야 함
+DATE_COL = "date"      # 예: "거래일자"
+AMOUNT_COL = "amount" # 예: "결제금액"
 
-col1, col2 = st.columns(2)
-col1.metric("데이터 건수", f"{len(df)}건")
-col2.metric("컬럼 수", f"{len(df.columns)}개")
+if DATE_COL not in df.columns:
+    st.error(f"CSV에 '{DATE_COL}' 컬럼이 없습니다. 컬럼명을 확인하세요.")
+    st.stop()
 
-st.markdown("---")
+df[DATE_COL] = pd.to_datetime(df[DATE_COL])
+selected_date = pd.to_datetime(selected_date)
 
+# -----------------------------
+# 📅 일간 레포트
+# -----------------------------
 if report_type == "일간 레포트":
-    st.subheader("☀️ 일간 소비 요약")
-    st.info("오늘의 소비 패턴, 야간 소비, 반복 소비를 보여주는 영역입니다.")
 
+    report_df = df[df[DATE_COL].dt.date == selected_date.date()]
+
+    st.subheader(f"☀️ 일간 레포트 ({selected_date.date()})")
+
+    if report_df.empty:
+        st.warning("해당 날짜의 데이터가 없습니다.")
+    else:
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("총 소비", f"{report_df[AMOUNT_COL].sum():,.0f}원")
+        col2.metric("거래 건수", f"{len(report_df)}건")
+        col3.metric("평균 결제", f"{report_df[AMOUNT_COL].mean():,.0f}원")
+
+        st.markdown("### 소비 내역")
+        st.dataframe(report_df)
+
+# -----------------------------
+# 📆 주간 레포트
+# -----------------------------
 elif report_type == "주간 레포트":
-    st.subheader("📆 주간 소비 요약")
-    st.info("이번 주 카테고리별 소비, 전주 대비 변화, 반복 소비를 보여주는 영역입니다.")
 
+    start_date = selected_date - timedelta(days=selected_date.weekday())
+    end_date = start_date + timedelta(days=6)
+
+    report_df = df[
+        (df[DATE_COL] >= start_date) &
+        (df[DATE_COL] <= end_date)
+    ]
+
+    st.subheader(f"📆 주간 레포트 ({start_date.date()} ~ {end_date.date()})")
+
+    if report_df.empty:
+        st.warning("해당 주간 데이터가 없습니다.")
+    else:
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("주간 총 소비", f"{report_df[AMOUNT_COL].sum():,.0f}원")
+        col2.metric("거래 건수", f"{len(report_df)}건")
+        col3.metric("일 평균", f"{report_df[AMOUNT_COL].sum()/7:,.0f}원")
+
+        st.markdown("### 소비 내역")
+        st.dataframe(report_df)
+
+# -----------------------------
+# 🗓️ 월간 레포트
+# -----------------------------
 elif report_type == "월간 레포트":
-    st.subheader("🗓️ 월간 소비 요약")
-    st.info("이번 달 총소비, 상위 소비처, 절약 가능 금액을 보여주는 영역입니다.")
 
-st.subheader("업로드 데이터 미리보기")
-st.dataframe(df.head())
+    year = selected_date.year
+    month = selected_date.month
+
+    report_df = df[
+        (df[DATE_COL].dt.year == year) &
+        (df[DATE_COL].dt.month == month)
+    ]
+
+    st.subheader(f"🗓️ 월간 레포트 ({year}년 {month}월)")
+
+    if report_df.empty:
+        st.warning("해당 월 데이터가 없습니다.")
+    else:
+        days_in_month = selected_date.days_in_month
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("월간 총 소비", f"{report_df[AMOUNT_COL].sum():,.0f}원")
+        col2.metric("거래 건수", f"{len(report_df)}건")
+        col3.metric("일 평균", f"{report_df[AMOUNT_COL].sum()/days_in_month:,.0f}원")
+
+        st.markdown("### 소비 내역")
+        st.dataframe(report_df)

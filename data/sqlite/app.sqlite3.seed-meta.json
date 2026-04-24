@@ -1,11 +1,11 @@
 {
   "seed_schema_version": 2,
   "members_csv": {
-    "path": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/csv/members_v1.csv",
-    "sha256": "75097f86cf4e049442aa35e4442a7059780af5ba86c95d5f7ca91ed036b10b9f"
+    "path": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\csv\\members_v1.csv",
+    "sha256": "0f4da1d13034dfd05c6198fe8c656f304bedae6b2189bae18eccf7af93f50869"
   },
   "consumption_csv": {
-    "path": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/csv/consumption_v1.csv",
-    "sha256": "8c20b247394cd4d30a3aebbac3aef43585c43174dc87f091b2169743fa808b36"
+    "path": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\csv\\consumption_v1.csv",
+    "sha256": "904599075e2be8484feb862e8e58515cf9862338bfb546ebde5ca97b1b199548"
   }
 }
