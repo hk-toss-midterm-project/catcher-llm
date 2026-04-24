@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.retrievers.vectorstore import get_local_retriever
@@ -20,6 +21,7 @@ def invoke_retriever_question(
     chunk_overlap: int = 120,
     top_k: int = 4,
     *,
+    raw_data_dir: Path | str | None = None,
     settings: Settings | None = None,
 ) -> RetrieverTestResult:
     """질문으로 로컬 retriever를 직접 호출해 검색 결과 청크를 반환한다."""
@@ -28,6 +30,7 @@ def invoke_retriever_question(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         top_k=top_k,
+        raw_data_dir=raw_data_dir,
         settings=config,
     )
     if retriever is None:

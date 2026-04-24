@@ -11,9 +11,7 @@ from catcher_llm.llm.models import get_embeddings_model
 from catcher_llm.retrievers.loaders import iter_source_files, load_split_local_documents
 
 _VECTORSTORE_CACHE: dict[tuple[object, ...], FAISS] = {}
-_VECTORSTORE_INDEX_NAME = "index"
-_VECTORSTORE_STORE_DIRNAME = "local_faiss"
-_VECTORSTORE_METADATA_FILENAME = "local_faiss_metadata.json"
+_VECTORSTORE_METADATA_FILENAME = "metadata.json"
 
 
 def ensure_vectorstore_dir(settings: Settings | None = None) -> Path:
@@ -49,12 +47,26 @@ def _build_cache_key(
     )
 
 
-def _get_vectorstore_artifact_paths(config: Settings) -> tuple[Path, Path]:
+def _get_store_relative_path(config: Settings, raw_data_dir: Path | str) -> Path:
+    actual_data_dir = Path(raw_data_dir).resolve()
+    raw_root = config.raw_data_dir.resolve()
+
+    try:
+        return actual_data_dir.relative_to(raw_root)
+    except ValueError:
+        relative_parts = (
+            actual_data_dir.parts[1:] if actual_data_dir.is_absolute() else actual_data_dir.parts
+        )
+        return Path("_external").joinpath(*relative_parts)
+
+
+def _get_vectorstore_artifact_paths(
+    config: Settings,
+    raw_data_dir: Path | str,
+) -> tuple[Path, Path]:
     base_dir = ensure_vectorstore_dir(config)
-    return (
-        base_dir / _VECTORSTORE_STORE_DIRNAME,
-        base_dir / _VECTORSTORE_METADATA_FILENAME,
-    )
+    store_dir = base_dir / _get_store_relative_path(config, raw_data_dir)
+    return (store_dir, store_dir / _VECTORSTORE_METADATA_FILENAME)
 
 
 def _build_store_metadata(
@@ -88,9 +100,7 @@ def _load_store_metadata(metadata_path: Path) -> dict[str, Any] | None:
 
 
 def _has_saved_store(store_dir: Path) -> bool:
-    return (store_dir / f"{_VECTORSTORE_INDEX_NAME}.faiss").exists() and (
-        store_dir / f"{_VECTORSTORE_INDEX_NAME}.pkl"
-    ).exists()
+    return (store_dir / "index.faiss").exists() and (store_dir / "index.pkl").exists()
 
 
 def _save_vectorstore(
@@ -100,9 +110,9 @@ def _save_vectorstore(
     chunk_size: int,
     chunk_overlap: int,
 ) -> None:
-    store_dir, metadata_path = _get_vectorstore_artifact_paths(config)
+    store_dir, metadata_path = _get_vectorstore_artifact_paths(config, raw_data_dir)
     store_dir.mkdir(parents=True, exist_ok=True)
-    vectorstore.save_local(str(store_dir), index_name=_VECTORSTORE_INDEX_NAME)
+    vectorstore.save_local(str(store_dir))
     metadata = _build_store_metadata(config, raw_data_dir, chunk_size, chunk_overlap)
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
@@ -121,14 +131,13 @@ def build_local_vectorstore(
     if cache_key in _VECTORSTORE_CACHE:
         return _VECTORSTORE_CACHE[cache_key]
 
-    store_dir, metadata_path = _get_vectorstore_artifact_paths(config)
+    store_dir, metadata_path = _get_vectorstore_artifact_paths(config, actual_data_dir)
     metadata = _load_store_metadata(metadata_path)
     expected_metadata = _build_store_metadata(config, actual_data_dir, chunk_size, chunk_overlap)
     if metadata == expected_metadata and _has_saved_store(store_dir):
         vectorstore = FAISS.load_local(
             str(store_dir),
             get_embeddings_model(config),
-            index_name=_VECTORSTORE_INDEX_NAME,
             allow_dangerous_deserialization=True,
         )
         _VECTORSTORE_CACHE[cache_key] = vectorstore
