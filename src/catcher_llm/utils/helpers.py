@@ -44,6 +44,7 @@ def format_serialized_context(contexts: Sequence[Mapping[str, object]]) -> str:
 
 
 def _format_context_item(index: int, item: Mapping[str, object]) -> str:
+    """단일 검색 컨텍스트를 페이지 번호 포함 여부에 맞춰 표시 문자열로 만든다."""
     source = str(item["source"])
     content = str(item["content"])
     page_number = item.get("page_number")

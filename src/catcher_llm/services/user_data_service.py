@@ -26,12 +26,14 @@ class DatabaseSeedResult:
 
 
 def _get_seed_metadata_path(config: Settings) -> Path:
+    """현재 SQLite 파일에 대응하는 시드 메타데이터 파일 경로를 계산한다."""
     return config.sqlite_db_path.with_suffix(
         f"{config.sqlite_db_path.suffix}{_SEED_METADATA_SUFFIX}"
     )
 
 
 def _hash_file(path: Path) -> str | None:
+    """파일이 존재하면 SHA-256 해시를 계산하고 없으면 `None`을 반환한다."""
     if not path.exists():
         return None
 
@@ -43,6 +45,7 @@ def _hash_file(path: Path) -> str | None:
 
 
 def _build_csv_signature(config: Settings) -> dict[str, Any]:
+    """회원 CSV와 소비 CSV의 경로 및 해시를 묶은 시드 시그니처를 만든다."""
     return {
         "members_csv": {
             "path": str(config.members_csv_path.resolve()),
@@ -56,6 +59,7 @@ def _build_csv_signature(config: Settings) -> dict[str, Any]:
 
 
 def _load_seed_metadata(path: Path) -> dict[str, Any] | None:
+    """시드 메타데이터 JSON을 읽어오고 손상된 경우 `None`을 반환한다."""
     if not path.exists():
         return None
 
@@ -70,18 +74,21 @@ def _load_seed_metadata(path: Path) -> dict[str, Any] | None:
 
 
 def _write_seed_metadata(config: Settings, signature: dict[str, Any]) -> None:
+    """현재 CSV 시그니처를 시드 메타데이터 파일로 저장한다."""
     metadata_path = _get_seed_metadata_path(config)
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_path.write_text(json.dumps(signature, indent=2), encoding="utf-8")
 
 
 def _reset_sqlite_database(config: Settings) -> None:
+    """기존 SQLite 데이터베이스와 시드 메타데이터를 삭제해 재생성 상태로 되돌린다."""
     dispose_engine(config)
     config.sqlite_db_path.unlink(missing_ok=True)
     _get_seed_metadata_path(config).unlink(missing_ok=True)
 
 
 def _should_rebuild_sqlite_database(config: Settings, signature: dict[str, Any]) -> bool:
+    """현재 CSV 시그니처가 저장된 이력과 다르면 DB를 다시 만들어야 하는지 판단한다."""
     if not config.sqlite_db_path.exists():
         return True
 
@@ -90,6 +97,7 @@ def _should_rebuild_sqlite_database(config: Settings, signature: dict[str, Any])
 
 
 def _iter_csv_rows(path: Path) -> list[dict[str, str | None]]:
+    """BOM과 공백이 섞인 CSV 헤더를 정리해 행 목록으로 읽어온다."""
     with path.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is not None:
@@ -100,6 +108,7 @@ def _iter_csv_rows(path: Path) -> list[dict[str, str | None]]:
 
 
 def _parse_int(value: str | None) -> int | None:
+    """비어 있을 수 있는 문자열 정수를 정리해 `int` 또는 `None`으로 변환한다."""
     if value is None:
         return None
     stripped = value.strip()
@@ -109,6 +118,7 @@ def _parse_int(value: str | None) -> int | None:
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
+    """비어 있을 수 있는 ISO 형식 문자열을 `datetime` 또는 `None`으로 변환한다."""
     if value is None:
         return None
     stripped = value.strip()
@@ -118,6 +128,7 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 def _build_user_profile(user: UserModel) -> dict[str, int | str | None]:
+    """로그인 이후 응답에 사용할 사용자 프로필 딕셔너리를 구성한다."""
     return {
         "name": user.name,
         "age": user.age,
@@ -131,6 +142,7 @@ def _build_user_profile(user: UserModel) -> dict[str, int | str | None]:
 
 
 def _seed_users_if_empty(config: Settings) -> None:
+    """회원 테이블이 비어 있을 때만 회원 CSV 데이터를 초기 적재한다."""
     members_path = config.members_csv_path
     if not members_path.exists():
         return
@@ -159,6 +171,7 @@ def _seed_users_if_empty(config: Settings) -> None:
 
 
 def _seed_transactions_if_empty(config: Settings) -> None:
+    """거래 테이블이 비어 있을 때만 소비 CSV 데이터를 초기 적재한다."""
     consumption_path = config.consumption_csv_path
     if not consumption_path.exists():
         return
@@ -191,6 +204,7 @@ def _seed_transactions_if_empty(config: Settings) -> None:
 
 
 def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult:
+    """CSV 시그니처를 기준으로 사용자용 SQLite DB를 준비하고 기본 데이터를 보장한다."""
     config = settings or get_settings()
     csv_signature = _build_csv_signature(config)
     if _should_rebuild_sqlite_database(config, csv_signature):
@@ -220,6 +234,7 @@ def authenticate_user(
     *,
     settings: Settings | None = None,
 ) -> dict[str, int | str | None] | None:
+    """사용자 ID와 이름이 모두 일치하는 회원을 조회해 프로필을 반환한다."""
     config = settings or get_settings()
     ensure_user_database(config)
 
@@ -241,6 +256,7 @@ def get_user_transactions(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str | None]]:
+    """사용자 거래 내역을 시간순으로 조회해 직렬화 가능한 형태로 반환한다."""
     config = settings or get_settings()
     ensure_user_database(config)
 
@@ -272,6 +288,7 @@ def save_user_memory(
     content: str,
     settings: Settings | None = None,
 ) -> dict[str, int | str]:
+    """사용자 메모를 키 기준으로 생성하거나 기존 내용을 덮어쓴다."""
     config = settings or get_settings()
     ensure_user_database(config)
 
@@ -307,6 +324,7 @@ def list_user_memories(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str]]:
+    """사용자 메모를 최신 수정 순으로 조회해 직렬화 가능한 목록으로 반환한다."""
     config = settings or get_settings()
     ensure_user_database(config)
 

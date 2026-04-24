@@ -28,6 +28,7 @@ def _normalize_source_files(
     raw_data_dir: Path | str,
     source_files: Sequence[Path] | None = None,
 ) -> list[Path]:
+    """선택된 원본 파일 목록을 절대 경로 기준의 안정적인 순서로 정규화한다."""
     actual_data_dir = Path(raw_data_dir)
     if source_files is None:
         return iter_source_files(actual_data_dir)
@@ -38,6 +39,7 @@ def _get_file_signature(
     raw_data_dir: Path | str,
     source_files: Sequence[Path] | None = None,
 ) -> tuple[tuple[str, int, int], ...]:
+    """원본 파일 경로, 수정 시각, 크기를 묶어 캐시 비교용 시그니처를 만든다."""
     files = _normalize_source_files(raw_data_dir, source_files)
     return tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size) for path in files)
 
@@ -68,6 +70,7 @@ def _get_store_relative_path(
     raw_data_dir: Path | str,
     source_files: Sequence[Path] | None = None,
 ) -> Path:
+    """벡터스토어를 저장할 상대 경로를 원본 디렉터리나 선택 파일 기준으로 계산한다."""
     if source_files:
         return _get_selected_store_relative_path(config, source_files)
 
@@ -87,6 +90,7 @@ def _get_selected_store_relative_path(
     config: Settings,
     source_files: Sequence[Path],
 ) -> Path:
+    """선택 적재용 벡터스토어 경로를 파일 조합 기준으로 안정적으로 만든다."""
     normalized_source_files = _normalize_source_files(config.raw_data_dir, source_files)
     if len(normalized_source_files) == 1:
         return Path(_SELECTED_VECTORSTORE_DIRNAME) / _to_store_safe_relative_path(
@@ -100,6 +104,7 @@ def _get_selected_store_relative_path(
 
 
 def _to_store_safe_relative_path(config: Settings, path: Path) -> Path:
+    """원본 루트 밖의 파일도 저장 경로로 쓸 수 있게 안전한 상대 경로로 변환한다."""
     raw_root = config.raw_data_dir.resolve()
     resolved_path = path.resolve()
 
@@ -117,6 +122,7 @@ def _get_vectorstore_artifact_paths(
     raw_data_dir: Path | str,
     source_files: Sequence[Path] | None = None,
 ) -> tuple[Path, Path]:
+    """벡터스토어 디렉터리와 메타데이터 파일 경로를 함께 반환한다."""
     base_dir = ensure_vectorstore_dir(config)
     store_dir = base_dir / _get_store_relative_path(config, raw_data_dir, source_files)
     return (store_dir, store_dir / _VECTORSTORE_METADATA_FILENAME)
@@ -129,6 +135,7 @@ def _build_store_metadata(
     chunk_overlap: int,
     source_files: Sequence[Path] | None = None,
 ) -> dict[str, Any]:
+    """저장된 벡터스토어가 현재 설정과 같은지 비교할 메타데이터를 구성한다."""
     actual_data_dir = Path(raw_data_dir)
     metadata = {
         "raw_data_dir": str(actual_data_dir.resolve()),
@@ -145,6 +152,7 @@ def _build_store_metadata(
 
 
 def _load_store_metadata(metadata_path: Path) -> dict[str, Any] | None:
+    """메타데이터 JSON을 읽어오고 형식이 올바르지 않으면 `None`을 반환한다."""
     if not metadata_path.exists():
         return None
 
@@ -159,6 +167,7 @@ def _load_store_metadata(metadata_path: Path) -> dict[str, Any] | None:
 
 
 def _has_saved_store(store_dir: Path) -> bool:
+    """FAISS 저장 결과에 필요한 인덱스 파일 두 개가 모두 있는지 확인한다."""
     return (store_dir / "index.faiss").exists() and (store_dir / "index.pkl").exists()
 
 
@@ -170,6 +179,7 @@ def _save_vectorstore(
     chunk_overlap: int,
     source_files: Sequence[Path] | None = None,
 ) -> None:
+    """벡터스토어와 현재 생성 조건 메타데이터를 디스크에 함께 저장한다."""
     store_dir, metadata_path = _get_vectorstore_artifact_paths(
         config,
         raw_data_dir,

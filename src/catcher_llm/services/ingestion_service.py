@@ -51,6 +51,7 @@ def _ingest_documents(
     manifest_name: str,
     selection_only: bool,
 ) -> dict[str, str | int]:
+    """문서를 로드하고 청크 및 매니페스트를 만든 뒤 벡터스토어 생성을 수행한다."""
     settings.processed_data_dir.mkdir(parents=True, exist_ok=True)
     ensure_vectorstore_dir(settings)
 
