@@ -51,6 +51,7 @@ class Settings:
     processed_data_dir: Path = DATA_DIR / "processed"
     vectorstore_dir: Path = DATA_DIR / "vectordb"
     eval_data_dir: Path = DATA_DIR / "evals"
+    sqlite_db_path: Path = DATA_DIR / "sqlite" / "app.sqlite3"
 
     @property
     def has_openai_key(self) -> bool:
@@ -61,6 +62,21 @@ class Settings:
     def has_langsmith_key(self) -> bool:
         """LangSmith API 키가 설정되어 있는지 확인한다."""
         return bool(self.langsmith_api_key.strip())
+
+    @property
+    def members_csv_path(self) -> Path:
+        """로컬 사용자 시드 CSV 경로를 반환한다."""
+        return self.raw_data_dir / "csv" / "members_v1.csv"
+
+    @property
+    def consumption_csv_path(self) -> Path:
+        """로컬 소비내역 시드 CSV 경로를 반환한다."""
+        return self.raw_data_dir / "csv" / "consumption_v1.csv"
+
+    @property
+    def session_sqlite_db_path(self) -> Path:
+        """랭체인 세션/대화 영속화를 위한 SQLite 경로를 반환한다."""
+        return self.sqlite_db_path.with_name("session.sqlite3")
 
 
 @lru_cache(maxsize=1)

@@ -1,37 +1,33 @@
 import streamlit as st
-import pandas as pd
-from pathlib import Path
+
+from catcher_llm.config.settings import get_settings
+from catcher_llm.services.user_data_service import authenticate_user, ensure_user_database
+
+settings = get_settings()
 
 st.set_page_config(
-    page_title="Catcher",
-    page_icon="💸",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Catcher", page_icon="💸", layout="wide", initial_sidebar_state="expanded"
 )
 
 # 기본 Streamlit 페이지 메뉴 숨기기
-st.markdown("""
+st.markdown(
+    """
 <style>
 [data-testid="stSidebarNav"] {
     display: none;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-# -----------------------------
-# 데이터 경로
-# -----------------------------
-BASE_DIR = Path(__file__).resolve().parent
-MEMBER_PATH = BASE_DIR / "data" / "raw" / "csv" / "members_v1.csv"
 
-@st.cache_data
-def load_members():
-    df = pd.read_csv(MEMBER_PATH)
-    df["id"] = df["id"].astype(int)
-    df["name"] = df["name"].astype(str)
-    return df
+@st.cache_resource
+def init_user_database() -> None:
+    ensure_user_database(settings=settings)
 
-members_df = load_members()
+
+init_user_database()
 
 # -----------------------------
 # 세션 초기화
@@ -45,6 +41,7 @@ if "user_id" not in st.session_state:
 if "user_profile" not in st.session_state:
     st.session_state.user_profile = None
 
+
 # -----------------------------
 # 로그아웃 함수
 # -----------------------------
@@ -53,6 +50,7 @@ def logout():
     st.session_state.user_id = None
     st.session_state.user_profile = None
     st.rerun()
+
 
 # -----------------------------
 # 사이드바
@@ -76,28 +74,18 @@ with st.sidebar:
                     st.error("User ID는 숫자로 입력해주세요.")
                     st.stop()
 
-                matched_user = members_df[
-                    (members_df["id"] == user_id) &
-                    (members_df["name"] == input_user_name.strip())
-                ]
+                profile = authenticate_user(
+                    user_id,
+                    input_user_name.strip(),
+                    settings=settings,
+                )
 
-                if matched_user.empty:
+                if profile is None:
                     st.error("일치하는 사용자가 없습니다.")
                 else:
-                    user = matched_user.iloc[0]
-
                     st.session_state.logged_in = True
                     st.session_state.user_id = user_id
-                    st.session_state.user_profile = {
-                        "name": user["name"],
-                        "age": user["age"],
-                        "job": user["직업"],
-                        "gender": user["성별"],
-                        "income": user["연봉"],
-                        "region": user["지역"],
-                        "card_grade": user["최상위 카드등급"],
-                        "persona": user["페르소나"]
-                    }
+                    st.session_state.user_profile = profile
 
                     st.rerun()
 

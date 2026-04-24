@@ -31,6 +31,7 @@ Streamlit UI와 LangChain 애플리케이션 로직을 분리해서, 화면 계�
 ├── data/
 │   ├── raw/                       # 적재 대상 원본 문서
 │   ├── processed/                 # 매니페스트 등 파생 산출물
+│   ├── sqlite/                    # 로컬 앱/세션 SQLite 파일
 │   ├── vectordb/                  # 로컬 벡터스토어 파일
 │   └── evals/                     # 평가 예제 데이터
 ├── pyproject.toml                 # 의존성과 ruff 설정
