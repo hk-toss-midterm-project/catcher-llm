@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import TransactionModel, UserMemoryModel, UserModel
-from catcher_llm.db.session import create_database_tables, session_scope
+from catcher_llm.db.session import create_database_tables, dispose_engine, session_scope
+
+_SEED_METADATA_SUFFIX = ".seed-meta.json"
 
 
 @dataclass(slots=True, frozen=True)
@@ -18,6 +23,70 @@ class DatabaseSeedResult:
     transaction_count: int
     memory_count: int
     sqlite_db_path: str
+
+
+def _get_seed_metadata_path(config: Settings) -> Path:
+    return config.sqlite_db_path.with_suffix(
+        f"{config.sqlite_db_path.suffix}{_SEED_METADATA_SUFFIX}"
+    )
+
+
+def _hash_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _build_csv_signature(config: Settings) -> dict[str, Any]:
+    return {
+        "members_csv": {
+            "path": str(config.members_csv_path.resolve()),
+            "sha256": _hash_file(config.members_csv_path),
+        },
+        "consumption_csv": {
+            "path": str(config.consumption_csv_path.resolve()),
+            "sha256": _hash_file(config.consumption_csv_path),
+        },
+    }
+
+
+def _load_seed_metadata(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _write_seed_metadata(config: Settings, signature: dict[str, Any]) -> None:
+    metadata_path = _get_seed_metadata_path(config)
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(json.dumps(signature, indent=2), encoding="utf-8")
+
+
+def _reset_sqlite_database(config: Settings) -> None:
+    dispose_engine(config)
+    config.sqlite_db_path.unlink(missing_ok=True)
+    _get_seed_metadata_path(config).unlink(missing_ok=True)
+
+
+def _should_rebuild_sqlite_database(config: Settings, signature: dict[str, Any]) -> bool:
+    if not config.sqlite_db_path.exists():
+        return True
+
+    saved_signature = _load_seed_metadata(_get_seed_metadata_path(config))
+    return saved_signature != signature
 
 
 def _iter_csv_rows(path: Path) -> list[dict[str, str | None]]:
@@ -123,9 +192,14 @@ def _seed_transactions_if_empty(config: Settings) -> None:
 
 def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult:
     config = settings or get_settings()
+    csv_signature = _build_csv_signature(config)
+    if _should_rebuild_sqlite_database(config, csv_signature):
+        _reset_sqlite_database(config)
+
     create_database_tables(config)
     _seed_users_if_empty(config)
     _seed_transactions_if_empty(config)
+    _write_seed_metadata(config, csv_signature)
 
     with session_scope(config) as session:
         user_count = session.scalar(select(func.count()).select_from(UserModel)) or 0

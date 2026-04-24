@@ -8,6 +8,7 @@ class RetrievedChunk:
     source: str
     content: str
     score: float | None = None
+    page_number: int | None = None
 
 
 @dataclass(slots=True)

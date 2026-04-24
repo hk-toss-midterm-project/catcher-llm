@@ -42,6 +42,49 @@ def _build_manifest(
     return list(source_stats.values())
 
 
+def _ingest_documents(
+    source_files: Sequence[Path],
+    *,
+    chunk_size: int,
+    chunk_overlap: int,
+    settings: Settings,
+    manifest_name: str,
+    selection_only: bool,
+) -> dict[str, str | int]:
+    settings.processed_data_dir.mkdir(parents=True, exist_ok=True)
+    ensure_vectorstore_dir(settings)
+
+    documents = load_local_documents(settings.raw_data_dir, source_files=source_files)
+    chunks = load_split_local_documents(
+        settings.raw_data_dir,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        source_files=source_files,
+    )
+    manifest = _build_manifest(documents, chunks)
+
+    manifest_path = settings.processed_data_dir / manifest_name
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    build_kwargs: dict[str, object] = {}
+    if selection_only:
+        build_kwargs["source_files"] = source_files
+
+    build_local_vectorstore(
+        settings.raw_data_dir,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        settings=settings,
+        **build_kwargs,
+    )
+
+    return {
+        "documents": len(manifest),
+        "chunks": len(chunks),
+        "manifest_path": str(manifest_path),
+    }
+
+
 def ingest_selected_documents(
     source_files: Sequence[Path],
     chunk_size: int = 800,
@@ -52,32 +95,14 @@ def ingest_selected_documents(
 ) -> dict[str, str | int]:
     """선택된 원본 문서를 로드, 청킹하고 적재 결과 매니페스트를 저장한다."""
     config = settings or get_settings()
-    config.processed_data_dir.mkdir(parents=True, exist_ok=True)
-    ensure_vectorstore_dir(config)
-
-    documents = load_local_documents(config.raw_data_dir, source_files=source_files)
-    chunks = load_split_local_documents(
-        config.raw_data_dir,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        source_files=source_files,
-    )
-    manifest = _build_manifest(documents, chunks)
-
-    manifest_path = config.processed_data_dir / manifest_name
-    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    build_local_vectorstore(
-        config.raw_data_dir,
+    return _ingest_documents(
+        source_files,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         settings=config,
+        manifest_name=manifest_name,
+        selection_only=True,
     )
-
-    return {
-        "documents": len(manifest),
-        "chunks": len(chunks),
-        "manifest_path": str(manifest_path),
-    }
 
 
 def ingest_local_documents(
@@ -87,9 +112,11 @@ def ingest_local_documents(
 ) -> dict[str, str | int]:
     """설정된 원본 데이터 디렉터리의 모든 지원 문서를 적재한다."""
     config = settings or get_settings()
-    return ingest_selected_documents(
+    return _ingest_documents(
         discover_source_files(config),
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         settings=config,
+        manifest_name="ingestion_manifest.json",
+        selection_only=False,
     )

@@ -5,7 +5,7 @@ import logging
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from langchain_core.documents import Document
 
@@ -47,6 +47,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(len(result.contexts), 1)
         self.assertEqual(result.contexts[0].source, "data/raw/guide.md")
         self.assertEqual(result.contexts[0].content, "retrieved content")
+        self.assertEqual(result.contexts[0].page_number, 3)
         retriever_factory.assert_called_once_with(
             chunk_size=600,
             chunk_overlap=60,
@@ -78,6 +79,32 @@ class ServiceTests(unittest.TestCase):
         result = generate_rag_reply("search docs", settings=Settings(openai_api_key=""))
 
         self.assertEqual(result.error, "missing_openai_api_key")
+
+    def test_generate_rag_reply_serializes_page_numbers_in_context(self) -> None:
+        settings = Settings(openai_api_key="test-key")
+        retriever_documents = [
+            Document(
+                page_content="retrieved content",
+                metadata={"source": "data/raw/guide.pdf", "page": 2},
+            )
+        ]
+        chain = MagicMock()
+        chain.invoke.return_value = "정답"
+
+        with (
+            patch("catcher_llm.services.rag_service.get_local_retriever") as retriever_factory,
+            patch("catcher_llm.services.rag_service.build_rag_chain", return_value=chain),
+        ):
+            retriever_factory.return_value.invoke.return_value = retriever_documents
+
+            result = generate_rag_reply("검색 테스트", settings=settings)
+
+        self.assertEqual(result.answer, "정답")
+        self.assertIsNone(result.error)
+        self.assertEqual(result.contexts[0].page_number, 3)
+        chain.invoke.assert_called_once()
+        payload = chain.invoke.call_args.args[0]
+        self.assertIn("[1] data/raw/guide.pdf (page 3)\nretrieved content", payload["context"])
 
     def test_rag_target_serializes_error_state(self) -> None:
         result = rag_target({"question": "search docs"}, settings=Settings(openai_api_key=""))
@@ -207,6 +234,7 @@ class ServiceTests(unittest.TestCase):
                 chunk_size=800,
                 chunk_overlap=120,
                 settings=settings,
+                source_files=[pdf_path],
             )
 
 

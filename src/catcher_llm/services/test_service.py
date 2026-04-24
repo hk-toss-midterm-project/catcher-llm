@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.retrievers.vectorstore import get_local_retriever
 from catcher_llm.schemas.rag import RetrievedChunk
+from catcher_llm.utils.helpers import extract_page_number
 
 
 @dataclass(slots=True)
@@ -22,17 +24,22 @@ def invoke_retriever_question(
     top_k: int = 4,
     *,
     raw_data_dir: Path | str | None = None,
+    source_files: Sequence[Path] | None = None,
     settings: Settings | None = None,
 ) -> RetrieverTestResult:
     """질문으로 로컬 retriever를 직접 호출해 검색 결과 청크를 반환한다."""
     config = settings or get_settings()
-    retriever = get_local_retriever(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        top_k=top_k,
-        raw_data_dir=raw_data_dir,
-        settings=config,
-    )
+    retriever_kwargs: dict[str, object] = {
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "top_k": top_k,
+        "raw_data_dir": raw_data_dir,
+        "settings": config,
+    }
+    if source_files is not None:
+        retriever_kwargs["source_files"] = source_files
+
+    retriever = get_local_retriever(**retriever_kwargs)
     if retriever is None:
         return RetrieverTestResult(
             question=question,
@@ -53,6 +60,7 @@ def invoke_retriever_question(
         RetrievedChunk(
             source=str(document.metadata.get("source", "unknown")),
             content=document.page_content,
+            page_number=extract_page_number(document.metadata),
         )
         for document in documents
     ]

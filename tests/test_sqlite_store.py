@@ -63,6 +63,60 @@ def test_ensure_user_database_seeds_sqlite_from_csv(tmp_path: Path) -> None:
     assert result.memory_count == 0
 
 
+def test_ensure_user_database_rebuilds_sqlite_when_members_csv_changes(tmp_path: Path) -> None:
+    settings = _make_settings(tmp_path)
+
+    first_result = ensure_user_database(settings=settings)
+    assert first_result.user_count == 2
+
+    settings.members_csv_path.write_text(
+        "\n".join(
+            [
+                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나",
+                "1,김토스,29,개발자,남성,7000,서울,Gold,절약형",
+                "2,이캐처,33,기획자,여성,6500,부산,Silver,안정형",
+                "3,박업데이트,31,디자이너,여성,6200,대전,Platinum,탐색형",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rebuilt_result = ensure_user_database(settings=settings)
+    profile = authenticate_user(3, "박업데이트", settings=settings)
+
+    assert rebuilt_result.user_count == 3
+    assert rebuilt_result.transaction_count == 3
+    assert profile is not None
+    assert profile["name"] == "박업데이트"
+
+
+def test_ensure_user_database_rebuilds_sqlite_when_consumption_csv_changes(tmp_path: Path) -> None:
+    settings = _make_settings(tmp_path)
+
+    first_result = ensure_user_database(settings=settings)
+    assert first_result.transaction_count == 3
+
+    settings.consumption_csv_path.write_text(
+        "\n".join(
+            [
+                "멤버 id,id,사용 금액,사용 시간,결제 내역,결제 장소 (가맹점 여부),할부 여부,할부 개월,할부 무/유이자 여부,거래 상태 (승인 / 취소),해외 결제,업종 카테고리,결제 방식 (온/오프라인)",
+                "1,100,12000,2026-04-01 09:00:00,커피,가맹점,아니오,0,해당없음,승인,아니오,식음료,오프라인",
+                "1,101,45000,2026-04-02 18:30:00,마트,가맹점,아니오,0,해당없음,승인,아니오,생활,오프라인",
+                "2,102,32000,2026-04-03 12:00:00,점심,가맹점,아니오,0,해당없음,승인,아니오,식음료,오프라인",
+                "2,103,18000,2026-04-04 08:15:00,베이커리,가맹점,아니오,0,해당없음,승인,아니오,식음료,오프라인",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rebuilt_result = ensure_user_database(settings=settings)
+    transactions = get_user_transactions(2, settings=settings)
+
+    assert rebuilt_result.transaction_count == 4
+    assert len(transactions) == 2
+    assert transactions[-1]["id"] == 103
+
+
 def test_settings_exposes_session_sqlite_path_in_same_directory(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
 

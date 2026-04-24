@@ -215,6 +215,66 @@ class RetrieverTests(unittest.TestCase):
             from_documents.assert_not_called()
             load_chunks.assert_not_called()
 
+    def test_build_local_vectorstore_saves_selection_specific_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_root = root / "raw"
+            raw_dir = raw_root / "pdf" / "welfare"
+            vectorstore_dir = root / "vectordb"
+            raw_dir.mkdir(parents=True)
+            vectorstore_dir.mkdir()
+            source_path = raw_dir / "guide.txt"
+            other_path = raw_dir / "other.txt"
+            source_path.write_text("project guide", encoding="utf-8")
+            other_path.write_text("other guide", encoding="utf-8")
+            settings = Settings(raw_data_dir=raw_root, vectorstore_dir=vectorstore_dir)
+            chunks = [Document(page_content="chunk body", metadata={"source": str(source_path)})]
+            embeddings = object()
+            vectorstore = MagicMock()
+
+            with (
+                patch(
+                    "catcher_llm.retrievers.vectorstore.load_split_local_documents",
+                    return_value=chunks,
+                ) as load_chunks,
+                patch(
+                    "catcher_llm.retrievers.vectorstore.get_embeddings_model",
+                    return_value=embeddings,
+                ),
+                patch(
+                    "catcher_llm.retrievers.vectorstore.FAISS.from_documents",
+                    return_value=vectorstore,
+                ),
+            ):
+                result = build_local_vectorstore(
+                    raw_root,
+                    chunk_size=100,
+                    chunk_overlap=10,
+                    source_files=[source_path],
+                    settings=settings,
+                )
+
+            self.assertIs(result, vectorstore)
+            load_chunks.assert_called_once_with(
+                raw_root,
+                chunk_size=100,
+                chunk_overlap=10,
+                source_files=[source_path],
+            )
+            vectorstore.save_local.assert_called_once_with(
+                str(vectorstore_dir / "_selected" / "pdf" / "welfare" / "guide")
+            )
+
+            metadata_path = (
+                vectorstore_dir / "_selected" / "pdf" / "welfare" / "guide" / "metadata.json"
+            )
+            self.assertTrue(metadata_path.exists())
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertEqual(metadata["raw_data_dir"], str(raw_root.resolve()))
+            self.assertEqual(metadata["source_files"], [str(source_path.resolve())])
+            self.assertEqual(len(metadata["file_signature"]), 1)
+            self.assertEqual(metadata["file_signature"][0][0], str(source_path))
+
 
 if __name__ == "__main__":
     unittest.main()

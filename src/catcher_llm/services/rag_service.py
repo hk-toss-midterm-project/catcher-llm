@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from catcher_llm.chains.rag_chain import build_rag_chain
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.retrievers.vectorstore import get_local_retriever
 from catcher_llm.schemas.chat import ChatMessage
 from catcher_llm.schemas.rag import RAGResponse, RetrievedChunk
-from catcher_llm.utils.helpers import format_chat_history, format_serialized_context
+from catcher_llm.utils.helpers import (
+    extract_page_number,
+    format_chat_history,
+    format_serialized_context,
+)
 
 
 def retrieve_context_records(
@@ -16,16 +21,23 @@ def retrieve_context_records(
     chunk_overlap: int,
     top_k: int,
     *,
+    raw_data_dir: Path | str | None = None,
+    source_files: Sequence[Path] | None = None,
     settings: Settings | None = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, str | int | None]]:
     """질문과 관련된 로컬 문서 청크를 검색해 출처와 본문 형태로 반환한다."""
     config = settings or get_settings()
-    retriever = get_local_retriever(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        top_k=top_k,
-        settings=config,
-    )
+    retriever_kwargs: dict[str, object] = {
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "top_k": top_k,
+        "raw_data_dir": raw_data_dir,
+        "settings": config,
+    }
+    if source_files is not None:
+        retriever_kwargs["source_files"] = source_files
+
+    retriever = get_local_retriever(**retriever_kwargs)
     if retriever is None:
         return []
 
@@ -34,6 +46,7 @@ def retrieve_context_records(
         {
             "source": str(document.metadata.get("source", "unknown")),
             "content": document.page_content,
+            "page_number": extract_page_number(document.metadata),
         }
         for document in documents
     ]
@@ -46,6 +59,8 @@ def generate_rag_reply(
     top_k: int = 4,
     *,
     history: Sequence[ChatMessage] | None = None,
+    raw_data_dir: Path | str | None = None,
+    source_files: Sequence[Path] | None = None,
     settings: Settings | None = None,
 ) -> RAGResponse:
     """문서 검색 결과를 컨텍스트로 사용해 RAG 답변과 출처 정보를 생성한다."""
@@ -64,6 +79,8 @@ def generate_rag_reply(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
             settings=config,
         )
     except Exception as exc:
@@ -100,7 +117,14 @@ def generate_rag_reply(
         )
 
     contexts = [
-        RetrievedChunk(source=item["source"], content=item["content"]) for item in context_records
+        RetrievedChunk(
+            source=str(item["source"]),
+            content=str(item["content"]),
+            page_number=(
+                int(item["page_number"]) if isinstance(item.get("page_number"), int) else None
+            ),
+        )
+        for item in context_records
     ]
     sources = list(dict.fromkeys(item.source for item in contexts))
     return RAGResponse(answer=answer, contexts=contexts, sources=sources)
@@ -127,7 +151,12 @@ def rag_target(
         "answer": result.answer,
         "sources": result.sources,
         "contexts": [
-            {"source": chunk.source, "content": chunk.content} for chunk in result.contexts
+            {
+                "source": chunk.source,
+                "content": chunk.content,
+                "page_number": chunk.page_number,
+            }
+            for chunk in result.contexts
         ],
         "error": result.error,
     }
