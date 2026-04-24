@@ -28,6 +28,15 @@ def get_engine(settings: Settings | None = None) -> Engine:
     return engine
 
 
+def dispose_engine(settings: Settings | None = None) -> None:
+    """설정된 SQLite 경로에 연결된 엔진을 캐시에서 제거하고 종료한다."""
+    config = settings or get_settings()
+    cache_key = str(config.sqlite_db_path.resolve())
+    engine = _ENGINE_CACHE.pop(cache_key, None)
+    if engine is not None:
+        engine.dispose()
+
+
 def create_database_tables(settings: Settings | None = None) -> None:
     Base.metadata.create_all(get_engine(settings))
 
