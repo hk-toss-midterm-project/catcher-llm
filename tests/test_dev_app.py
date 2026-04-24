@@ -10,14 +10,11 @@ def test_get_repo_root_points_to_project_root() -> None:
     assert (root / "dev_pages").exists()
 
 
-def test_get_dev_page_specs_registers_retriever_probe_page() -> None:
+def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
     specs = get_dev_page_specs()
 
-    assert len(specs) == 1
-
-    spec = specs[0]
-    assert spec.title == "Retriever 테스트"
-    assert spec.icon == "🔎"
-    assert spec.default is True
-    assert spec.path == get_repo_root() / "dev_pages" / "retriever_probe.py"
-    assert spec.path.is_file()
+    assert [spec.path.name for spec in specs] == ["01_chat.py", "02_retriever_probe.py"]
+    assert [spec.title for spec in specs] == ["Chat", "Retriever 테스트"]
+    assert [spec.icon for spec in specs] == ["💬", "🔎"]
+    assert [spec.default for spec in specs] == [True, False]
+    assert all(spec.path.is_file() for spec in specs)
