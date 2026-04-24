@@ -25,14 +25,6 @@ def _get_bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _get_int(name: str, default: int) -> int:
-    """환경 변수 값을 정수로 읽고, 변환에 실패하면 기본값을 반환한다."""
-    try:
-        return int(os.getenv(name, str(default)))
-    except ValueError:
-        return default
-
-
 @dataclass(frozen=True, slots=True)
 class Settings:
     app_name: str = "Catcher LLM"

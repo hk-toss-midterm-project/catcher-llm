@@ -74,7 +74,7 @@ def _seed_users_if_empty(config: Settings) -> None:
         session.add_all(
             [
                 UserModel(
-                    id=int(row["id"]),
+                    id=int(row.get("id") or 0),
                     name=(row.get("name") or "").strip(),
                     age=_parse_int(row.get("age")),
                     job=row.get("직업"),
@@ -102,8 +102,8 @@ def _seed_transactions_if_empty(config: Settings) -> None:
         session.add_all(
             [
                 TransactionModel(
-                    id=int(row["id"]),
-                    user_id=int(row["멤버 id"]),
+                    id=int(row.get("id") or 0),
+                    user_id=int(row.get("멤버 id") or 0),
                     amount=_parse_int(row.get("사용 금액")),
                     used_at=_parse_datetime(row.get("사용 시간")),
                     description=row.get("결제 내역"),

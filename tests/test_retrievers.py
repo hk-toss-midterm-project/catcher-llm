@@ -14,6 +14,7 @@ from catcher_llm.retrievers.loaders import (
     load_local_documents,
     load_split_local_documents,
 )
+from catcher_llm.retrievers.retriever import load_retrieval_seed
 from catcher_llm.retrievers.vectorstore import (
     _VECTORSTORE_CACHE,
     build_local_vectorstore,
@@ -77,6 +78,26 @@ class RetrieverTests(unittest.TestCase):
 
             self.assertGreater(len(documents), 1)
             self.assertIn("chunk_index", documents[0].metadata)
+
+    def test_load_retrieval_seed_uses_explicit_chunk_settings(self) -> None:
+        settings = Settings()
+
+        with patch(
+            "catcher_llm.retrievers.retriever.load_split_local_documents",
+            return_value=[],
+        ) as load_documents:
+            result = load_retrieval_seed(
+                chunk_size=640,
+                chunk_overlap=80,
+                settings=settings,
+            )
+
+        self.assertEqual(result, [])
+        load_documents.assert_called_once_with(
+            settings.raw_data_dir,
+            chunk_size=640,
+            chunk_overlap=80,
+        )
 
     def test_build_local_vectorstore_saves_index_and_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

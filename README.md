@@ -69,9 +69,8 @@ Streamlit 앱을 실행한 뒤 `Chat` 페이지부터 시작하면 된다. 로�
 
 - `OPENAI_MODEL`
 - `OPENAI_EMBEDDING_MODEL`
-- `RAG_CHUNK_SIZE`
-- `RAG_CHUNK_OVERLAP`
-- `RAG_TOP_K`
+
+RAG의 `chunk_size`, `chunk_overlap`, `top_k`는 전역 환경변수보다 코퍼스/호출 단위 인자로 전달하는 방식을 기본으로 사용한다.
 
 LangSmith 평가 관련 설정:
 
