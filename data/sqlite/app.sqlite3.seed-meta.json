@@ -1,0 +1,10 @@
+{
+  "members_csv": {
+    "path": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/csv/members_v1.csv",
+    "sha256": "6c8e138dee46dc7ab72ca6b886ffb1029b96edc1b636aef0313b1f00edd3e583"
+  },
+  "consumption_csv": {
+    "path": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/csv/consumption_v1.csv",
+    "sha256": "eba22ecb8dea6d24c20ca4d392757ef38ca21c3679f444538e03b30dbbe3bf0a"
+  }
+}
