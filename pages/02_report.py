@@ -1,42 +1,9 @@
 import streamlit as st
 
-st.set_page_config(
-    page_title="리포트 조회",
-    page_icon="📑",
-    layout="wide"
-)
-
-st.markdown("""
-<style>
-[data-testid="stSidebarNav"] {
-    display: none;
-}
-</style>
-""", unsafe_allow_html=True)
-
-if "logged_in" not in st.session_state or not st.session_state.logged_in:
-    st.warning("먼저 로그인해주세요.")
-    st.page_link("app.py", label="로그인 화면으로 이동")
-    st.stop()
-
-
-with st.sidebar:
-    st.title("💸 Catcher")
-    st.success(f"{st.session_state.user_profile['name']}님")
-    st.caption(f"User ID: {st.session_state.user_id}")
-
-    st.markdown("---")
-    st.page_link("app.py", label="프로필", icon="👤")
-    st.page_link("pages/01_csv_upload.py", label="CSV 업로드", icon="📂")
-    st.page_link("pages/02_report.py", label="리포트 조회", icon="📑")
-
-
 st.title("📑 리포트 조회")
 
 report_type = st.radio(
-    "조회할 리포트를 선택하세요.",
-    ["일간 레포트", "주간 레포트", "월간 레포트"],
-    horizontal=True
+    "조회할 리포트를 선택하세요.", ["일간 레포트", "주간 레포트", "월간 레포트"], horizontal=True
 )
 
 if "uploaded_df" not in st.session_state:

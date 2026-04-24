@@ -53,6 +53,52 @@ def logout():
 
 
 # -----------------------------
+# 페이지 정의
+# -----------------------------
+def login_page():
+    st.title("Catcher 소비 분석 서비스")
+    st.info("왼쪽 사이드바에서 User ID와 이름을 입력하고 로그인해주세요.")
+
+
+def profile_page():
+    profile = st.session_state.user_profile
+    assert profile is not None
+
+    st.title("👤 사용자 프로필")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("이름", profile["name"])
+        st.metric("나이", f"{profile['age']}세")
+        st.metric("성별", profile["gender"])
+
+    with col2:
+        st.metric("직업", profile["job"])
+        st.metric("지역", profile["region"])
+        st.metric("연봉", profile["income"])
+
+    with col3:
+        st.metric("최상위 카드 등급", profile["card_grade"])
+        st.metric("페르소나", profile["persona"])
+
+    st.markdown("---")
+    st.success("로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.")
+
+
+# -----------------------------
+# 네비게이션 라우팅
+# -----------------------------
+profile_pg = st.Page(profile_page, title="프로필", icon="👤", url_path="profile", default=True)
+upload_pg = st.Page("pages/01_csv_upload.py", title="CSV 업로드", icon="📂", url_path="upload")
+report_pg = st.Page("pages/02_report.py", title="리포트 조회", icon="📑", url_path="report")
+
+if not st.session_state.logged_in:
+    pg = st.navigation([st.Page(login_page, title="로그인", url_path="login")], position="hidden")
+else:
+    pg = st.navigation([profile_pg, upload_pg, report_pg], position="hidden")
+
+# -----------------------------
 # 사이드바
 # -----------------------------
 with st.sidebar:
@@ -90,57 +136,20 @@ with st.sidebar:
                     st.rerun()
 
     else:
-        profile = st.session_state.user_profile
-
-        st.success(f"{profile['name']}님")
-        st.caption(f"User ID: {st.session_state.user_id}")
+        if profile := st.session_state.user_profile:
+            st.success(f"{profile['name']}님")
+            st.caption(f"User ID: {st.session_state.user_id}")
 
         st.markdown("---")
 
-        st.page_link("app.py", label="프로필", icon="👤")
-        st.page_link("pages/01_csv_upload.py", label="CSV 업로드", icon="📂")
-        st.page_link("pages/02_report.py", label="리포트 조회", icon="📑")
+        st.page_link(profile_pg, label="프로필", icon="👤")
+        st.page_link(upload_pg, label="CSV 업로드", icon="📂")
+        st.page_link(report_pg, label="리포트 조회", icon="📑")
 
         st.markdown("---")
 
         if st.button("로그아웃", use_container_width=True):
             logout()
 
-# -----------------------------
-# 메인 화면: 로그인 체크
-# -----------------------------
-if (
-    "logged_in" not in st.session_state
-    or st.session_state.logged_in is False
-    or "user_profile" not in st.session_state
-    or st.session_state.user_profile is None
-):
-    st.title("Catcher 소비 분석 서비스")
-    st.info("왼쪽 사이드바에서 User ID와 이름을 입력하고 로그인해주세요.")
-    st.stop()
-
-profile = st.session_state.user_profile
-
-# -----------------------------
-# 프로필 화면
-# -----------------------------
-st.title("👤 사용자 프로필")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("이름", profile["name"])
-    st.metric("나이", f"{profile['age']}세")
-    st.metric("성별", profile["gender"])
-
-with col2:
-    st.metric("직업", profile["job"])
-    st.metric("지역", profile["region"])
-    st.metric("연봉", profile["income"])
-
-with col3:
-    st.metric("최상위 카드 등급", profile["card_grade"])
-    st.metric("페르소나", profile["persona"])
-
-st.markdown("---")
-st.success("로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.")
+# 선택된 페이지 렌더링
+pg.run()
