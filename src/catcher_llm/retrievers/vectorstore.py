@@ -248,15 +248,11 @@ def build_local_vectorstore(
         _VECTORSTORE_CACHE[cache_key] = vectorstore
         return vectorstore
 
-    load_kwargs: dict[str, object] = {}
-    if selected_source_files is not None:
-        load_kwargs["source_files"] = selected_source_files
-
     chunks = load_split_local_documents(
         actual_data_dir,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        **load_kwargs,
+        source_files=selected_source_files,
     )
     if not chunks:
         return None

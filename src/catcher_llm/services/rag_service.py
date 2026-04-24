@@ -27,17 +27,23 @@ def retrieve_context_records(
 ) -> list[dict[str, str | int | None]]:
     """질문과 관련된 로컬 문서 청크를 검색해 출처와 본문 형태로 반환한다."""
     config = settings or get_settings()
-    retriever_kwargs: dict[str, object] = {
-        "chunk_size": chunk_size,
-        "chunk_overlap": chunk_overlap,
-        "top_k": top_k,
-        "raw_data_dir": raw_data_dir,
-        "settings": config,
-    }
-    if source_files is not None:
-        retriever_kwargs["source_files"] = source_files
-
-    retriever = get_local_retriever(**retriever_kwargs)
+    if source_files is None:
+        retriever = get_local_retriever(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            settings=config,
+        )
+    else:
+        retriever = get_local_retriever(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
+            settings=config,
+        )
     if retriever is None:
         return []
 
@@ -116,16 +122,17 @@ def generate_rag_reply(
             error=str(exc),
         )
 
-    contexts = [
-        RetrievedChunk(
-            source=str(item["source"]),
-            content=str(item["content"]),
-            page_number=(
-                int(item["page_number"]) if isinstance(item.get("page_number"), int) else None
-            ),
+    contexts: list[RetrievedChunk] = []
+    for item in context_records:
+        page_number = item.get("page_number")
+        contexts.append(
+            RetrievedChunk(
+                source=str(item["source"]),
+                content=str(item["content"]),
+                page_number=page_number if isinstance(page_number, int) else None,
+            )
         )
-        for item in context_records
-    ]
+
     sources = list(dict.fromkeys(item.source for item in contexts))
     return RAGResponse(answer=answer, contexts=contexts, sources=sources)
 

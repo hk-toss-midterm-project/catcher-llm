@@ -29,17 +29,23 @@ def invoke_retriever_question(
 ) -> RetrieverTestResult:
     """질문으로 로컬 retriever를 직접 호출해 검색 결과 청크를 반환한다."""
     config = settings or get_settings()
-    retriever_kwargs: dict[str, object] = {
-        "chunk_size": chunk_size,
-        "chunk_overlap": chunk_overlap,
-        "top_k": top_k,
-        "raw_data_dir": raw_data_dir,
-        "settings": config,
-    }
-    if source_files is not None:
-        retriever_kwargs["source_files"] = source_files
-
-    retriever = get_local_retriever(**retriever_kwargs)
+    if source_files is None:
+        retriever = get_local_retriever(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            settings=config,
+        )
+    else:
+        retriever = get_local_retriever(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
+            settings=config,
+        )
     if retriever is None:
         return RetrieverTestResult(
             question=question,

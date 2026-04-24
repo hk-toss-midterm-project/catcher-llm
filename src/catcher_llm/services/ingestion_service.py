@@ -67,17 +67,21 @@ def _ingest_documents(
     manifest_path = settings.processed_data_dir / manifest_name
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    build_kwargs: dict[str, object] = {}
     if selection_only:
-        build_kwargs["source_files"] = source_files
-
-    build_local_vectorstore(
-        settings.raw_data_dir,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        settings=settings,
-        **build_kwargs,
-    )
+        build_local_vectorstore(
+            settings.raw_data_dir,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            source_files=source_files,
+            settings=settings,
+        )
+    else:
+        build_local_vectorstore(
+            settings.raw_data_dir,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            settings=settings,
+        )
 
     return {
         "documents": len(manifest),
