@@ -7,6 +7,14 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if "logged_in" not in st.session_state or not st.session_state.logged_in:
     st.warning("먼저 로그인해주세요.")
     st.page_link("app.py", label="로그인 화면으로 이동")
