@@ -68,15 +68,28 @@ def generate_rag_reply(
     raw_data_dir: Path | str | None = None,
     source_files: Sequence[Path] | None = None,
     settings: Settings | None = None,
+    temperature: float = 0.0,
 ) -> RAGResponse:
     """문서 검색 결과를 컨텍스트로 사용해 RAG 답변과 출처 정보를 생성한다."""
     config = settings or get_settings()
-    if not config.has_openai_key:
+    chat_model_error = config.chat_model_error
+    if chat_model_error is not None:
         return RAGResponse(
-            answer="OPENAI_API_KEY is not set. Add it to .env before using the RAG flow.",
+            answer=config.get_chat_model_error_message("RAG flow")
+            or "Chat model configuration is invalid.",
             contexts=[],
             sources=[],
-            error="missing_openai_api_key",
+            error=chat_model_error,
+        )
+
+    embedding_model_error = config.embedding_model_error
+    if embedding_model_error is not None:
+        return RAGResponse(
+            answer=config.get_embedding_model_error_message("RAG flow")
+            or "Embedding model configuration is invalid.",
+            contexts=[],
+            sources=[],
+            error=embedding_model_error,
         )
 
     try:
@@ -106,7 +119,7 @@ def generate_rag_reply(
         )
 
     try:
-        chain = build_rag_chain(config)
+        chain = build_rag_chain(config, temperature=temperature)
         answer = chain.invoke(
             {
                 "history": format_chat_history(history or []),
@@ -138,7 +151,7 @@ def generate_rag_reply(
 
 
 def rag_target(
-    inputs: dict[str, str | int],
+    inputs: dict[str, str | int | float],
     *,
     settings: Settings | None = None,
 ) -> dict[str, object]:
@@ -146,6 +159,7 @@ def rag_target(
     chunk_size = int(inputs.get("chunk_size", 800))
     chunk_overlap = int(inputs.get("chunk_overlap", 120))
     top_k = int(inputs.get("top_k", 4))
+    temperature = float(inputs.get("temperature", 0.0))
 
     result = generate_rag_reply(
         str(inputs["question"]),
@@ -153,6 +167,7 @@ def rag_target(
         chunk_overlap=chunk_overlap,
         top_k=top_k,
         settings=settings,
+        temperature=temperature,
     )
     return {
         "answer": result.answer,

@@ -18,21 +18,26 @@ def generate_reply(
     chunk_size: int = 800,
     chunk_overlap: int = 120,
     top_k: int = 4,
+    chat_temperature: float = 0.0,
+    summary_temperature: float = 0.0,
+    rag_temperature: float = 0.0,
 ) -> ChatTurnResult:
     """사용자 입력을 라우팅한 뒤 채팅, 요약, RAG 중 알맞은 응답을 생성한다."""
     config = settings or get_settings()
     route = route_request(user_input)
 
-    if not config.has_openai_key:
+    chat_model_error = config.chat_model_error
+    if chat_model_error is not None:
         return ChatTurnResult(
-            reply="OPENAI_API_KEY is not set. Add it to .env before using the chat flow.",
+            reply=config.get_chat_model_error_message("chat flow")
+            or "Chat model configuration is invalid.",
             route=route,
-            error="missing_openai_api_key",
+            error=chat_model_error,
         )
 
     payload: dict[str, str]
     if route == "summary":
-        chain = build_summary_chain(config)
+        chain = build_summary_chain(config, temperature=summary_temperature)
         payload = {"text": user_input}
     elif route == "rag":
         rag_result = generate_rag_reply(
@@ -42,6 +47,7 @@ def generate_reply(
             top_k=top_k,
             history=history,
             settings=config,
+            temperature=rag_temperature,
         )
         reply = rag_result.answer
         if rag_result.sources and not rag_result.error:
@@ -49,7 +55,7 @@ def generate_reply(
             reply = f"{reply}\n\nSources:\n{joined_sources}"
         return ChatTurnResult(reply=reply, route=route, error=rag_result.error)
     else:
-        chain = build_chat_chain(config)
+        chain = build_chat_chain(config, temperature=chat_temperature)
         payload = {
             "history": format_chat_history(history or []),
             "input": user_input,

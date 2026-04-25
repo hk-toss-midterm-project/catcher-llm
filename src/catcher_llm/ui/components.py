@@ -13,7 +13,8 @@ def render_sidebar(settings: Settings) -> None:
     with st.sidebar:
         st.title(settings.app_name)
         st.caption(f"Environment: {settings.env_name}")
-        st.write(f"Model: {settings.openai_model}")
+        st.write(f"Chat model: {settings.chat_model_label}")
+        st.write(f"Embedding model: {settings.embedding_model_label}")
         st.write(f"Raw data: `{settings.raw_data_dir}`")
         st.write(f"Vector store: `{settings.vectorstore_dir}`")
 

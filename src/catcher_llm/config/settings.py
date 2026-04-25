@@ -18,6 +18,21 @@ _LANGCHAIN_ENV_KEYS = (
     "LANGCHAIN_PROJECT",
     "LANGCHAIN_ENDPOINT",
 )
+SUPPORTED_CHAT_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "ollama")
+SUPPORTED_EMBEDDING_PROVIDERS: tuple[str, ...] = ("openai", "ollama")
+_CHAT_PROVIDER_ALIASES: dict[str, str] = {
+    "openai": "openai",
+    "gpt": "openai",
+    "anthropic": "anthropic",
+    "claude": "anthropic",
+    "ollama": "ollama",
+    "local": "ollama",
+}
+_EMBEDDING_PROVIDER_ALIASES: dict[str, str] = {
+    "openai": "openai",
+    "ollama": "ollama",
+    "local": "ollama",
+}
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -25,13 +40,28 @@ def _get_bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _normalize_provider(raw_value: str, aliases: dict[str, str], default: str) -> str:
+    """provider 설정 문자열을 공백 제거, 소문자 변환, 별칭 치환 순서로 정규화한다."""
+    normalized_value = raw_value.strip().lower()
+    if not normalized_value:
+        return default
+    return aliases.get(normalized_value, normalized_value)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     app_name: str = "Catcher LLM"
     env_name: str = os.getenv("APP_ENV", "local")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "llama3.1")
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "openai")
     embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
     langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "catcher-llm")
@@ -46,9 +76,102 @@ class Settings:
     sqlite_db_path: Path = DATA_DIR / "sqlite" / "app.sqlite3"
 
     @property
+    def chat_provider(self) -> str:
+        """채팅 모델 provider를 내부 표준 이름으로 반환한다."""
+        return _normalize_provider(self.llm_provider, _CHAT_PROVIDER_ALIASES, "openai")
+
+    @property
+    def embedding_model_provider(self) -> str:
+        """임베딩 모델 provider를 내부 표준 이름으로 반환한다."""
+        return _normalize_provider(
+            self.embedding_provider,
+            _EMBEDDING_PROVIDER_ALIASES,
+            "openai",
+        )
+
+    @property
+    def chat_model_name(self) -> str:
+        """현재 채팅 provider에 맞는 provider별 모델명을 반환한다."""
+        provider = self.chat_provider
+        if provider == "anthropic":
+            return self.anthropic_model
+        if provider == "ollama":
+            return self.ollama_model
+        return self.openai_model
+
+    @property
+    def embedding_model_name(self) -> str:
+        """현재 임베딩 provider에 맞는 모델명을 반환한다."""
+        if self.embedding_model_provider == "ollama":
+            return self.ollama_embedding_model
+        return self.embedding_model
+
+    @property
+    def chat_model_label(self) -> str:
+        """UI와 로그에 표시할 채팅 모델 식별자를 반환한다."""
+        return f"{self.chat_provider}:{self.chat_model_name}"
+
+    @property
+    def embedding_model_label(self) -> str:
+        """UI와 로그에 표시할 임베딩 모델 식별자를 반환한다."""
+        return f"{self.embedding_model_provider}:{self.embedding_model_name}"
+
+    @property
     def has_openai_key(self) -> bool:
         """OpenAI API 키가 설정되어 있는지 확인한다."""
         return bool(self.openai_api_key.strip())
+
+    @property
+    def has_anthropic_key(self) -> bool:
+        """Anthropic API 키가 설정되어 있는지 확인한다."""
+        return bool(self.anthropic_api_key.strip())
+
+    @property
+    def chat_model_error(self) -> str | None:
+        """채팅 모델 설정에 즉시 확인 가능한 오류가 있으면 오류 코드를 반환한다."""
+        provider = self.chat_provider
+        if provider not in SUPPORTED_CHAT_PROVIDERS:
+            return "unsupported_llm_provider"
+        if provider == "openai" and not self.has_openai_key:
+            return "missing_openai_api_key"
+        if provider == "anthropic" and not self.has_anthropic_key:
+            return "missing_anthropic_api_key"
+        return None
+
+    @property
+    def embedding_model_error(self) -> str | None:
+        """임베딩 모델 설정에 즉시 확인 가능한 오류가 있으면 오류 코드를 반환한다."""
+        provider = self.embedding_model_provider
+        if provider not in SUPPORTED_EMBEDDING_PROVIDERS:
+            return "unsupported_embedding_provider"
+        if provider == "openai" and not self.has_openai_key:
+            return "missing_openai_api_key"
+        return None
+
+    def get_chat_model_error_message(self, flow_name: str = "chat flow") -> str | None:
+        """채팅 모델 설정 오류 코드를 사용자에게 보여줄 문장으로 변환한다."""
+        error = self.chat_model_error
+        if error == "missing_openai_api_key":
+            return f"OPENAI_API_KEY is not set. Add it to .env before using the {flow_name}."
+        if error == "missing_anthropic_api_key":
+            return f"ANTHROPIC_API_KEY is not set. Add it to .env before using the {flow_name}."
+        if error == "unsupported_llm_provider":
+            supported = ", ".join(SUPPORTED_CHAT_PROVIDERS)
+            return f"Unsupported LLM_PROVIDER '{self.llm_provider}'. Use one of: {supported}."
+        return None
+
+    def get_embedding_model_error_message(self, flow_name: str = "RAG flow") -> str | None:
+        """임베딩 모델 설정 오류 코드를 사용자에게 보여줄 문장으로 변환한다."""
+        error = self.embedding_model_error
+        if error == "missing_openai_api_key":
+            return f"OPENAI_API_KEY is not set. Add it to .env before using the {flow_name}."
+        if error == "unsupported_embedding_provider":
+            supported = ", ".join(SUPPORTED_EMBEDDING_PROVIDERS)
+            return (
+                f"Unsupported EMBEDDING_PROVIDER '{self.embedding_provider}'. "
+                f"Use one of: {supported}."
+            )
+        return None
 
     @property
     def has_langsmith_key(self) -> bool:

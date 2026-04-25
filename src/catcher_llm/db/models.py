@@ -15,6 +15,7 @@ USER_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
     "지역": "region",
     "최상위 카드등급": "card_grade",
     "페르소나": "persona",
+    "saving_goal_text": "saving_goal_text",
 }
 
 TRANSACTION_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
@@ -50,6 +51,7 @@ class UserModel(Base):
     region: Mapped[str | None] = mapped_column(String(100))
     card_grade: Mapped[str | None] = mapped_column(String(50))
     persona: Mapped[str | None] = mapped_column(String(100))
+    saving_goal_text: Mapped[str | None] = mapped_column(Text)
 
 
 class TransactionModel(Base):
