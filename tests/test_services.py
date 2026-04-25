@@ -75,10 +75,119 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(result.error, "missing_openai_api_key")
 
+    def test_generate_reply_requires_anthropic_api_key_for_claude(self) -> None:
+        """Claude provider를 선택하면 Anthropic API 키 누락을 별도 오류로 반환한다."""
+        settings = Settings(llm_provider="claude", anthropic_api_key="")
+
+        result = generate_reply(
+            "hello",
+            history=[ChatMessage(role="user", content="hi")],
+            settings=settings,
+        )
+
+        self.assertEqual(result.error, "missing_anthropic_api_key")
+
+    def test_generate_reply_allows_ollama_without_openai_api_key(self) -> None:
+        """Ollama provider는 OpenAI API 키 없이도 일반 채팅 체인을 호출한다."""
+        settings = Settings(llm_provider="ollama", openai_api_key="")
+        chain = MagicMock()
+        chain.invoke.return_value = "로컬 모델 응답"
+
+        with patch("catcher_llm.services.chat_service.build_chat_chain", return_value=chain):
+            result = generate_reply(
+                "hello",
+                history=[ChatMessage(role="user", content="hi")],
+                settings=settings,
+            )
+
+        self.assertEqual(result.reply, "로컬 모델 응답")
+        self.assertIsNone(result.error)
+        chain.invoke.assert_called_once()
+
+    def test_generate_reply_passes_chat_temperature_to_chain(self) -> None:
+        """일반 채팅 응답 생성 시 호출 옵션 temperature가 채팅 체인에 전달된다."""
+        settings = Settings(openai_api_key="test-key")
+        chain = MagicMock()
+        chain.invoke.return_value = "응답"
+
+        with patch(
+            "catcher_llm.services.chat_service.build_chat_chain", return_value=chain
+        ) as build:
+            result = generate_reply("hello", settings=settings, chat_temperature=0.65)
+
+        self.assertEqual(result.reply, "응답")
+        build.assert_called_once_with(settings, temperature=0.65)
+
+    def test_generate_reply_passes_rag_temperature_to_rag_service(self) -> None:
+        """RAG 라우팅 시 호출 옵션 temperature가 RAG 서비스에 전달된다."""
+        settings = Settings(openai_api_key="test-key")
+
+        with patch("catcher_llm.services.chat_service.generate_rag_reply") as generate_rag:
+            generate_rag.return_value.answer = "RAG 응답"
+            generate_rag.return_value.sources = []
+            generate_rag.return_value.error = None
+
+            result = generate_reply("문서에서 찾아줘", settings=settings, rag_temperature=0.1)
+
+        self.assertEqual(result.reply, "RAG 응답")
+        generate_rag.assert_called_once()
+        self.assertEqual(generate_rag.call_args.kwargs["temperature"], 0.1)
+
     def test_generate_rag_reply_handles_missing_api_key(self) -> None:
         result = generate_rag_reply("search docs", settings=Settings(openai_api_key=""))
 
         self.assertEqual(result.error, "missing_openai_api_key")
+
+    def test_generate_rag_reply_allows_ollama_chat_and_embeddings(self) -> None:
+        """Ollama 채팅과 임베딩 provider를 쓰면 OpenAI 키 없이도 RAG 생성을 시도한다."""
+        settings = Settings(
+            llm_provider="ollama",
+            embedding_provider="ollama",
+            openai_api_key="",
+        )
+        retriever_documents = [
+            Document(
+                page_content="retrieved content",
+                metadata={"source": "data/raw/guide.pdf", "page": 2},
+            )
+        ]
+        chain = MagicMock()
+        chain.invoke.return_value = "정답"
+
+        with (
+            patch("catcher_llm.services.rag_service.get_local_retriever") as retriever_factory,
+            patch("catcher_llm.services.rag_service.build_rag_chain", return_value=chain),
+        ):
+            retriever_factory.return_value.invoke.return_value = retriever_documents
+
+            result = generate_rag_reply("검색 테스트", settings=settings)
+
+        self.assertEqual(result.answer, "정답")
+        self.assertIsNone(result.error)
+        chain.invoke.assert_called_once()
+
+    def test_generate_rag_reply_passes_temperature_to_rag_chain(self) -> None:
+        """RAG 답변 생성 시 호출 옵션 temperature가 RAG 체인에 전달된다."""
+        settings = Settings(openai_api_key="test-key")
+        retriever_documents = [
+            Document(
+                page_content="retrieved content",
+                metadata={"source": "data/raw/guide.pdf", "page": 2},
+            )
+        ]
+        chain = MagicMock()
+        chain.invoke.return_value = "정답"
+
+        with (
+            patch("catcher_llm.services.rag_service.get_local_retriever") as retriever_factory,
+            patch("catcher_llm.services.rag_service.build_rag_chain", return_value=chain) as build,
+        ):
+            retriever_factory.return_value.invoke.return_value = retriever_documents
+
+            result = generate_rag_reply("검색 테스트", settings=settings, temperature=0.05)
+
+        self.assertEqual(result.answer, "정답")
+        build.assert_called_once_with(settings, temperature=0.05)
 
     def test_generate_rag_reply_serializes_page_numbers_in_context(self) -> None:
         settings = Settings(openai_api_key="test-key")

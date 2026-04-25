@@ -166,6 +166,7 @@ class RetrieverTests(unittest.TestCase):
                 json.dumps(
                     {
                         "raw_data_dir": str(raw_dir.resolve()),
+                        "embedding_provider": settings.embedding_model_provider,
                         "embedding_model": settings.embedding_model,
                         "chunk_size": 100,
                         "chunk_overlap": 10,
