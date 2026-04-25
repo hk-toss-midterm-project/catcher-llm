@@ -2,7 +2,7 @@
   "seed_schema_version": 2,
   "members_csv": {
     "path": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\csv\\members_v1.csv",
-    "sha256": "0f4da1d13034dfd05c6198fe8c656f304bedae6b2189bae18eccf7af93f50869"
+    "sha256": "9899b70bbd673d80f6f7edf6430b951e8aa2e73909d7622e91dd99c4122ec458"
   },
   "consumption_csv": {
     "path": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\csv\\consumption_v1.csv",

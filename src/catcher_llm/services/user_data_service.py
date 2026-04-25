@@ -287,6 +287,7 @@ def _build_user_profile(user: UserModel) -> dict[str, int | str | None]:
         "region": user.region,
         "card_grade": user.card_grade,
         "persona": user.persona,
+        "saving_goal_text": user.saving_goal_text,  # 추가
     }
 
 

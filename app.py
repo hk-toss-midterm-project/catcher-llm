@@ -82,21 +82,49 @@ def profile_page():
         st.metric("최상위 카드 등급", profile["card_grade"])
         st.metric("페르소나", profile["persona"])
 
+    # -----------------------------
+    # 절약 목표 추가 영역
+    # -----------------------------
+    st.markdown("---")
+    st.subheader("🎯 나의 절약 목표")
+
+    saving_goal_text = profile.get("saving_goal_text")
+
+    if saving_goal_text:
+        st.markdown(
+            f"""
+            <div style="
+                background-color:#FFF7ED;
+                color:#C2410C;
+                padding:18px;
+                border-radius:12px;
+                font-size:17px;
+                font-weight:600;
+                line-height:1.6;
+            ">
+                {saving_goal_text}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("아직 등록된 절약 목표가 없습니다.")
+
     st.markdown("---")
     st.markdown(
-    """
-    <div style="
-        background-color:#E8F2FF;
-        color:#1D4ED8;
-        padding:16px;
-        border-radius:10px;
-        font-weight:500;
-    ">
-        로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        """
+        <div style="
+            background-color:#E8F2FF;
+            color:#1D4ED8;
+            padding:16px;
+            border-radius:10px;
+            font-weight:500;
+        ">
+            로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # -----------------------------
