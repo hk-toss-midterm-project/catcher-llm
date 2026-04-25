@@ -63,12 +63,22 @@ Streamlit 앱을 실행한 뒤 `Chat` 페이지부터 시작하면 된다. 로�
 
 실제 모델 호출에 필수:
 
-- `OPENAI_API_KEY`
+- OpenAI 채팅 또는 OpenAI 임베딩을 쓰는 경우 `OPENAI_API_KEY`
+- Claude/Anthropic 채팅을 쓰는 경우 `ANTHROPIC_API_KEY`
+- Ollama를 쓰는 경우 로컬 Ollama 서버와 필요한 모델 pull
 
 자주 조정하는 선택 옵션:
 
+- `LLM_PROVIDER`: `openai`, `anthropic` 또는 `ollama` (`claude`, `local` 별칭 지원)
 - `OPENAI_MODEL`
+- `ANTHROPIC_MODEL`
+- `OLLAMA_MODEL`
+- `OLLAMA_BASE_URL`
+- `EMBEDDING_PROVIDER`: `openai` 또는 `ollama`
 - `OPENAI_EMBEDDING_MODEL`
+- `OLLAMA_EMBEDDING_MODEL`
+
+모델 temperature는 전역 환경변수 대신 `generate_reply`, `generate_rag_reply`, `build_*_chain` 호출 옵션으로 기능별로 지정한다.
 
 RAG의 `chunk_size`, `chunk_overlap`, `top_k`는 전역 환경변수보다 코퍼스/호출 단위 인자로 전달하는 방식을 기본으로 사용한다.
 
