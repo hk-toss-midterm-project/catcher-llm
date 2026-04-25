@@ -1,0 +1,107 @@
+{
+  "member_id": 1,
+  "analysis_date": "2024-04-01",
+  "source_paths": {
+    "past_csv": "../../../data/raw/csv/consumption_v1.csv",
+    "today_csv": "data_input_month.csv"
+  },
+  "outlier_thresholds": {
+    "q1": 5242.0,
+    "q3": 12247.0,
+    "iqr": 7005.0,
+    "lower_bound": 0.0,
+    "upper_bound": 22754.5
+  },
+  "stable_metrics": {
+    "past_daily_stable_average": 51014.0549,
+    "today_total": 133044,
+    "increase_rate_percent": 160.7987,
+    "category_ratio_changes": [
+      {
+        "category": "생활",
+        "usual_ratio_percent": 1.4705,
+        "today_ratio_percent": 72.833,
+        "diff_point": 71.3626
+      },
+      {
+        "category": "교통",
+        "usual_ratio_percent": 4.7418,
+        "today_ratio_percent": 9.6885,
+        "diff_point": 4.9468
+      },
+      {
+        "category": "의료",
+        "usual_ratio_percent": 8.0934,
+        "today_ratio_percent": 10.0929,
+        "diff_point": 1.9995
+      },
+      {
+        "category": "쇼핑",
+        "usual_ratio_percent": 17.267,
+        "today_ratio_percent": 0.0,
+        "diff_point": -17.267
+      },
+      {
+        "category": "식비",
+        "usual_ratio_percent": 68.4274,
+        "today_ratio_percent": 7.3855,
+        "diff_point": -61.0419
+      }
+    ]
+  },
+  "anomaly_detection": {
+    "past_daily_original_average": 104423.9011,
+    "spike_ratio": 1.2741,
+    "is_spike": false,
+    "high_spending_threshold": 22754.5,
+    "high_spending_items": [
+      {
+        "used_at": "2024-04-01 10:00:00",
+        "description": "SKT통신비",
+        "amount": 65000,
+        "category": "생활"
+      }
+    ]
+  },
+  "previous_day_comparison": {
+    "yesterday_date": "2024-03-31",
+    "yesterday_total": 48531,
+    "today_total": 133044,
+    "amount_diff": 84513,
+    "amount_diff_rate_percent": 174.1423,
+    "yesterday_count": 6,
+    "today_count": 9,
+    "count_diff": 3,
+    "yesterday_main_category": "식비",
+    "today_main_category": "생활"
+  },
+  "time_slot_analysis": {
+    "peak_slot": "2.오전(06-11)",
+    "time_slots": [
+      {
+        "time_slot": "2.오전(06-11)",
+        "today_amount": 112895,
+        "usual_average_amount": 9495.8352,
+        "diff_amount": 103399.1648
+      },
+      {
+        "time_slot": "3.점심/오후(11-17)",
+        "today_amount": 5471,
+        "usual_average_amount": 68098.8242,
+        "diff_amount": -62627.8242
+      },
+      {
+        "time_slot": "4.저녁(17-21)",
+        "today_amount": 13428,
+        "usual_average_amount": 16601.3956,
+        "diff_amount": -3173.3956
+      },
+      {
+        "time_slot": "5.밤/야식(21-24)",
+        "today_amount": 1250,
+        "usual_average_amount": 10227.8462,
+        "diff_amount": -8977.8462
+      }
+    ]
+  }
+}
