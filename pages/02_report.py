@@ -222,6 +222,33 @@ if report_type == "일간 레포트":
         for feedback in feedbacks:
             st.write(f"- {feedback}")
 
+        for feedback in feedbacks:
+            st.write(f"- {feedback}")
+
+        # -----------------------------
+        # 👍👎 피드백 평가
+        # -----------------------------
+        st.markdown("### 피드백이 도움이 되었나요?")
+
+        if "daily_feedback_reaction" not in st.session_state:
+            st.session_state.daily_feedback_reaction = None
+
+        col_like, col_dislike = st.columns(2)
+
+        with col_like:
+            if st.button("👍 좋아요", use_container_width=True):
+                st.session_state.daily_feedback_reaction = "좋아요"
+
+        with col_dislike:
+            if st.button("👎 싫어요", use_container_width=True):
+                st.session_state.daily_feedback_reaction = "싫어요"
+
+        if st.session_state.daily_feedback_reaction == "좋아요":
+            st.success("좋아요를 선택했어요. 더 비슷한 방식으로 피드백할게요!")
+
+        elif st.session_state.daily_feedback_reaction == "싫어요":
+            st.warning("싫어요를 선택했어요. 다음 피드백은 더 구체적으로 개선해볼게요.")
+
         # -----------------------------
         # 오늘 소비 내역
         # -----------------------------
