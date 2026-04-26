@@ -10,6 +10,8 @@ type JsonObject = dict[str, JsonValue]
 type MetricValue = bool | int | float | str
 type CategoryDirection = Literal["increase", "decrease", "flat"]
 type FindingConfidence = Literal["low", "medium", "high"]
+type ActionUrgency = Literal["immediate", "this_week", "this_month"]
+type DailyFeedbackEvidenceType = Literal["spending_metric", "interpretation", "document"]
 
 
 class SourcePaths(BaseModel):
@@ -211,9 +213,7 @@ class ActionMission(BaseModel):
     detail: str = Field(description="실행 방법 설명")
     target_json_path: str = Field(description="직접 연결되는 원본 또는 지표 JSON 경로")
     expected_effect: str = Field(description="기대 효과")
-    urgency: Literal["immediate", "this_week", "this_month"] = Field(
-        description="실행 우선순위 시점"
-    )
+    urgency: ActionUrgency = Field(description="실행 우선순위 시점")
 
 
 class GroupCompetitionMetric(BaseModel):
@@ -233,3 +233,56 @@ class ActionAnalysisResult(BaseModel):
     budget_control_areas: list[ActionMission] = Field(default_factory=list)
     next_week_missions: list[ActionMission] = Field(default_factory=list)
     group_competition_metrics: list[GroupCompetitionMetric] = Field(default_factory=list)
+
+
+class RetrievedAdviceContext(BaseModel):
+    """일일 피드백 생성을 위해 RAG에서 찾은 조언 문서 청크를 표현한다."""
+
+    query: str
+    source: str
+    content: str
+    page_number: int | None = None
+
+
+class DailyFeedbackEvidence(BaseModel):
+    """일일 소비 피드백 문장에 사용한 소비 JSON 또는 문서 근거를 표현한다."""
+
+    evidence_type: DailyFeedbackEvidenceType
+    title: str
+    detail: str
+    source_json_path: str | None = None
+    source: str | None = None
+    page_number: int | None = None
+
+
+class DailyFeedbackAction(BaseModel):
+    """일일 소비 피드백에서 사용자가 실행할 단기 행동을 표현한다."""
+
+    title: str
+    detail: str
+    target_json_path: str
+    urgency: ActionUrgency
+    related_source: str | None = None
+
+
+class DailyFeedbackResult(BaseModel):
+    """분석 JSON과 RAG 근거를 바탕으로 생성한 최종 일일 소비 피드백을 표현한다."""
+
+    summary_title: str
+    scolding_message: str
+    key_evidences: list[DailyFeedbackEvidence]
+    action_items: list[DailyFeedbackAction]
+    tomorrow_mission: str
+
+
+class DailyFeedbackServiceResult(BaseModel):
+    """일일 소비 피드백 서비스 실행 결과와 중간 산출물을 표현한다."""
+
+    member_id: int
+    analysis_date: str
+    feedback: DailyFeedbackResult | None = None
+    daily_analysis: UserSpendingData | None = None
+    interpretation_result: JsonObject | None = None
+    retrieval_queries: list[str] = Field(default_factory=list)
+    retrieved_contexts: list[RetrievedAdviceContext] = Field(default_factory=list)
+    error: str | None = None

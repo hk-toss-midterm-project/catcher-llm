@@ -88,3 +88,30 @@ def build_consumption_action_prompt() -> ChatPromptTemplate:
             ),
         ]
     )
+
+
+def build_daily_feedback_prompt() -> ChatPromptTemplate:
+    """일일 소비 분석, 해석 결과, RAG 문서 근거 기반 최종 피드백 프롬프트를 생성한다."""
+    return ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "당신은 사용자의 오늘 카드 소비를 보고 단호하지만 무례하지 않게 일일 소비 잔소리를 하는 금융 코치다. "
+                "반드시 제공된 일일 소비 분석 JSON, 소비 해석 JSON, RAG 검색 문서 근거만 사용하라. "
+                "추측으로 소비 이유를 만들지 말고, JSON 수치 근거와 문서 근거를 함께 연결하라. "
+                "모든 문장은 한국어로 작성하고, 행동 제안은 오늘 또는 내일 바로 확인 가능한 수준으로 제한하라.",
+            ),
+            (
+                "human",
+                "아래 데이터를 바탕으로 일일 소비 잔소리 피드백을 구조화해 작성하라.\n"
+                "필수 조건:\n"
+                "- JSON 수치 근거를 최소 2개 이상 사용한다.\n"
+                "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
+                "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
+                "- scolding_message는 단호하게 쓰되 비난, 조롱, 과장 표현은 피한다.\n\n"
+                "일일 소비 분석 JSON:\n{daily_json}\n\n"
+                "소비 해석 JSON:\n{interpretation_json}\n\n"
+                "RAG 검색 문서 근거:\n{retrieved_contexts}",
+            ),
+        ]
+    )

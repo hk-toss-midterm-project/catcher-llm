@@ -1,0 +1,339 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Sequence
+from datetime import date
+from pathlib import Path
+from typing import cast
+
+from pydantic import BaseModel
+
+from catcher_llm.chains.consumption_feedback import (
+    build_daily_feedback_chain,
+    build_spending_analysis_chain,
+)
+from catcher_llm.config.settings import Settings, get_settings
+from catcher_llm.schemas.consumption_feedback import (
+    ActionAnalysisResult,
+    ActionMission,
+    DailyFeedbackResult,
+    DailyFeedbackServiceResult,
+    JsonObject,
+    JsonScalar,
+    JsonValue,
+    RetrievedAdviceContext,
+    UserSpendingData,
+)
+from catcher_llm.services.consumption_feedback.daily_analysis import (
+    build_daily_consumption_analysis_json,
+)
+from catcher_llm.services.consumption_feedback.interpretation import (
+    extract_spending_indicators,
+    make_spending_analysis_input,
+    parse_user_spending_data,
+)
+from catcher_llm.services.rag.core import retrieve_context_records
+
+_DEFAULT_RETRIEVAL_QUERY = "일일 소비 절약 실천 방법"
+
+
+def _parse_analysis_date(value: str | date) -> date:
+    """문자열 또는 date 입력을 일일 피드백 기준일로 변환한다."""
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
+
+
+def _to_json_value(value: object) -> JsonValue:
+    """Pydantic 모델과 파이썬 객체를 JSON 직렬화 가능한 값으로 변환한다."""
+    if isinstance(value, BaseModel):
+        return cast(JsonValue, json.loads(value.model_dump_json()))
+    if isinstance(value, dict):
+        return {str(key): _to_json_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_to_json_value(item) for item in value]
+    if isinstance(value, str | int | float | bool) or value is None:
+        return cast(JsonScalar, value)
+    return str(value)
+
+
+def _to_json_object(value: object) -> JsonObject:
+    """임의 객체를 최상위 JSON 객체로 변환한다."""
+    json_value = _to_json_value(value)
+    if isinstance(json_value, dict):
+        return json_value
+    return {"value": json_value}
+
+
+def serialize_interpretation_result(interpretation_result: dict[str, object]) -> str:
+    """소비 해석 체인 결과를 최종 피드백 프롬프트에 넣을 JSON 문자열로 변환한다."""
+    return json.dumps(
+        _to_json_object(interpretation_result),
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def serialize_advice_contexts(contexts: Sequence[RetrievedAdviceContext]) -> str:
+    """RAG 검색 문서 청크 목록을 최종 피드백 프롬프트용 JSON 문자열로 변환한다."""
+    return json.dumps(
+        [context.model_dump() for context in contexts],
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _append_unique_query(queries: list[str], query: str) -> None:
+    """비어 있지 않고 아직 없는 RAG 검색 질의만 목록에 추가한다."""
+    normalized_query = " ".join(query.split())
+    if normalized_query and normalized_query not in queries:
+        queries.append(normalized_query)
+
+
+def _iter_action_missions(action_result: object) -> list[ActionMission]:
+    """해석 결과의 행동 개선 모델 또는 dict에서 실행 미션 목록을 추출한다."""
+    if isinstance(action_result, ActionAnalysisResult):
+        return [
+            *action_result.immediate_cuts,
+            *action_result.substitution_opportunities,
+            *action_result.budget_control_areas,
+            *action_result.next_week_missions,
+        ]
+    if not isinstance(action_result, dict):
+        return []
+
+    missions: list[ActionMission] = []
+    for key in (
+        "immediate_cuts",
+        "substitution_opportunities",
+        "budget_control_areas",
+        "next_week_missions",
+    ):
+        raw_items = action_result.get(key)
+        if not isinstance(raw_items, list):
+            continue
+        for raw_item in raw_items:
+            try:
+                missions.append(ActionMission.model_validate(raw_item))
+            except ValueError:
+                continue
+    return missions
+
+
+def build_feedback_retrieval_queries(
+    user_data: UserSpendingData,
+    *,
+    interpretation_result: dict[str, object] | None = None,
+    max_queries: int = 4,
+) -> list[str]:
+    """소비 분석과 해석 결과에서 최종 피드백용 RAG 검색 질의를 생성한다."""
+    indicators = extract_spending_indicators(user_data)
+    queries: list[str] = []
+
+    if indicators.largest_category_increase is not None:
+        category = indicators.largest_category_increase.category
+        _append_unique_query(queries, f"{category} 소비 절약 방법")
+
+    for item in sorted(
+        indicators.high_spending_items,
+        key=lambda high_spending_item: high_spending_item.amount,
+        reverse=True,
+    ):
+        _append_unique_query(queries, f"{item.category} {item.description} 지출 줄이는 방법")
+
+    current_category = indicators.main_category_shift.current_category
+    if current_category:
+        _append_unique_query(queries, f"{current_category} 과소비 줄이는 방법")
+
+    action_result = (interpretation_result or {}).get("action_result")
+    for mission in _iter_action_missions(action_result):
+        _append_unique_query(queries, f"{mission.title} 실천 방법")
+
+    _append_unique_query(queries, _DEFAULT_RETRIEVAL_QUERY)
+    return queries[:max_queries]
+
+
+def retrieve_feedback_contexts(
+    queries: Sequence[str],
+    *,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    top_k: int = 3,
+    raw_data_dir: Path | str | None = None,
+    source_files: Sequence[Path] | None = None,
+    settings: Settings | None = None,
+) -> list[RetrievedAdviceContext]:
+    """RAG 검색 질의 목록을 실행해 최종 피드백에 사용할 문서 청크를 수집한다."""
+    contexts: list[RetrievedAdviceContext] = []
+    seen_contexts: set[tuple[str, int | None, str]] = set()
+    for query in queries:
+        records = retrieve_context_records(
+            query,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
+            settings=settings,
+        )
+        for record in records:
+            page_number = record.get("page_number")
+            actual_page_number = page_number if isinstance(page_number, int) else None
+            source = str(record["source"])
+            content = str(record["content"])
+            dedupe_key = (source, actual_page_number, content)
+            if dedupe_key in seen_contexts:
+                continue
+            seen_contexts.add(dedupe_key)
+            contexts.append(
+                RetrievedAdviceContext(
+                    query=query,
+                    source=source,
+                    content=content,
+                    page_number=actual_page_number,
+                )
+            )
+    return contexts
+
+
+def make_daily_feedback_input(
+    *,
+    user_data: UserSpendingData,
+    interpretation_result: dict[str, object],
+    advice_contexts: Sequence[RetrievedAdviceContext],
+) -> dict[str, str]:
+    """최종 일일 피드백 체인에 전달할 분석, 해석, RAG 근거 JSON 입력을 만든다."""
+    return {
+        "daily_json": user_data.model_dump_json(indent=2),
+        "interpretation_json": serialize_interpretation_result(interpretation_result),
+        "retrieved_contexts": serialize_advice_contexts(advice_contexts),
+    }
+
+
+def _build_error_result(
+    *,
+    member_id: int,
+    analysis_date: date,
+    error: str,
+    daily_analysis: UserSpendingData | None = None,
+    interpretation_result: dict[str, object] | None = None,
+    retrieval_queries: Sequence[str] | None = None,
+    retrieved_contexts: Sequence[RetrievedAdviceContext] | None = None,
+) -> DailyFeedbackServiceResult:
+    """서비스 중간 실패를 호출자가 확인할 수 있는 결과 모델로 변환한다."""
+    return DailyFeedbackServiceResult(
+        member_id=member_id,
+        analysis_date=str(analysis_date),
+        daily_analysis=daily_analysis,
+        interpretation_result=_to_json_object(interpretation_result or {}),
+        retrieval_queries=list(retrieval_queries or []),
+        retrieved_contexts=list(retrieved_contexts or []),
+        error=error,
+    )
+
+
+def generate_daily_feedback(
+    *,
+    member_id: int = 1,
+    analysis_date: str | date = "2024-04-01",
+    previous_date: str | date = "2024-03-31",
+    settings: Settings | None = None,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    top_k: int = 3,
+    max_queries: int = 4,
+    raw_data_dir: Path | str | None = None,
+    source_files: Sequence[Path] | None = None,
+    interpretation_temperature: float = 0.0,
+    feedback_temperature: float = 0.0,
+) -> DailyFeedbackServiceResult:
+    """일일 소비 분석, 해석, RAG 검색, 최종 잔소리 피드백 생성을 한 번에 실행한다."""
+    config = settings or get_settings()
+    analysis_day = _parse_analysis_date(analysis_date)
+    previous_day = _parse_analysis_date(previous_date)
+
+    chat_model_error = config.chat_model_error
+    if chat_model_error is not None:
+        return _build_error_result(
+            member_id=member_id,
+            analysis_date=analysis_day,
+            error=chat_model_error,
+        )
+
+    embedding_model_error = config.embedding_model_error
+    if embedding_model_error is not None:
+        return _build_error_result(
+            member_id=member_id,
+            analysis_date=analysis_day,
+            error=embedding_model_error,
+        )
+
+    try:
+        daily_payload = build_daily_consumption_analysis_json(
+            member_id=member_id,
+            analysis_date=analysis_day,
+            previous_date=previous_day,
+            settings=config,
+        )
+        user_data = parse_user_spending_data(daily_payload)
+        interpretation_chain = build_spending_analysis_chain(
+            settings=config,
+            temperature=interpretation_temperature,
+        )
+        interpretation_result = interpretation_chain.invoke(make_spending_analysis_input(user_data))
+        retrieval_queries = build_feedback_retrieval_queries(
+            user_data,
+            interpretation_result=interpretation_result,
+            max_queries=max_queries,
+        )
+        advice_contexts = retrieve_feedback_contexts(
+            retrieval_queries,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
+            settings=config,
+        )
+        if not advice_contexts:
+            return _build_error_result(
+                member_id=member_id,
+                analysis_date=analysis_day,
+                error="missing_documents",
+                daily_analysis=user_data,
+                interpretation_result=interpretation_result,
+                retrieval_queries=retrieval_queries,
+            )
+
+        feedback_chain = build_daily_feedback_chain(
+            settings=config,
+            temperature=feedback_temperature,
+        )
+        feedback = feedback_chain.invoke(
+            make_daily_feedback_input(
+                user_data=user_data,
+                interpretation_result=interpretation_result,
+                advice_contexts=advice_contexts,
+            )
+        )
+        feedback_result = (
+            feedback
+            if isinstance(feedback, DailyFeedbackResult)
+            else DailyFeedbackResult.model_validate(feedback)
+        )
+    except Exception as exc:
+        return _build_error_result(
+            member_id=member_id,
+            analysis_date=analysis_day,
+            error=str(exc),
+        )
+
+    return DailyFeedbackServiceResult(
+        member_id=member_id,
+        analysis_date=str(analysis_day),
+        feedback=feedback_result,
+        daily_analysis=user_data,
+        interpretation_result=_to_json_object(interpretation_result),
+        retrieval_queries=retrieval_queries,
+        retrieved_contexts=advice_contexts,
+    )

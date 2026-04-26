@@ -10,16 +10,14 @@ from catcher_llm.prompts.consumption_feedback import (
     build_consumption_cause_prompt,
     build_consumption_pattern_prompt,
     build_consumption_problem_prompt,
+    build_daily_feedback_prompt,
 )
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     CauseAnalysisResult,
+    DailyFeedbackResult,
     PatternAnalysisResult,
     ProblemAnalysisResult,
-)
-from catcher_llm.services.consumption_feedback.interpretation import (
-    prepare_action_payload,
-    prepare_cause_payload,
 )
 
 
@@ -61,6 +59,42 @@ def build_consumption_action_chain(
     return build_consumption_action_prompt() | llm.with_structured_output(ActionAnalysisResult)  # type: ignore[return-value]
 
 
+def prepare_cause_payload(payload: dict[str, object]) -> dict[str, str]:
+    """원인 해석 체인에 필요한 JSON 입력 페이로드를 생성한다."""
+    pattern_result = payload["pattern_result"]
+    problem_result = payload["problem_result"]
+    if not isinstance(pattern_result, PatternAnalysisResult):
+        raise TypeError("pattern_result must be PatternAnalysisResult")
+    if not isinstance(problem_result, ProblemAnalysisResult):
+        raise TypeError("problem_result must be ProblemAnalysisResult")
+    return {
+        "raw_json": str(payload["raw_json"]),
+        "indicator_json": str(payload["indicator_json"]),
+        "pattern_text": pattern_result.model_dump_json(indent=2),
+        "problem_text": problem_result.model_dump_json(indent=2),
+    }
+
+
+def prepare_action_payload(payload: dict[str, object]) -> dict[str, str]:
+    """행동 개선 체인에 필요한 JSON 입력 페이로드를 생성한다."""
+    pattern_result = payload["pattern_result"]
+    problem_result = payload["problem_result"]
+    cause_result = payload["cause_result"]
+    if not isinstance(pattern_result, PatternAnalysisResult):
+        raise TypeError("pattern_result must be PatternAnalysisResult")
+    if not isinstance(problem_result, ProblemAnalysisResult):
+        raise TypeError("problem_result must be ProblemAnalysisResult")
+    if not isinstance(cause_result, CauseAnalysisResult):
+        raise TypeError("cause_result must be CauseAnalysisResult")
+    return {
+        "raw_json": str(payload["raw_json"]),
+        "indicator_json": str(payload["indicator_json"]),
+        "pattern_text": pattern_result.model_dump_json(indent=2),
+        "problem_text": problem_result.model_dump_json(indent=2),
+        "cause_text": cause_result.model_dump_json(indent=2),
+    }
+
+
 def build_spending_analysis_chain(
     settings: Settings | None = None,
     llm: BaseChatModel | None = None,
@@ -86,3 +120,14 @@ def build_spending_analysis_chain(
             | build_consumption_action_chain(chat_model)
         )
     )
+
+
+def build_daily_feedback_chain(
+    settings: Settings | None = None,
+    llm: BaseChatModel | None = None,
+    *,
+    temperature: float = 0.0,
+) -> Runnable[dict[str, str], DailyFeedbackResult]:
+    """일일 소비 분석 JSON, 해석 JSON, RAG 근거로 최종 피드백을 생성하는 체인을 만든다."""
+    chat_model = llm or get_chat_model(settings, temperature=temperature)
+    return build_daily_feedback_prompt() | chat_model.with_structured_output(DailyFeedbackResult)  # type: ignore[return-value]
