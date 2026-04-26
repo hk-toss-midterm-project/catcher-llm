@@ -1,24 +1,23 @@
-import streamlit as st
-import pandas as pd
 from datetime import timedelta
 
+import pandas as pd
+import streamlit as st
 
-st.set_page_config(
-    page_title="리포트 조회",
-    page_icon="📑",
-    layout="wide"
-)
+st.set_page_config(page_title="리포트 조회", page_icon="📑", layout="wide")
 
 # -----------------------------
 # 기본 페이지 메뉴 숨기기
 # -----------------------------
-st.markdown("""
+st.markdown(
+    """
 <style>
 [data-testid="stSidebarNav"] {
     display: none;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # -----------------------------
 # 로그인 확인
@@ -72,7 +71,7 @@ st.markdown(
         선택된 리포트: {report_type}
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 st.markdown("---")
@@ -87,8 +86,8 @@ if "uploaded_df" not in st.session_state:
 df = st.session_state.uploaded_df.copy()
 
 # 👉 너 데이터에 맞게 반드시 수정해야 함
-DATE_COL = "date"      # 예: "거래일자"
-AMOUNT_COL = "amount" # 예: "결제금액"
+DATE_COL = "date"  # 예: "거래일자"
+AMOUNT_COL = "amount"  # 예: "결제금액"
 
 if DATE_COL not in df.columns:
     st.error(f"CSV에 '{DATE_COL}' 컬럼이 없습니다. 컬럼명을 확인하세요.")
@@ -101,7 +100,6 @@ selected_date = pd.to_datetime(selected_date)
 # 📅 일간 레포트
 # -----------------------------
 if report_type == "일간 레포트":
-
     report_df = df[df[DATE_COL].dt.date == selected_date.date()]
 
     st.subheader(f"☀️ 일간 레포트 ({selected_date.date()})")
@@ -122,14 +120,10 @@ if report_type == "일간 레포트":
 # 📆 주간 레포트
 # -----------------------------
 elif report_type == "주간 레포트":
-
     start_date = selected_date - timedelta(days=selected_date.weekday())
     end_date = start_date + timedelta(days=6)
 
-    report_df = df[
-        (df[DATE_COL] >= start_date) &
-        (df[DATE_COL] <= end_date)
-    ]
+    report_df = df[(df[DATE_COL] >= start_date) & (df[DATE_COL] <= end_date)]
 
     st.subheader(f"📆 주간 레포트 ({start_date.date()} ~ {end_date.date()})")
 
@@ -140,7 +134,7 @@ elif report_type == "주간 레포트":
 
         col1.metric("주간 총 소비", f"{report_df[AMOUNT_COL].sum():,.0f}원")
         col2.metric("거래 건수", f"{len(report_df)}건")
-        col3.metric("일 평균", f"{report_df[AMOUNT_COL].sum()/7:,.0f}원")
+        col3.metric("일 평균", f"{report_df[AMOUNT_COL].sum() / 7:,.0f}원")
 
         st.markdown("### 소비 내역")
         st.dataframe(report_df)
@@ -149,14 +143,10 @@ elif report_type == "주간 레포트":
 # 🗓️ 월간 레포트
 # -----------------------------
 elif report_type == "월간 레포트":
-
     year = selected_date.year
     month = selected_date.month
 
-    report_df = df[
-        (df[DATE_COL].dt.year == year) &
-        (df[DATE_COL].dt.month == month)
-    ]
+    report_df = df[(df[DATE_COL].dt.year == year) & (df[DATE_COL].dt.month == month)]
 
     st.subheader(f"🗓️ 월간 레포트 ({year}년 {month}월)")
 
@@ -169,7 +159,7 @@ elif report_type == "월간 레포트":
 
         col1.metric("월간 총 소비", f"{report_df[AMOUNT_COL].sum():,.0f}원")
         col2.metric("거래 건수", f"{len(report_df)}건")
-        col3.metric("일 평균", f"{report_df[AMOUNT_COL].sum()/days_in_month:,.0f}원")
+        col3.metric("일 평균", f"{report_df[AMOUNT_COL].sum() / days_in_month:,.0f}원")
 
         st.markdown("### 소비 내역")
         st.dataframe(report_df)

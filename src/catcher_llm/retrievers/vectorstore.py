@@ -57,7 +57,8 @@ def _build_cache_key(
     file_signature = _get_file_signature(actual_data_dir, normalized_source_files)
     return (
         str(actual_data_dir.resolve()),
-        config.embedding_model,
+        config.embedding_model_provider,
+        config.embedding_model_name,
         chunk_size,
         chunk_overlap,
         tuple(str(path) for path in normalized_source_files),
@@ -139,7 +140,8 @@ def _build_store_metadata(
     actual_data_dir = Path(raw_data_dir)
     metadata = {
         "raw_data_dir": str(actual_data_dir.resolve()),
-        "embedding_model": config.embedding_model,
+        "embedding_provider": config.embedding_model_provider,
+        "embedding_model": config.embedding_model_name,
         "chunk_size": chunk_size,
         "chunk_overlap": chunk_overlap,
         "file_signature": [

@@ -238,6 +238,7 @@ def _build_user_seed_rows(rows: Sequence[dict[str, str | None]]) -> list[dict[st
             "region": _parse_text(row.get("지역")),
             "card_grade": _parse_text(row.get("최상위 카드등급")),
             "persona": _parse_text(row.get("페르소나")),
+            "saving_goal_text": _parse_text(row.get("saving_goal_text")),
         }
         for column_name, value in row.items():
             if column_name in USER_CSV_COLUMN_TO_DB_COLUMN or column_name == "":
@@ -287,7 +288,7 @@ def _build_user_profile(user: UserModel) -> dict[str, int | str | None]:
         "region": user.region,
         "card_grade": user.card_grade,
         "persona": user.persona,
-        "saving_goal_text": user.saving_goal_text,  # 추가
+        "saving_goal_text": user.saving_goal_text,
     }
 
 

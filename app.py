@@ -175,7 +175,7 @@ with st.sidebar:
     else:
         if profile := st.session_state.user_profile:
             st.markdown(
-    f"""
+                f"""
     <div style="
         background-color:#E8F2FF;
         color:#1D4ED8;
@@ -183,11 +183,11 @@ with st.sidebar:
         border-radius:10px;
         font-weight:600;
     ">
-        {profile['name']}님
+        {profile["name"]}님
     </div>
     """,
-    unsafe_allow_html=True
-)
+                unsafe_allow_html=True,
+            )
             st.caption(f"User ID: {st.session_state.user_id}")
 
         st.markdown("---")
