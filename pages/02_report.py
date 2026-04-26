@@ -226,28 +226,56 @@ if report_type == "일간 레포트":
             st.write(f"- {feedback}")
 
         # -----------------------------
-        # 👍👎 피드백 평가
+        # 👍👎 피드백 반응 (심플 버전)
         # -----------------------------
         st.markdown("### 피드백이 도움이 되었나요?")
 
         if "daily_feedback_reaction" not in st.session_state:
             st.session_state.daily_feedback_reaction = None
 
-        col_like, col_dislike = st.columns(2)
+        # 스타일
+        st.markdown(
+            """
+            <style>
+            div.stButton > button {
+                border-radius: 999px;
+                height: 52px;
+                font-size: 18px;
+                font-weight: 700;
+                border: 1px solid #E5E7EB;
+                background-color: #FFFFFF;
+                transition: all 0.2s ease;
+            }
 
-        with col_like:
+            div.stButton > button:hover {
+                transform: translateY(-2px);
+                border-color: #3182F6;
+                color: #3182F6;
+                background-color: #F0F7FF;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
             if st.button("👍 좋아요", use_container_width=True):
                 st.session_state.daily_feedback_reaction = "좋아요"
 
-        with col_dislike:
+        with col2:
             if st.button("👎 싫어요", use_container_width=True):
                 st.session_state.daily_feedback_reaction = "싫어요"
 
-        if st.session_state.daily_feedback_reaction == "좋아요":
-            st.success("좋아요를 선택했어요. 더 비슷한 방식으로 피드백할게요!")
+        # 결과 메시지
+        reaction = st.session_state.daily_feedback_reaction
 
-        elif st.session_state.daily_feedback_reaction == "싫어요":
-            st.warning("싫어요를 선택했어요. 다음 피드백은 더 구체적으로 개선해볼게요.")
+        if reaction == "좋아요":
+            st.success("👍 도움이 되었네요! 이 스타일을 유지할게요.")
+
+        elif reaction == "싫어요":
+            st.error("👎 더 나은 피드백을 드릴 수 있도록 개선해볼게요.")
 
         # -----------------------------
         # 오늘 소비 내역
