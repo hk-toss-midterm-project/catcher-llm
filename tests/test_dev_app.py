@@ -20,13 +20,15 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "02_retriever_probe.py",
         "03_document_rag.py",
         "04_daily_analysis.py",
+        "05_consumption_interpretation.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
         "Retriever 테스트",
         "문서 RAG",
         "일일 소비 분석",
+        "소비 해석 체인",
     ]
-    assert [spec.icon for spec in specs] == ["💬", "🔎", "📄", "📊"]
-    assert [spec.default for spec in specs] == [True, False, False, False]
+    assert [spec.icon for spec in specs] == ["💬", "🔎", "📄", "📊", "🧭"]
+    assert [spec.default for spec in specs] == [True, False, False, False, False]
     assert all(spec.path.is_file() for spec in specs)

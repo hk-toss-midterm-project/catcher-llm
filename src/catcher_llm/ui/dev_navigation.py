@@ -8,6 +8,7 @@ _DEV_PAGE_METADATA: dict[str, tuple[str, str]] = {
     "02_retriever_probe": ("Retriever 테스트", "🔎"),
     "03_document_rag": ("문서 RAG", "📄"),
     "04_daily_analysis": ("일일 소비 분석", "📊"),
+    "05_consumption_interpretation": ("소비 해석 체인", "🧭"),
 }
 
 
