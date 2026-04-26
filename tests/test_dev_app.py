@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from streamlit.testing.v1 import AppTest
+
 from catcher_llm.ui.dev_navigation import get_dev_page_specs, get_repo_root
 
 
@@ -34,3 +36,12 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
     assert [spec.icon for spec in specs] == ["💬", "🔎", "📄", "📊", "🧭", "📣"]
     assert [spec.default for spec in specs] == [True, False, False, False, False, False]
     assert all(spec.path.is_file() for spec in specs)
+
+
+def test_dev_app_renders_default_page_without_exception() -> None:
+    """Streamlit 개발 앱의 기본 페이지가 import 예외 없이 렌더링되는지 검증한다."""
+    app = AppTest.from_file("dev_app.py")
+
+    app.run(timeout=10)
+
+    assert len(app.exception) == 0

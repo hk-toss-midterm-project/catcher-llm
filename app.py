@@ -98,7 +98,7 @@ def profile_page():
         </div>
         """
 
-        st.components.v1.html(goal_html, height=130)
+        components.html(goal_html, height=130)
 
     else:
         st.info("아직 등록된 절약 목표가 없습니다.")
@@ -122,6 +122,7 @@ def profile_page():
         """,
         unsafe_allow_html=True,
     )
+
 
 # -----------------------------
 # 네비게이션 라우팅
