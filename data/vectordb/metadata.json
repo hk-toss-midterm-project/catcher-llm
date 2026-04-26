@@ -1,69 +1,69 @@
 {
-  "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw",
+  "raw_data_dir": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw",
   "embedding_provider": "openai",
   "embedding_model": "text-embedding-3-small",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/kca_report/0417_kca_split.pdf",
-      1776931207121771336,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\kca_report\\0417_kca_split.pdf",
+      1777005013971018500,
       3103159
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/1.pdf",
-      1776931207132950554,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\1.pdf",
+      1776906747651040700,
       451343
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/2.pdf",
-      1776931207133847639,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\2.pdf",
+      1776906747654153400,
       370263
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/3.pdf",
-      1776931207134525639,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\3.pdf",
+      1776906747655718600,
       316217
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/4.pdf",
-      1776931207135862391,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\4.pdf",
+      1776906747657266500,
       571134
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/5.pdf",
-      1776931207137152809,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\5.pdf",
+      1776906747660385600,
       289162
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/6.pdf",
-      1776931207139166561,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\6.pdf",
+      1776906747662304700,
       797283
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/7.pdf",
-      1776931207140959604,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\7.pdf",
+      1776989446573963400,
       1026266
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/self_report/consumer_spending_report_v2.pdf",
-      1776931207130412385,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\self_report\\consumer_spending_report_v2.pdf",
+      1777005013971018500,
       1344180
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/welfare/2026_hope_ladder_selected.pdf",
-      1776931207127039840,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\welfare\\2026_hope_ladder_selected.pdf",
+      1777005013985523500,
       1939687
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/project_overview.md",
-      1776931207141082021,
-      377
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\project_overview.md",
+      1776906747669808900,
+      388
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/txt/saving_guides.txt",
-      1777192017249040625,
-      683
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\txt\\saving_guides.txt",
+      1777106773810877100,
+      693
     ]
   ]
 }
