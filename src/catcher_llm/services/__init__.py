@@ -1,4 +1,7 @@
 from catcher_llm.services.chat_service import generate_reply
+from catcher_llm.services.consumption_feedback.daily_analysis import (
+    build_daily_consumption_analysis_json,
+)
 from catcher_llm.services.ingestion_service import discover_source_files, ingest_local_documents
 from catcher_llm.services.rag import (
     generate_kca_report_rag_reply,
@@ -18,6 +21,7 @@ from catcher_llm.services.user_data_service import (
 
 __all__ = [
     "authenticate_user",
+    "build_daily_consumption_analysis_json",
     "discover_source_files",
     "ensure_user_database",
     "generate_kca_report_rag_reply",
