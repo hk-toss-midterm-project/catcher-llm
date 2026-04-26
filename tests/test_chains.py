@@ -12,6 +12,7 @@ from catcher_llm.chains.router_chain import route_request
 from catcher_llm.chains.summary_chain import build_summary_chain
 from catcher_llm.config.settings import Settings
 from catcher_llm.prompts.chat_prompt import build_chat_prompt
+from catcher_llm.prompts.rag_prompt import build_rag_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,21 @@ class ChainTests(unittest.TestCase):
     def test_chat_prompt_exposes_expected_inputs(self) -> None:
         prompt = build_chat_prompt()
         self.assertEqual(set(prompt.input_variables), {"history", "input"})
+
+    def test_rag_prompt_uses_korean_instructions(self) -> None:
+        """기본 RAG 프롬프트가 한국어 지시문과 입력 라벨을 사용하는지 검증한다."""
+        prompt = build_rag_prompt()
+        messages = prompt.format_messages(
+            history="이전 대화",
+            context="검색 컨텍스트",
+            question="질문",
+        )
+
+        self.assertIn("검색된 문맥", messages[0].content)
+        self.assertIn("문맥이 부족하면", messages[0].content)
+        self.assertIn("이전 대화", messages[1].content)
+        self.assertIn("검색된 문맥", messages[1].content)
+        self.assertIn("질문", messages[1].content)
 
     def test_build_chat_chain_invokes_llm_with_fake_model(self) -> None:
         chain = build_chat_chain(llm=FakeListChatModel(responses=["stubbed reply"]))

@@ -13,6 +13,8 @@ from catcher_llm.config.settings import Settings
 from catcher_llm.schemas.chat import ChatMessage
 from catcher_llm.services.chat_service import generate_reply
 from catcher_llm.services.ingestion_service import ingest_local_documents, ingest_selected_documents
+from catcher_llm.services.rag.config import DocumentKind, get_rag_pipeline_config
+from catcher_llm.services.rag.welfare import generate_welfare_rag_reply
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
 from catcher_llm.services.test_service import invoke_retriever_question
 
@@ -155,8 +157,8 @@ class ServiceTests(unittest.TestCase):
         chain.invoke.return_value = "정답"
 
         with (
-            patch("catcher_llm.services.rag_service.get_local_retriever") as retriever_factory,
-            patch("catcher_llm.services.rag_service.build_rag_chain", return_value=chain),
+            patch("catcher_llm.services.rag.core.get_local_retriever") as retriever_factory,
+            patch("catcher_llm.services.rag.core.build_rag_chain", return_value=chain),
         ):
             retriever_factory.return_value.invoke.return_value = retriever_documents
 
@@ -179,8 +181,8 @@ class ServiceTests(unittest.TestCase):
         chain.invoke.return_value = "정답"
 
         with (
-            patch("catcher_llm.services.rag_service.get_local_retriever") as retriever_factory,
-            patch("catcher_llm.services.rag_service.build_rag_chain", return_value=chain) as build,
+            patch("catcher_llm.services.rag.core.get_local_retriever") as retriever_factory,
+            patch("catcher_llm.services.rag.core.build_rag_chain", return_value=chain) as build,
         ):
             retriever_factory.return_value.invoke.return_value = retriever_documents
 
@@ -201,8 +203,8 @@ class ServiceTests(unittest.TestCase):
         chain.invoke.return_value = "정답"
 
         with (
-            patch("catcher_llm.services.rag_service.get_local_retriever") as retriever_factory,
-            patch("catcher_llm.services.rag_service.build_rag_chain", return_value=chain),
+            patch("catcher_llm.services.rag.core.get_local_retriever") as retriever_factory,
+            patch("catcher_llm.services.rag.core.build_rag_chain", return_value=chain),
         ):
             retriever_factory.return_value.invoke.return_value = retriever_documents
 
@@ -220,6 +222,67 @@ class ServiceTests(unittest.TestCase):
 
         self.assertEqual(result["error"], "missing_openai_api_key")
         self.assertIn("answer", result)
+
+    def test_rag_pipeline_config_resolves_document_kind_sources(self) -> None:
+        """문서 종류별 RAG 설정이 해당 원본 디렉터리의 파일만 선택하는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_dir = root / "raw"
+            welfare_dir = raw_dir / "pdf" / "welfare"
+            saving_dir = raw_dir / "pdf" / "saving_tips"
+            welfare_dir.mkdir(parents=True)
+            saving_dir.mkdir(parents=True)
+            welfare_path = welfare_dir / "welfare.md"
+            saving_path = saving_dir / "saving.md"
+            welfare_path.write_text("welfare", encoding="utf-8")
+            saving_path.write_text("saving", encoding="utf-8")
+            settings = Settings(raw_data_dir=raw_dir)
+
+            config = get_rag_pipeline_config(DocumentKind.WELFARE, settings=settings)
+
+        self.assertEqual(config.document_kind, DocumentKind.WELFARE)
+        self.assertEqual(config.raw_data_dir, raw_dir)
+        self.assertEqual(config.source_files, [welfare_path])
+
+    def test_rag_pipeline_config_uses_korean_document_prompt(self) -> None:
+        """문서 종류별 RAG 설정이 한국어 system instruction을 주입하는지 검증한다."""
+        config = get_rag_pipeline_config(DocumentKind.SAVING_TIPS, settings=Settings())
+
+        messages = config.prompt.format_messages(
+            history="",
+            context="절약 팁 문맥",
+            question="어떻게 아껴?",
+        )
+
+        self.assertIn("절약 팁", messages[0].content)
+        self.assertIn("검색된 문맥", messages[0].content)
+        self.assertNotIn("Answer using only", messages[0].content)
+
+    def test_welfare_rag_service_delegates_to_configured_core_pipeline(self) -> None:
+        """복지 RAG 서비스가 공통 RAG 엔진에 문서별 설정을 주입하는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_dir = root / "raw"
+            welfare_dir = raw_dir / "pdf" / "welfare"
+            welfare_dir.mkdir(parents=True)
+            welfare_path = welfare_dir / "welfare.md"
+            welfare_path.write_text("welfare", encoding="utf-8")
+            settings = Settings(raw_data_dir=raw_dir)
+
+            with patch("catcher_llm.services.rag.welfare.generate_rag_reply") as generate:
+                generate.return_value.answer = "answer"
+                generate.return_value.contexts = []
+                generate.return_value.sources = []
+                generate.return_value.error = None
+
+                result = generate_welfare_rag_reply("청년 지원 알려줘", settings=settings)
+
+        self.assertEqual(result.answer, "answer")
+        generate.assert_called_once()
+        self.assertEqual(generate.call_args.args[0], "청년 지원 알려줘")
+        self.assertEqual(generate.call_args.kwargs["raw_data_dir"], raw_dir)
+        self.assertEqual(generate.call_args.kwargs["source_files"], [welfare_path])
+        self.assertIsNotNone(generate.call_args.kwargs["prompt"])
 
     def test_ingest_local_documents_writes_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
