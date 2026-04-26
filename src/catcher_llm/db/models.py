@@ -50,6 +50,7 @@ class UserModel(Base):
     region: Mapped[str | None] = mapped_column(String(100))
     card_grade: Mapped[str | None] = mapped_column(String(50))
     persona: Mapped[str | None] = mapped_column(String(100))
+    saving_goal_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TransactionModel(Base):

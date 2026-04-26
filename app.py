@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.user_data_service import authenticate_user, ensure_user_database
@@ -83,49 +84,44 @@ def profile_page():
         st.metric("페르소나", profile["persona"])
 
     # -----------------------------
-    # 절약 목표 추가 영역
+    # 절약 목표 (토스 스타일)
     # -----------------------------
     st.markdown("---")
-    st.subheader("🎯 나의 절약 목표")
 
     saving_goal_text = profile.get("saving_goal_text")
 
     if saving_goal_text:
-        st.markdown(
-            f"""
-            <div style="
-                background-color:#FFF7ED;
-                color:#C2410C;
-                padding:18px;
-                border-radius:12px;
-                font-size:17px;
-                font-weight:600;
-                line-height:1.6;
-            ">
-                {saving_goal_text}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        goal_html = f"""
+        <div style="background-color:#F5F9FF; border:1px solid #D6E4F0; padding:22px 24px; border-radius:18px;">
+            <div style="margin:0 0 10px 0; font-size:14px; color:#6B7280; font-weight:600;">🎯 나의 절약 목표</div>
+            <div style="margin:0; font-size:18px; color:#1D4ED8; font-weight:700; line-height:1.6;">{saving_goal_text}</div>
+        </div>
+        """
+
+        st.components.v1.html(goal_html, height=130)
+
     else:
         st.info("아직 등록된 절약 목표가 없습니다.")
 
+    # -----------------------------
+    # 안내 박스
+    # -----------------------------
     st.markdown("---")
+
     st.markdown(
         """
-        <div style="
-            background-color:#E8F2FF;
-            color:#1D4ED8;
-            padding:16px;
-            border-radius:10px;
-            font-weight:500;
-        ">
-            로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.
-        </div>
+<div style="
+    background-color:#E8F2FF;
+    color:#1D4ED8;
+    padding:16px;
+    border-radius:12px;
+    font-weight:500;
+">
+    로그인 완료! 왼쪽 메뉴에서 CSV 업로드 또는 리포트 조회를 선택하세요.
+</div>
         """,
         unsafe_allow_html=True,
     )
-
 
 # -----------------------------
 # 네비게이션 라우팅
