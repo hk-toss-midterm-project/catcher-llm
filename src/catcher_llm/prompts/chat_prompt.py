@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 
 def build_chat_prompt() -> ChatPromptTemplate:
@@ -13,5 +13,20 @@ def build_chat_prompt() -> ChatPromptTemplate:
                 "Give concise, actionable answers.",
             ),
             ("human", "Conversation so far:\n{history}\n\nUser request:\n{input}"),
+        ]
+    )
+
+
+def build_session_chat_prompt() -> ChatPromptTemplate:
+    """LangChain 메시지 히스토리를 직접 주입받는 세션 채팅 프롬프트를 만든다."""
+    return ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are a pragmatic AI assistant in a Streamlit application. "
+                "Give concise, actionable answers.",
+            ),
+            MessagesPlaceholder(variable_name="history"),
+            ("human", "{input}"),
         ]
     )

@@ -1,6 +1,11 @@
 from catcher_llm.services.chat_service import generate_reply
 from catcher_llm.services.ingestion_service import discover_source_files, ingest_local_documents
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
+from catcher_llm.services.session_history_service import (
+    build_user_session_id,
+    clear_session_chat_messages,
+    load_session_chat_messages,
+)
 from catcher_llm.services.test_service import invoke_retriever_question
 from catcher_llm.services.user_data_service import (
     authenticate_user,
@@ -12,6 +17,8 @@ from catcher_llm.services.user_data_service import (
 
 __all__ = [
     "authenticate_user",
+    "build_user_session_id",
+    "clear_session_chat_messages",
     "discover_source_files",
     "ensure_user_database",
     "generate_rag_reply",
@@ -19,6 +26,7 @@ __all__ = [
     "get_user_transactions",
     "ingest_local_documents",
     "invoke_retriever_question",
+    "load_session_chat_messages",
     "list_user_memories",
     "rag_target",
     "save_user_memory",

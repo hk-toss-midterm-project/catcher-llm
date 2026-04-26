@@ -118,6 +118,34 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(result.reply, "응답")
         build.assert_called_once_with(settings, temperature=0.65)
 
+    def test_generate_reply_uses_sqlite_session_chain_when_session_id_is_given(self) -> None:
+        """세션 ID가 있으면 LangChain 세션 체인을 session_id 설정과 함께 호출한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                openai_api_key="test-key",
+                sqlite_db_path=Path(tmp_dir) / "sqlite" / "app.sqlite3",
+            )
+            chain = MagicMock()
+            chain.invoke.return_value = "저장된 세션 응답"
+
+            with patch(
+                "catcher_llm.services.chat_service.build_session_chat_chain",
+                return_value=chain,
+            ) as build:
+                result = generate_reply(
+                    "hello",
+                    settings=settings,
+                    session_id="user:1:chat",
+                    chat_temperature=0.65,
+                )
+
+        self.assertEqual(result.reply, "저장된 세션 응답")
+        build.assert_called_once_with(settings, temperature=0.65)
+        chain.invoke.assert_called_once_with(
+            {"input": "hello"},
+            config={"configurable": {"session_id": "user:1:chat"}},
+        )
+
     def test_generate_reply_passes_rag_temperature_to_rag_service(self) -> None:
         """RAG 라우팅 시 호출 옵션 temperature가 RAG 서비스에 전달된다."""
         settings = Settings(openai_api_key="test-key")
