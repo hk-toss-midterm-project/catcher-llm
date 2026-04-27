@@ -11,3 +11,6 @@ wheels/
 .venv
 .env
 .streamlit/secrets.toml
+
+# Local SQLite seed metadata
+data/sqlite/app.sqlite3.seed-meta.json
