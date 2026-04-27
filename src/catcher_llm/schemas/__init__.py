@@ -36,6 +36,13 @@ from catcher_llm.schemas.consumption_feedback import (
     TransactionDensity,
     UserProfileContext,
     UserSpendingData,
+    WeeklyCategoryChangeIndicator,
+    WeeklyFeedbackAction,
+    WeeklyFeedbackEvidence,
+    WeeklyFeedbackResult,
+    WeeklyFeedbackServiceResult,
+    WeeklySpendingData,
+    WeeklySpendingIndicatorPayload,
 )
 from catcher_llm.schemas.document import DocumentRecord
 from catcher_llm.schemas.rag import RAGResponse, RetrievedChunk
@@ -82,4 +89,11 @@ __all__ = [
     "TransactionDensity",
     "UserProfileContext",
     "UserSpendingData",
+    "WeeklyCategoryChangeIndicator",
+    "WeeklyFeedbackAction",
+    "WeeklyFeedbackEvidence",
+    "WeeklyFeedbackResult",
+    "WeeklyFeedbackServiceResult",
+    "WeeklySpendingData",
+    "WeeklySpendingIndicatorPayload",
 ]

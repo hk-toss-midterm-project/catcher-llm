@@ -17,15 +17,33 @@ from catcher_llm.services.consumption_feedback.interpretation import (
     make_spending_analysis_input,
     parse_user_spending_data,
 )
+from catcher_llm.services.consumption_feedback.weekly_analysis import (
+    build_weekly_consumption_analysis_json,
+)
+from catcher_llm.services.consumption_feedback.weekly_feedback import (
+    build_weekly_feedback_retrieval_queries,
+    extract_weekly_spending_indicators,
+    generate_weekly_feedback,
+    make_weekly_feedback_input,
+    make_weekly_spending_analysis_input,
+    parse_weekly_spending_data,
+)
 
 __all__ = [
     "build_daily_consumption_analysis_json",
     "build_feedback_retrieval_queries",
+    "build_weekly_consumption_analysis_json",
+    "build_weekly_feedback_retrieval_queries",
     "extract_spending_indicators",
+    "extract_weekly_spending_indicators",
     "generate_daily_feedback",
+    "generate_weekly_feedback",
     "load_user_spending_data",
     "make_daily_feedback_input",
     "make_spending_analysis_input",
+    "make_weekly_feedback_input",
+    "make_weekly_spending_analysis_input",
+    "parse_weekly_spending_data",
     "parse_user_spending_data",
     "retrieve_feedback_contexts",
     "serialize_advice_contexts",
