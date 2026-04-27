@@ -114,6 +114,88 @@ if st.button("일일 피드백 생성", width="stretch"):
         st.stop()
 
     feedback = result.feedback
+
+    # --- DB 저장 로직 시작 ---
+    try:
+        import json
+        from catcher_llm.db.session import session_scope
+        from catcher_llm.db.models import SessionModel, UserMemoryModel
+        from catcher_llm.llm.models import get_chat_model
+        from langchain_core.messages import HumanMessage
+
+        with session_scope(settings) as db_session:
+            # 1. Session 데이터 생성 (날짜 중복 방지 - 기존에 있으면 Update)
+            existing_session = db_session.query(SessionModel).filter_by(
+                user_id=int(member_id), analysis_date=str(analysis_day)
+            ).first()
+
+            if existing_session:
+                existing_session.daily_analysis_result = result.daily_analysis.model_dump_json() if result.daily_analysis else None
+                existing_session.feedback_reason = json.dumps([e.model_dump() for e in feedback.key_evidences], ensure_ascii=False)
+                existing_session.todo_tomorrow = feedback.tomorrow_mission
+            else:
+                new_session = SessionModel(
+                    user_id=int(member_id),
+                    analysis_date=str(analysis_day),
+                    daily_analysis_result=result.daily_analysis.model_dump_json() if result.daily_analysis else None,
+                    feedback_reason=json.dumps([e.model_dump() for e in feedback.key_evidences], ensure_ascii=False),
+                    todo_tomorrow=feedback.tomorrow_mission
+                )
+                db_session.add(new_session)
+                
+            db_session.flush() # 쿼리를 실행해 오류 체크
+
+            # 2. 유저의 모든 Session 데이터 가져오기 (시간순 정렬)
+            all_sessions = db_session.query(SessionModel).filter_by(
+                user_id=int(member_id)
+            ).order_by(SessionModel.analysis_date).all()
+            
+            # 세션 기록을 하나의 텍스트로 합치기
+            session_history_text = ""
+            for s in all_sessions:
+                session_history_text += f"\n[날짜: {s.analysis_date}]\n"
+                session_history_text += f"소비 분석: {s.daily_analysis_result}\n"
+                session_history_text += f"잔소리 근거: {s.feedback_reason}\n"
+                session_history_text += f"내일 할 일: {s.todo_tomorrow}\n"
+
+            # 3. LLM 전체 요약 생성 (모든 누적 세션 데이터 기반)
+            chat_model = get_chat_model(settings)
+            summary_prompt = f"""
+            당신은 사용자의 소비 습관을 분석하고 기억하는 AI입니다.
+            지금까지 누적된 사용자의 모든 일일 소비 분석 및 피드백 기록이 아래에 주어집니다.
+            이 기록들을 바탕으로, 사용자의 전반적인 소비 패턴의 변화 흐름, 눈에 띄는 문제점, 그리고 앞으로의 조언을 
+            핵심만 3~4문장으로 요약해 주세요. (이 요약은 사용자의 장기 메모리로 사용됩니다.)
+            
+            [사용자의 누적 소비 및 피드백 기록]
+            {session_history_text}
+            """
+            
+            summary_response = chat_model.invoke([HumanMessage(content=summary_prompt)])
+            summary_text = summary_response.content if isinstance(summary_response.content, str) else str(summary_response.content)
+            
+            # 4. UserMemory 업데이트 (항상 1개의 행 유지)
+            period_type = "daily"
+            existing_memory = db_session.query(UserMemoryModel).filter_by(
+                user_id=int(member_id), period_type=period_type
+            ).first()
+
+            if existing_memory:
+                existing_memory.summary = summary_text
+            else:
+                new_memory = UserMemoryModel(
+                    user_id=int(member_id),
+                    period_type=period_type,
+                    summary=summary_text
+                )
+                db_session.add(new_memory)
+                
+        st.success("✅ 세션 저장 및 과거-현재가 통합된 요약(User Memory)이 성공적으로 저장되었습니다!")
+
+        st.info(f"💡 AI 요약 내용: {summary_text}")
+    except Exception as e:
+        st.error(f"DB 저장 실패: {e}")
+    # --- DB 저장 로직 끝 ---
+
     st.subheader(feedback.summary_title)
     st.write(feedback.scolding_message)
     st.info(feedback.tomorrow_mission)

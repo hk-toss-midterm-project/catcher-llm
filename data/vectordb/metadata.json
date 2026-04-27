@@ -1,68 +1,68 @@
 {
-  "raw_data_dir": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw",
+  "raw_data_dir": "C:\\Users\\user\\dev\\catcher-llm\\data\\raw",
   "embedding_provider": "openai",
   "embedding_model": "text-embedding-3-small",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\kca_report\\0417_kca_split.pdf",
-      1777005013971018500,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\kca_report\\0417_kca_split.pdf",
+      1777247390120093700,
       3103159
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\1.pdf",
-      1776906747651040700,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\1.pdf",
+      1777247390120093700,
       451343
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\2.pdf",
-      1776906747654153400,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\2.pdf",
+      1777247390120093700,
       370263
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\3.pdf",
-      1776906747655718600,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\3.pdf",
+      1777247390120093700,
       316217
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\4.pdf",
-      1776906747657266500,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\4.pdf",
+      1777247390138689300,
       571134
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\5.pdf",
-      1776906747660385600,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\5.pdf",
+      1777247390140693100,
       289162
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\6.pdf",
-      1776906747662304700,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\6.pdf",
+      1777247390146704200,
       797283
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\7.pdf",
-      1776989446573963400,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\saving_tips\\7.pdf",
+      1777247390151641800,
       1026266
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\self_report\\consumer_spending_report_v2.pdf",
-      1777005013971018500,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\self_report\\consumer_spending_report_v2.pdf",
+      1777247390151641800,
       1344180
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\welfare\\2026_hope_ladder_selected.pdf",
-      1777005013985523500,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\welfare\\2026_hope_ladder_selected.pdf",
+      1777247390167414900,
       1939687
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\project_overview.md",
-      1776906747669808900,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\project_overview.md",
+      1777247390167414900,
       388
     ],
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\txt\\saving_guides.txt",
-      1777106773810877100,
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\txt\\saving_guides.txt",
+      1777247390167414900,
       693
     ]
   ]

@@ -74,15 +74,27 @@ class TransactionModel(Base):
 
 class UserMemoryModel(Base):
     __tablename__ = "user_memories"
-    __table_args__ = (UniqueConstraint("user_id", "memory_key", name="uq_user_memory_key"),)
+    __table_args__ = (UniqueConstraint("user_id", "period_type", name="uq_user_memory_period"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
-    memory_key: Mapped[str] = mapped_column(String(100), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'daily', 'weekly', 'monthly'
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class SessionModel(Base):
+    __tablename__ = "session"
+    __table_args__ = (UniqueConstraint("user_id", "analysis_date", name="uq_session_user_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    analysis_date: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    daily_analysis_result: Mapped[str | None] = mapped_column(Text)
+    feedback_reason: Mapped[str | None] = mapped_column(Text)
+    todo_tomorrow: Mapped[str | None] = mapped_column(Text)
+
