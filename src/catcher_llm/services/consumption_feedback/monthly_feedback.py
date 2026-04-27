@@ -1,0 +1,524 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Sequence
+from pathlib import Path
+from typing import cast
+
+from pydantic import BaseModel
+
+from catcher_llm.chains.consumption_feedback import (
+    build_monthly_feedback_chain,
+    build_monthly_spending_analysis_chain,
+)
+from catcher_llm.config.settings import Settings, get_settings
+from catcher_llm.schemas.consumption_feedback import (
+    ActionAnalysisResult,
+    ActionMission,
+    CategoryDirection,
+    JsonObject,
+    JsonScalar,
+    JsonValue,
+    MonthlyCategoryChangeIndicator,
+    MonthlyFeedbackResult,
+    MonthlyFeedbackServiceResult,
+    MonthlyFixedItem,
+    MonthlyHighSpendingItem,
+    MonthlyMerchantVisit,
+    MonthlySpendingData,
+    MonthlySpendingIndicatorPayload,
+    RetrievedAdviceContext,
+    SpendingMetric,
+    UserProfileContext,
+)
+from catcher_llm.services.consumption_feedback.daily_feedback import (
+    load_user_profile_context,
+    retrieve_feedback_contexts,
+    serialize_advice_contexts,
+    serialize_context_object,
+    serialize_interpretation_result,
+)
+from catcher_llm.services.consumption_feedback.interpretation import (
+    get_category_direction,
+    make_spending_metric,
+)
+from catcher_llm.services.consumption_feedback.monthly_analysis import (
+    build_monthly_consumption_analysis_json,
+)
+
+_DEFAULT_MONTHLY_RETRIEVAL_QUERY = "월간 소비 절약 실천 방법"
+
+
+def _to_json_value(value: object) -> JsonValue:
+    """Pydantic 모델과 파이썬 객체를 JSON 직렬화 가능한 값으로 변환한다."""
+    if isinstance(value, BaseModel):
+        return cast(JsonValue, json.loads(value.model_dump_json()))
+    if isinstance(value, dict):
+        return {str(key): _to_json_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_to_json_value(item) for item in value]
+    if isinstance(value, str | int | float | bool) or value is None:
+        return cast(JsonScalar, value)
+    return str(value)
+
+
+def _to_json_object(value: object) -> JsonObject:
+    """임의 객체를 최상위 JSON 객체로 변환한다."""
+    json_value = _to_json_value(value)
+    if isinstance(json_value, dict):
+        return json_value
+    return {"value": json_value}
+
+
+def parse_monthly_spending_data(payload: object) -> MonthlySpendingData:
+    """이미 메모리에 있는 월간 소비 분석 JSON 객체를 검증된 입력 모델로 변환한다."""
+    return MonthlySpendingData.model_validate(payload)
+
+
+def _build_monthly_category_change_indicators(
+    monthly_data: MonthlySpendingData,
+) -> list[MonthlyCategoryChangeIndicator]:
+    """월간 카테고리 요약을 JSON 경로가 포함된 증감 지표 목록으로 변환한다."""
+    indicators: list[MonthlyCategoryChangeIndicator] = []
+    for index, category in enumerate(monthly_data.category_deep):
+        direction: CategoryDirection = get_category_direction(float(category.diff_amount))
+        indicators.append(
+            MonthlyCategoryChangeIndicator(
+                category=category.category,
+                category_type=category.type,
+                total_amount=category.total_amount,
+                prev_month_amount=category.prev_month_amount,
+                diff_amount=category.diff_amount,
+                diff_rate_percent=category.diff_rate_percent,
+                direction=direction,
+                source_json_path=f"category_deep[{index}]",
+            )
+        )
+    return indicators
+
+
+def _get_largest_monthly_category_increase(
+    changes: list[MonthlyCategoryChangeIndicator],
+) -> MonthlyCategoryChangeIndicator | None:
+    """전월 대비 지출이 가장 크게 증가한 월간 카테고리 지표를 찾는다."""
+    increased_changes = [change for change in changes if change.diff_amount > 0]
+    if not increased_changes:
+        return None
+    return max(increased_changes, key=lambda change: change.diff_amount)
+
+
+def _get_largest_monthly_category_decrease(
+    changes: list[MonthlyCategoryChangeIndicator],
+) -> MonthlyCategoryChangeIndicator | None:
+    """전월 대비 지출이 가장 크게 감소한 월간 카테고리 지표를 찾는다."""
+    decreased_changes = [change for change in changes if change.diff_amount < 0]
+    if not decreased_changes:
+        return None
+    return min(decreased_changes, key=lambda change: change.diff_amount)
+
+
+def _build_monthly_core_metrics(monthly_data: MonthlySpendingData) -> list[SpendingMetric]:
+    """월간 분석에 자주 쓰는 핵심 소비 지표를 원본 JSON에서 직접 추출한다."""
+    monthly_summary = monthly_data.monthly_summary
+    fixed_variable = monthly_data.fixed_variable
+    repeat_patterns = monthly_data.repeat_patterns
+    saving_potential = monthly_data.saving_potential
+
+    return [
+        make_spending_metric(
+            "이번 달 총 지출액",
+            monthly_summary.this_month_total,
+            "KRW",
+            "monthly_summary.this_month_total",
+            "분석 월의 총 소비 금액",
+        ),
+        make_spending_metric(
+            "전월 대비 지출 증감액",
+            monthly_summary.amount_diff,
+            "KRW",
+            "monthly_summary.amount_diff",
+            "전월 총 지출과 이번 달 총 지출의 차이",
+        ),
+        make_spending_metric(
+            "전월 대비 지출 증감률",
+            monthly_summary.diff_rate_percent,
+            "percent",
+            "monthly_summary.diff_rate_percent",
+            "전월 총 지출 대비 이번 달 지출 증감률",
+        ),
+        make_spending_metric(
+            "월간 결제 건수",
+            monthly_summary.transaction_count,
+            "count",
+            "monthly_summary.transaction_count",
+            "분석 월 전체 결제 건수",
+        ),
+        make_spending_metric(
+            "고정비 총액",
+            fixed_variable.fixed_total,
+            "KRW",
+            "fixed_variable.fixed_total",
+            "자동이체 등 고정비로 분류된 월간 결제 금액 합계",
+        ),
+        make_spending_metric(
+            "고정비 비중",
+            fixed_variable.fixed_ratio_percent,
+            "percent",
+            "fixed_variable.fixed_ratio_percent",
+            "이번 달 총 지출 중 고정비 비중",
+        ),
+        make_spending_metric(
+            "배달 결제 금액",
+            repeat_patterns.delivery.total_amount,
+            "KRW",
+            "repeat_patterns.delivery.total_amount",
+            "배달 키워드가 포함된 월간 결제 금액 합계",
+        ),
+        make_spending_metric(
+            "카페 결제 건수",
+            repeat_patterns.cafe.count,
+            "count",
+            "repeat_patterns.cafe.count",
+            "카페 키워드가 포함된 월간 결제 건수",
+        ),
+        make_spending_metric(
+            "주차별 소비 추이",
+            monthly_data.weekly_trend.trend_direction,
+            "trend",
+            "weekly_trend.trend_direction",
+            "월 초 대비 월 후반 지출 추이 방향",
+        ),
+        make_spending_metric(
+            "소액 결제 건수",
+            monthly_data.micro_spending.count,
+            "count",
+            "micro_spending.count",
+            "소액 결제 기준 미만의 월간 결제 건수",
+        ),
+        make_spending_metric(
+            "야간 소비 금액",
+            monthly_data.late_night_spending.total_amount,
+            "KRW",
+            "late_night_spending.total_amount",
+            "21시 이후 발생한 월간 결제 금액 합계",
+        ),
+        make_spending_metric(
+            "고액 결제 건수",
+            monthly_data.high_spending.count,
+            "count",
+            "high_spending.items",
+            "IQR 상한선을 초과한 월간 결제 항목 수",
+        ),
+        make_spending_metric(
+            "총 절약 가능액",
+            saving_potential.total_potential_saving,
+            "KRW",
+            "saving_potential.total_potential_saving",
+            "월간 분석에서 추정한 절약 가능 금액 합계",
+        ),
+        make_spending_metric(
+            "다음 달 권장 목표액",
+            saving_potential.next_month_recommended_target,
+            "KRW",
+            "saving_potential.next_month_recommended_target",
+            "이번 달 총 지출의 90%로 계산한 다음 달 권장 목표액",
+        ),
+    ]
+
+
+def extract_monthly_spending_indicators(
+    monthly_data: MonthlySpendingData,
+) -> MonthlySpendingIndicatorPayload:
+    """월간 소비 분석 모델에서 해석 체인에 넣을 핵심 지표 묶음을 추출한다."""
+    category_changes = _build_monthly_category_change_indicators(monthly_data)
+    return MonthlySpendingIndicatorPayload(
+        member_id=monthly_data.member_id,
+        analysis_month=monthly_data.analysis_month,
+        prev_month=monthly_data.prev_month,
+        metrics=_build_monthly_core_metrics(monthly_data),
+        category_changes=category_changes,
+        largest_category_increase=_get_largest_monthly_category_increase(category_changes),
+        largest_category_decrease=_get_largest_monthly_category_decrease(category_changes),
+        high_spending_items=monthly_data.high_spending.items,
+        fixed_items=monthly_data.fixed_variable.fixed_items,
+        top_merchants=monthly_data.repeat_patterns.top5_merchants,
+        trend_direction=monthly_data.weekly_trend.trend_direction,
+    )
+
+
+def make_monthly_spending_analysis_input(
+    monthly_data: MonthlySpendingData,
+    *,
+    user_profile: object | None = None,
+) -> dict[str, str]:
+    """월간 해석 체인에 전달할 원본 JSON, 추출 지표 JSON, 사용자 프로필 JSON 입력을 만든다."""
+    indicators = extract_monthly_spending_indicators(monthly_data)
+    return {
+        "raw_json": monthly_data.model_dump_json(indent=2),
+        "indicator_json": indicators.model_dump_json(indent=2),
+        "user_profile_json": serialize_context_object(user_profile or {}),
+    }
+
+
+def _append_unique_query(queries: list[str], query: str) -> None:
+    """비어 있지 않고 아직 없는 RAG 검색 질의만 목록에 추가한다."""
+    normalized_query = " ".join(query.split())
+    if normalized_query and normalized_query not in queries:
+        queries.append(normalized_query)
+
+
+def _iter_action_missions(action_result: object) -> list[ActionMission]:
+    """월간 해석 결과의 행동 개선 모델 또는 dict에서 실행 미션 목록을 추출한다."""
+    if isinstance(action_result, ActionAnalysisResult):
+        return [
+            *action_result.immediate_cuts,
+            *action_result.substitution_opportunities,
+            *action_result.budget_control_areas,
+            *action_result.next_week_missions,
+        ]
+    if not isinstance(action_result, dict):
+        return []
+
+    missions: list[ActionMission] = []
+    for key in (
+        "immediate_cuts",
+        "substitution_opportunities",
+        "budget_control_areas",
+        "next_week_missions",
+    ):
+        raw_items = action_result.get(key)
+        if not isinstance(raw_items, list):
+            continue
+        for raw_item in raw_items:
+            try:
+                missions.append(ActionMission.model_validate(raw_item))
+            except ValueError:
+                continue
+    return missions
+
+
+def _append_monthly_high_spending_queries(
+    queries: list[str],
+    items: Sequence[MonthlyHighSpendingItem],
+) -> None:
+    """고액 결제 항목을 기반으로 월간 피드백용 RAG 검색 질의를 추가한다."""
+    for item in sorted(
+        items, key=lambda high_spending_item: high_spending_item.amount, reverse=True
+    ):
+        _append_unique_query(queries, f"{item.category} {item.merchant} 지출 줄이는 방법")
+
+
+def _append_fixed_item_queries(
+    queries: list[str],
+    items: Sequence[MonthlyFixedItem],
+) -> None:
+    """고정비 항목을 기반으로 월간 피드백용 RAG 검색 질의를 추가한다."""
+    for item in sorted(items, key=lambda fixed_item: fixed_item.total_amount, reverse=True)[:2]:
+        _append_unique_query(queries, f"{item.merchant} 고정비 절약 방법")
+
+
+def _append_top_merchant_queries(
+    queries: list[str],
+    merchants: Sequence[MonthlyMerchantVisit],
+) -> None:
+    """반복 가맹점 정보를 기반으로 월간 피드백용 RAG 검색 질의를 추가한다."""
+    for merchant in sorted(merchants, key=lambda item: item.visit_count, reverse=True)[:2]:
+        if merchant.visit_count < 2:
+            continue
+        _append_unique_query(queries, f"{merchant.merchant} 반복 소비 줄이는 방법")
+
+
+def build_monthly_feedback_retrieval_queries(
+    monthly_data: MonthlySpendingData,
+    *,
+    interpretation_result: dict[str, object] | None = None,
+    user_profile: UserProfileContext | None = None,
+    max_queries: int = 4,
+) -> list[str]:
+    """월간 분석, 해석 결과, 사용자 프로필에서 최종 피드백용 RAG 검색 질의를 생성한다."""
+    indicators = extract_monthly_spending_indicators(monthly_data)
+    queries: list[str] = []
+
+    if indicators.largest_category_increase is not None:
+        category = indicators.largest_category_increase.category
+        _append_unique_query(queries, f"{category} 월간 소비 절약 방법")
+
+    _append_fixed_item_queries(queries, indicators.fixed_items)
+    _append_monthly_high_spending_queries(queries, indicators.high_spending_items)
+
+    action_result = (interpretation_result or {}).get("action_result")
+    for mission in _iter_action_missions(action_result):
+        _append_unique_query(queries, f"{mission.title} 실천 방법")
+
+    if user_profile is not None:
+        if user_profile.saving_goal_text:
+            _append_unique_query(
+                queries, f"{user_profile.saving_goal_text} 목표 월간 소비 절약 방법"
+            )
+        if user_profile.job and indicators.largest_category_increase is not None:
+            category = indicators.largest_category_increase.category
+            _append_unique_query(queries, f"{user_profile.job} {category} 소비 줄이는 방법")
+        if user_profile.persona:
+            _append_unique_query(queries, f"{user_profile.persona} 월간 소비 습관 개선 방법")
+
+    _append_top_merchant_queries(queries, indicators.top_merchants)
+    _append_unique_query(queries, _DEFAULT_MONTHLY_RETRIEVAL_QUERY)
+    return queries[:max_queries]
+
+
+def make_monthly_feedback_input(
+    *,
+    monthly_data: MonthlySpendingData,
+    interpretation_result: dict[str, object],
+    advice_contexts: Sequence[RetrievedAdviceContext],
+    user_profile: object | None = None,
+) -> dict[str, str]:
+    """최종 월간 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
+    return {
+        "monthly_json": monthly_data.model_dump_json(indent=2),
+        "interpretation_json": serialize_interpretation_result(interpretation_result),
+        "retrieved_contexts": serialize_advice_contexts(advice_contexts),
+        "user_profile_json": serialize_context_object(user_profile or {}),
+    }
+
+
+def _build_error_result(
+    *,
+    member_id: int,
+    analysis_month: str,
+    error: str,
+    monthly_analysis: MonthlySpendingData | None = None,
+    interpretation_result: dict[str, object] | None = None,
+    user_profile: UserProfileContext | None = None,
+    retrieval_queries: Sequence[str] | None = None,
+    retrieved_contexts: Sequence[RetrievedAdviceContext] | None = None,
+) -> MonthlyFeedbackServiceResult:
+    """서비스 중간 실패를 호출자가 확인할 수 있는 결과 모델로 변환한다."""
+    return MonthlyFeedbackServiceResult(
+        member_id=member_id,
+        analysis_month=analysis_month,
+        monthly_analysis=monthly_analysis,
+        interpretation_result=_to_json_object(interpretation_result or {}),
+        user_profile=user_profile,
+        retrieval_queries=list(retrieval_queries or []),
+        retrieved_contexts=list(retrieved_contexts or []),
+        error=error,
+    )
+
+
+def generate_monthly_feedback(
+    *,
+    member_id: int = 1,
+    analysis_month: str = "2024-04",
+    settings: Settings | None = None,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    top_k: int = 3,
+    max_queries: int = 4,
+    raw_data_dir: Path | str | None = None,
+    source_files: Sequence[Path] | None = None,
+    interpretation_temperature: float = 0.0,
+    feedback_temperature: float = 0.0,
+) -> MonthlyFeedbackServiceResult:
+    """월간 소비 분석, 해석, RAG 검색, 최종 월간 피드백 생성을 한 번에 실행한다."""
+    config = settings or get_settings()
+
+    chat_model_error = config.chat_model_error
+    if chat_model_error is not None:
+        return _build_error_result(
+            member_id=member_id,
+            analysis_month=analysis_month,
+            error=chat_model_error,
+        )
+
+    embedding_model_error = config.embedding_model_error
+    if embedding_model_error is not None:
+        return _build_error_result(
+            member_id=member_id,
+            analysis_month=analysis_month,
+            error=embedding_model_error,
+        )
+
+    user_profile: UserProfileContext | None = None
+    try:
+        monthly_payload = build_monthly_consumption_analysis_json(
+            member_id=member_id,
+            analysis_month=analysis_month,
+            settings=config,
+        )
+        monthly_data = parse_monthly_spending_data(monthly_payload)
+        user_profile = load_user_profile_context(
+            member_id=member_id,
+            settings=config,
+        )
+        interpretation_chain = build_monthly_spending_analysis_chain(
+            settings=config,
+            temperature=interpretation_temperature,
+        )
+        interpretation_result = interpretation_chain.invoke(
+            make_monthly_spending_analysis_input(
+                monthly_data,
+                user_profile=user_profile,
+            )
+        )
+        retrieval_queries = build_monthly_feedback_retrieval_queries(
+            monthly_data,
+            interpretation_result=interpretation_result,
+            user_profile=user_profile,
+            max_queries=max_queries,
+        )
+        advice_contexts = retrieve_feedback_contexts(
+            retrieval_queries,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
+            settings=config,
+        )
+        if not advice_contexts:
+            return _build_error_result(
+                member_id=member_id,
+                analysis_month=analysis_month,
+                error="missing_documents",
+                monthly_analysis=monthly_data,
+                interpretation_result=interpretation_result,
+                user_profile=user_profile,
+                retrieval_queries=retrieval_queries,
+            )
+
+        feedback_chain = build_monthly_feedback_chain(
+            settings=config,
+            temperature=feedback_temperature,
+        )
+        feedback = feedback_chain.invoke(
+            make_monthly_feedback_input(
+                monthly_data=monthly_data,
+                interpretation_result=interpretation_result,
+                advice_contexts=advice_contexts,
+                user_profile=user_profile,
+            )
+        )
+        feedback_result = (
+            feedback
+            if isinstance(feedback, MonthlyFeedbackResult)
+            else MonthlyFeedbackResult.model_validate(feedback)
+        )
+    except Exception as exc:
+        return _build_error_result(
+            member_id=member_id,
+            analysis_month=analysis_month,
+            error=str(exc),
+            user_profile=user_profile,
+        )
+
+    return MonthlyFeedbackServiceResult(
+        member_id=member_id,
+        analysis_month=analysis_month,
+        feedback=feedback_result,
+        monthly_analysis=monthly_data,
+        interpretation_result=_to_json_object(interpretation_result),
+        user_profile=user_profile,
+        retrieval_queries=retrieval_queries,
+        retrieved_contexts=advice_contexts,
+    )

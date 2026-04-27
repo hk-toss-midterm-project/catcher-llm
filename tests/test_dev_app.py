@@ -9,6 +9,8 @@ from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackResult,
     DailyFeedbackServiceResult,
     DailyFeedbackSessionContext,
+    MonthlyFeedbackResult,
+    MonthlyFeedbackServiceResult,
     UserProfileContext,
     UserSpendingData,
     WeeklyFeedbackResult,
@@ -97,6 +99,8 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "08_weekly_interpretation.py",
         "09_weekly_feedback.py",
         "10_monthly_analysis.py",
+        "11_monthly_interpretation.py",
+        "12_monthly_feedback.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -109,6 +113,8 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "주간 소비 해석 체인",
         "주간 피드백",
         "월간 소비 분석",
+        "월간 소비 해석 체인",
+        "월간 피드백",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -121,9 +127,13 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "🧭",
         "🧾",
         "📈",
+        "🧭",
+        "🧾",
     ]
     assert [spec.default for spec in specs] == [
         True,
+        False,
+        False,
         False,
         False,
         False,
@@ -255,6 +265,51 @@ def test_weekly_feedback_dev_page_renders_feedback_and_contexts() -> None:
         return_value=fake_result,
     ):
         app = AppTest.from_file("dev_pages/09_weekly_feedback.py")
+        app.run(timeout=10)
+        app.button[0].click().run(timeout=10)
+
+    assert len(app.exception) == 0
+    assert any(subheader.value == "피드백 근거" for subheader in app.subheader)
+    assert any(expander.label == "사용자 프로필 JSON" for expander in app.expander)
+
+
+def test_monthly_interpretation_dev_page_renders_monthly_indicators() -> None:
+    """월간 소비 해석 개발 페이지가 월간 지표 요약과 체인 입력 JSON을 표시하는지 검증한다."""
+    app = AppTest.from_file("dev_pages/11_monthly_interpretation.py")
+
+    app.run(timeout=10)
+
+    assert len(app.exception) == 0
+    assert any(subheader.value == "월간 핵심 소비 지표" for subheader in app.subheader)
+    assert any(subheader.value == "월간 카테고리 증감" for subheader in app.subheader)
+    assert any(expander.label == "체인 입력 JSON" for expander in app.expander)
+
+
+def test_monthly_feedback_dev_page_renders_feedback_and_contexts() -> None:
+    """월간 피드백 개발 페이지가 최종 피드백과 RAG 컨텍스트를 표시하는지 검증한다."""
+    fake_result = MonthlyFeedbackServiceResult(
+        member_id=1,
+        analysis_month="2024-04",
+        feedback=MonthlyFeedbackResult(
+            summary_title="이번 달은 고정비를 확인하세요",
+            feedback_message="자동이체와 배달 소비가 월간 지출을 키웠습니다.",
+            key_evidences=[],
+            action_items=[],
+            next_month_mission="다음 달 첫날 자동이체 목록을 정리합니다.",
+        ),
+        user_profile=UserProfileContext(
+            user_id=1,
+            name="김토스",
+            saving_goal_text="비상금 300만원 만들기",
+        ),
+        retrieval_queries=["고정비 절약 방법"],
+    )
+
+    with patch(
+        "catcher_llm.services.consumption_feedback.monthly_feedback.generate_monthly_feedback",
+        return_value=fake_result,
+    ):
+        app = AppTest.from_file("dev_pages/12_monthly_feedback.py")
         app.run(timeout=10)
         app.button[0].click().run(timeout=10)
 

@@ -8,12 +8,14 @@ _DEV_PAGE_METADATA: dict[str, tuple[str, str]] = {
     "02_retriever_probe": ("Retriever 테스트", "🔎"),
     "03_document_rag": ("문서 RAG", "📄"),
     "04_daily_analysis": ("일일 소비 분석", "📊"),
-    "05_consumption_interpretation": ("소비 해석 체인", "🧭"),
+    "05_daily_interpretation": ("일일 소비 해석 체인", "🧭"),
     "06_daily_feedback": ("일일 피드백", "📣"),
     "07_weekly_analysis": ("주간 소비 분석", "🗓️"),
     "08_weekly_interpretation": ("주간 소비 해석 체인", "🧭"),
     "09_weekly_feedback": ("주간 피드백", "🧾"),
     "10_monthly_analysis": ("월간 소비 분석", "📈"),
+    "11_monthly_interpretation": ("월간 소비 해석 체인", "🧭"),
+    "12_monthly_feedback": ("월간 피드백", "🧾"),
 }
 
 
