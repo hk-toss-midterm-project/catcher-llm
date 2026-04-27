@@ -7,21 +7,27 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from catcher_llm.chains.consumption_feedback import (
     build_daily_feedback_chain,
     build_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
+from catcher_llm.db.models import SessionModel, UserMemoryModel, UserModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     ActionMission,
+    DailyFeedbackMemoryContext,
     DailyFeedbackResult,
     DailyFeedbackServiceResult,
+    DailyFeedbackSessionContext,
     JsonObject,
     JsonScalar,
     JsonValue,
     RetrievedAdviceContext,
+    UserProfileContext,
     UserSpendingData,
 )
 from catcher_llm.services.consumption_feedback.daily_analysis import (
@@ -33,8 +39,11 @@ from catcher_llm.services.consumption_feedback.interpretation import (
     parse_user_spending_data,
 )
 from catcher_llm.services.rag.core import retrieve_context_records
+from catcher_llm.services.user_data_service import ensure_user_database
 
 _DEFAULT_RETRIEVAL_QUERY = "일일 소비 절약 실천 방법"
+_DAILY_MEMORY_PERIOD_TYPE = "daily"
+_DEFAULT_RECENT_SESSION_LIMIT = 7
 
 
 def _parse_analysis_date(value: str | date) -> date:
@@ -81,6 +90,126 @@ def serialize_advice_contexts(contexts: Sequence[RetrievedAdviceContext]) -> str
         ensure_ascii=False,
         indent=2,
     )
+
+
+def serialize_context_object(value: object) -> str:
+    """사용자 프로필과 메모리 컨텍스트를 프롬프트 입력용 JSON 문자열로 변환한다."""
+    return json.dumps(
+        _to_json_object(value),
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def load_user_profile_context(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+) -> UserProfileContext:
+    """SQLite users 테이블에서 최종 피드백 개인화에 사용할 사용자 프로필을 조회한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        user = session.scalar(select(UserModel).where(UserModel.id == member_id))
+
+    if user is None:
+        raise ValueError(f"멤버 {member_id}번 사용자를 찾을 수 없습니다.")
+
+    return UserProfileContext(
+        user_id=user.id,
+        name=user.name,
+        age=user.age,
+        job=user.job,
+        gender=user.gender,
+        income=user.income,
+        region=user.region,
+        card_grade=user.card_grade,
+        persona=user.persona,
+        saving_goal_text=user.saving_goal_text,
+    )
+
+
+def load_daily_feedback_memory_context(
+    *,
+    member_id: int,
+    analysis_date: date,
+    settings: Settings | None = None,
+    recent_session_limit: int = _DEFAULT_RECENT_SESSION_LIMIT,
+) -> DailyFeedbackMemoryContext:
+    """SQLite user_memories와 session 테이블에서 최종 피드백용 과거 맥락을 조회한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        memory = session.scalar(
+            select(UserMemoryModel).where(
+                UserMemoryModel.user_id == member_id,
+                UserMemoryModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
+            )
+        )
+        recent_sessions = list(
+            session.scalars(
+                select(SessionModel)
+                .where(
+                    SessionModel.user_id == member_id,
+                    SessionModel.analysis_date < str(analysis_date),
+                )
+                .order_by(SessionModel.analysis_date.desc(), SessionModel.id.desc())
+                .limit(recent_session_limit)
+            )
+        )
+
+    chronological_sessions = list(reversed(recent_sessions))
+    return DailyFeedbackMemoryContext(
+        user_id=member_id,
+        period_type=_DAILY_MEMORY_PERIOD_TYPE,
+        memory_summary=memory.summary if memory is not None else None,
+        recent_sessions=[
+            DailyFeedbackSessionContext(
+                analysis_date=item.analysis_date,
+                daily_analysis_result=item.daily_analysis_result,
+                feedback_reason=item.feedback_reason,
+                todo_tomorrow=item.todo_tomorrow,
+            )
+            for item in chronological_sessions
+        ],
+    )
+
+
+def save_daily_feedback_session(
+    *,
+    member_id: int,
+    analysis_date: date,
+    daily_analysis: UserSpendingData,
+    feedback: DailyFeedbackResult,
+    settings: Settings | None = None,
+) -> None:
+    """최종 일일 피드백 실행 결과를 session 테이블에 날짜 기준으로 저장하거나 갱신한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+    feedback_reason = json.dumps(
+        [evidence.model_dump() for evidence in feedback.key_evidences],
+        ensure_ascii=False,
+    )
+
+    with session_scope(config) as session:
+        session_row = session.scalar(
+            select(SessionModel).where(
+                SessionModel.user_id == member_id,
+                SessionModel.analysis_date == str(analysis_date),
+            )
+        )
+        if session_row is None:
+            session_row = SessionModel(
+                user_id=member_id,
+                analysis_date=str(analysis_date),
+            )
+            session.add(session_row)
+
+        session_row.daily_analysis_result = daily_analysis.model_dump_json()
+        session_row.feedback_reason = feedback_reason
+        session_row.todo_tomorrow = feedback.tomorrow_mission
 
 
 def _append_unique_query(queries: list[str], query: str) -> None:
@@ -201,12 +330,16 @@ def make_daily_feedback_input(
     user_data: UserSpendingData,
     interpretation_result: dict[str, object],
     advice_contexts: Sequence[RetrievedAdviceContext],
+    user_profile: object | None = None,
+    memory_context: object | None = None,
 ) -> dict[str, str]:
-    """최종 일일 피드백 체인에 전달할 분석, 해석, RAG 근거 JSON 입력을 만든다."""
+    """최종 일일 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
     return {
         "daily_json": user_data.model_dump_json(indent=2),
         "interpretation_json": serialize_interpretation_result(interpretation_result),
         "retrieved_contexts": serialize_advice_contexts(advice_contexts),
+        "user_profile_json": serialize_context_object(user_profile or {}),
+        "memory_context_json": serialize_context_object(memory_context or {}),
     }
 
 
@@ -217,6 +350,8 @@ def _build_error_result(
     error: str,
     daily_analysis: UserSpendingData | None = None,
     interpretation_result: dict[str, object] | None = None,
+    user_profile: UserProfileContext | None = None,
+    memory_context: DailyFeedbackMemoryContext | None = None,
     retrieval_queries: Sequence[str] | None = None,
     retrieved_contexts: Sequence[RetrievedAdviceContext] | None = None,
 ) -> DailyFeedbackServiceResult:
@@ -226,6 +361,8 @@ def _build_error_result(
         analysis_date=str(analysis_date),
         daily_analysis=daily_analysis,
         interpretation_result=_to_json_object(interpretation_result or {}),
+        user_profile=user_profile,
+        memory_context=memory_context,
         retrieval_queries=list(retrieval_queries or []),
         retrieved_contexts=list(retrieved_contexts or []),
         error=error,
@@ -268,6 +405,8 @@ def generate_daily_feedback(
             error=embedding_model_error,
         )
 
+    user_profile: UserProfileContext | None = None
+    memory_context: DailyFeedbackMemoryContext | None = None
     try:
         daily_payload = build_daily_consumption_analysis_json(
             member_id=member_id,
@@ -305,6 +444,15 @@ def generate_daily_feedback(
                 retrieval_queries=retrieval_queries,
             )
 
+        user_profile = load_user_profile_context(
+            member_id=member_id,
+            settings=config,
+        )
+        memory_context = load_daily_feedback_memory_context(
+            member_id=member_id,
+            analysis_date=analysis_day,
+            settings=config,
+        )
         feedback_chain = build_daily_feedback_chain(
             settings=config,
             temperature=feedback_temperature,
@@ -314,12 +462,21 @@ def generate_daily_feedback(
                 user_data=user_data,
                 interpretation_result=interpretation_result,
                 advice_contexts=advice_contexts,
+                user_profile=user_profile,
+                memory_context=memory_context,
             )
         )
         feedback_result = (
             feedback
             if isinstance(feedback, DailyFeedbackResult)
             else DailyFeedbackResult.model_validate(feedback)
+        )
+        save_daily_feedback_session(
+            member_id=member_id,
+            analysis_date=analysis_day,
+            daily_analysis=user_data,
+            feedback=feedback_result,
+            settings=config,
         )
     except Exception as exc:
         return _build_error_result(
@@ -334,6 +491,8 @@ def generate_daily_feedback(
         feedback=feedback_result,
         daily_analysis=user_data,
         interpretation_result=_to_json_object(interpretation_result),
+        user_profile=user_profile,
+        memory_context=memory_context,
         retrieval_queries=retrieval_queries,
         retrieved_contexts=advice_contexts,
     )

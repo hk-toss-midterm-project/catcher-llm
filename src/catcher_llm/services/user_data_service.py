@@ -419,11 +419,11 @@ def get_user_transactions(
 def save_user_memory(
     *,
     user_id: int,
-    memory_key: str,
-    content: str,
+    period_type: str,
+    summary: str,
     settings: Settings | None = None,
 ) -> dict[str, int | str]:
-    """사용자 메모를 키 기준으로 생성하거나 기존 내용을 덮어쓴다."""
+    """사용자 메모리를 기간 유형 기준으로 생성하거나 기존 요약을 덮어쓴다."""
     config = settings or get_settings()
     ensure_user_database(config)
 
@@ -431,26 +431,26 @@ def save_user_memory(
         memory = session.scalar(
             select(UserMemoryModel).where(
                 UserMemoryModel.user_id == user_id,
-                UserMemoryModel.memory_key == memory_key,
+                UserMemoryModel.period_type == period_type,
             )
         )
         if memory is None:
             memory = UserMemoryModel(
                 user_id=user_id,
-                memory_key=memory_key,
-                content=content,
+                period_type=period_type,
+                summary=summary,
             )
             session.add(memory)
             session.flush()
         else:
-            memory.content = content
+            memory.summary = summary
             session.flush()
 
         return {
             "id": memory.id,
             "user_id": memory.user_id,
-            "memory_key": memory.memory_key,
-            "content": memory.content,
+            "period_type": memory.period_type,
+            "summary": memory.summary,
         }
 
 
@@ -459,7 +459,7 @@ def list_user_memories(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str]]:
-    """사용자 메모를 최신 수정 순으로 조회해 직렬화 가능한 목록으로 반환한다."""
+    """사용자 메모리 요약을 최신 수정 순으로 조회해 직렬화 가능한 목록으로 반환한다."""
     config = settings or get_settings()
     ensure_user_database(config)
 
@@ -474,8 +474,8 @@ def list_user_memories(
         {
             "id": memory.id,
             "user_id": memory.user_id,
-            "memory_key": memory.memory_key,
-            "content": memory.content,
+            "period_type": memory.period_type,
+            "summary": memory.summary,
         }
         for memory in memories
     ]

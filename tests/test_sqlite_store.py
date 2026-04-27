@@ -274,18 +274,19 @@ def test_authenticate_user_and_load_transactions_from_sqlite(tmp_path: Path) -> 
 
 
 def test_save_user_memory_persists_memory_in_same_sqlite_database(tmp_path: Path) -> None:
+    """사용자 메모리가 기간 유형별 요약 구조로 SQLite에 저장되는지 검증한다."""
     settings = _make_settings(tmp_path)
     ensure_user_database(settings=settings)
 
     save_user_memory(
         user_id=1,
-        memory_key="preferred_category",
-        content="식음료 지출을 중요하게 본다.",
+        period_type="daily",
+        summary="식음료 지출을 중요하게 본다.",
         settings=settings,
     )
 
     memories = list_user_memories(1, settings=settings)
 
     assert len(memories) == 1
-    assert memories[0]["memory_key"] == "preferred_category"
-    assert memories[0]["content"] == "식음료 지출을 중요하게 본다."
+    assert memories[0]["period_type"] == "daily"
+    assert memories[0]["summary"] == "식음료 지출을 중요하게 본다."

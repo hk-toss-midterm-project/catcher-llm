@@ -78,7 +78,9 @@ class UserMemoryModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
-    period_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'daily', 'weekly', 'monthly'
+    period_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # 'daily', 'weekly', 'monthly'
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC),
@@ -97,4 +99,3 @@ class SessionModel(Base):
     daily_analysis_result: Mapped[str | None] = mapped_column(Text)
     feedback_reason: Mapped[str | None] = mapped_column(Text)
     todo_tomorrow: Mapped[str | None] = mapped_column(Text)
-

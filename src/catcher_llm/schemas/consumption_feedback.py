@@ -244,6 +244,39 @@ class RetrievedAdviceContext(BaseModel):
     page_number: int | None = None
 
 
+class UserProfileContext(BaseModel):
+    """최종 피드백 개인화에 사용할 사용자 프로필 정보를 표현한다."""
+
+    user_id: int
+    name: str | None = None
+    age: int | None = None
+    job: str | None = None
+    gender: str | None = None
+    income: str | None = None
+    region: str | None = None
+    card_grade: str | None = None
+    persona: str | None = None
+    saving_goal_text: str | None = None
+
+
+class DailyFeedbackSessionContext(BaseModel):
+    """최종 피드백에 참고할 과거 일일 피드백 세션 기록을 표현한다."""
+
+    analysis_date: str
+    daily_analysis_result: str | None = None
+    feedback_reason: str | None = None
+    todo_tomorrow: str | None = None
+
+
+class DailyFeedbackMemoryContext(BaseModel):
+    """장기 사용자 메모리와 최근 세션 기록을 묶은 최종 피드백 맥락을 표현한다."""
+
+    user_id: int
+    period_type: str = "daily"
+    memory_summary: str | None = None
+    recent_sessions: list[DailyFeedbackSessionContext] = Field(default_factory=list)
+
+
 class DailyFeedbackEvidence(BaseModel):
     """일일 소비 피드백 문장에 사용한 소비 JSON 또는 문서 근거를 표현한다."""
 
@@ -283,6 +316,8 @@ class DailyFeedbackServiceResult(BaseModel):
     feedback: DailyFeedbackResult | None = None
     daily_analysis: UserSpendingData | None = None
     interpretation_result: JsonObject | None = None
+    user_profile: UserProfileContext | None = None
+    memory_context: DailyFeedbackMemoryContext | None = None
     retrieval_queries: list[str] = Field(default_factory=list)
     retrieved_contexts: list[RetrievedAdviceContext] = Field(default_factory=list)
     error: str | None = None

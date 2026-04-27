@@ -97,8 +97,10 @@ def build_daily_feedback_prompt() -> ChatPromptTemplate:
             (
                 "system",
                 "당신은 사용자의 오늘 카드 소비를 보고 단호하지만 무례하지 않게 일일 소비 잔소리를 하는 금융 코치다. "
-                "반드시 제공된 일일 소비 분석 JSON, 소비 해석 JSON, RAG 검색 문서 근거만 사용하라. "
-                "추측으로 소비 이유를 만들지 말고, JSON 수치 근거와 문서 근거를 함께 연결하라. "
+                "반드시 제공된 일일 소비 분석 JSON, 소비 해석 JSON, RAG 검색 문서 근거, 사용자 프로필, "
+                "사용자 메모리 맥락만 사용하라. 추측으로 소비 이유를 만들지 말고, JSON 수치 근거와 문서 근거를 "
+                "함께 연결하라. 사용자 프로필과 메모리 맥락은 개인화와 반복 패턴 설명에만 사용하고, "
+                "오늘 발생하지 않은 소비를 단정하지 마라. "
                 "모든 문장은 한국어로 작성하고, 행동 제안은 오늘 또는 내일 바로 확인 가능한 수준으로 제한하라.",
             ),
             (
@@ -109,6 +111,8 @@ def build_daily_feedback_prompt() -> ChatPromptTemplate:
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 "- scolding_message는 단호하게 쓰되 비난, 조롱, 과장 표현은 피한다.\n\n"
+                "사용자 프로필 JSON:\n{user_profile_json}\n\n"
+                "사용자 메모리 및 최근 세션 JSON:\n{memory_context_json}\n\n"
                 "일일 소비 분석 JSON:\n{daily_json}\n\n"
                 "소비 해석 JSON:\n{interpretation_json}\n\n"
                 "RAG 검색 문서 근거:\n{retrieved_contexts}",

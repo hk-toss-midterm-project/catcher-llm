@@ -8,8 +8,10 @@ from catcher_llm.schemas.consumption_feedback import (
     CauseAnalysisResult,
     DailyFeedbackAction,
     DailyFeedbackEvidence,
+    DailyFeedbackMemoryContext,
     DailyFeedbackResult,
     DailyFeedbackServiceResult,
+    DailyFeedbackSessionContext,
     EvidenceItem,
     GroupCompetitionMetric,
     HighSpendingItem,
@@ -29,6 +31,7 @@ from catcher_llm.schemas.consumption_feedback import (
     StableMetrics,
     TimeSlotAnalysis,
     TimeSlotComparison,
+    UserProfileContext,
     UserSpendingData,
 )
 from catcher_llm.schemas.document import DocumentRecord
@@ -45,8 +48,10 @@ __all__ = [
     "ChatTurnResult",
     "DailyFeedbackAction",
     "DailyFeedbackEvidence",
+    "DailyFeedbackMemoryContext",
     "DailyFeedbackResult",
     "DailyFeedbackServiceResult",
+    "DailyFeedbackSessionContext",
     "DocumentRecord",
     "EvidenceItem",
     "GroupCompetitionMetric",
@@ -69,5 +74,6 @@ __all__ = [
     "StableMetrics",
     "TimeSlotAnalysis",
     "TimeSlotComparison",
+    "UserProfileContext",
     "UserSpendingData",
 ]
