@@ -6,12 +6,12 @@
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\welfare\\2026_hope_ladder_selected.pdf",
-      1777005013985523500,
-      1939687
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\self_report\\consumer_spending_report_v2.pdf",
+      1777005013971018500,
+      1344180
     ]
   ],
   "source_files": [
-    "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\welfare\\2026_hope_ladder_selected.pdf"
+    "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\self_report\\consumer_spending_report_v2.pdf"
   ]
 }
