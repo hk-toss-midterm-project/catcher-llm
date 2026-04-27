@@ -15,7 +15,9 @@ _REQUIRED_COLUMNS = {
     "사용 시간",
     "결제 내역",
     "업종 카테고리",
+    "결제 방식 (온/오프라인)",
 }
+_FRICTIONLESS_KEYWORDS = ["온라인", "간편결제", "앱결제", "배달"]
 _TIME_SLOT_ORDER = {
     "1.새벽(00-06)": 1,
     "2.오전(06-11)": 2,
@@ -130,6 +132,36 @@ def _build_time_slot_rows(time_comparison: pd.DataFrame) -> list[JsonValue]:
             }
         )
     return rows
+
+
+def _build_payment_behavior_analysis(
+    today_frame: pd.DataFrame,
+    *,
+    today_total: float,
+    today_count: int,
+) -> JsonObject:
+    """당일 지출 마찰력과 결제 밀도 지표를 노트북 계산 방식으로 만든다."""
+    payment_channel = today_frame["결제 방식 (온/오프라인)"].astype("string")
+    frictionless_pattern = "|".join(_FRICTIONLESS_KEYWORDS)
+    frictionless_mask = payment_channel.str.contains(frictionless_pattern, na=False)
+    frictionless_frame = today_frame[frictionless_mask]
+    frictionless_total = float(frictionless_frame["사용 금액"].sum())
+    frictionless_count = int(len(frictionless_frame))
+    frictionless_ratio = _safe_rate(frictionless_total, today_total) * 100
+    average_amount_per_transaction = _safe_rate(today_total, float(today_count))
+
+    return {
+        "frictionless_spending": {
+            "keywords": list(_FRICTIONLESS_KEYWORDS),
+            "transaction_count": frictionless_count,
+            "total_amount": _to_amount(frictionless_total),
+            "ratio_percent": _round_float(frictionless_ratio),
+        },
+        "transaction_density": {
+            "transaction_count": today_count,
+            "average_amount_per_transaction": _round_float(average_amount_per_transaction),
+        },
+    }
 
 
 def _prepare_member_frames(
@@ -312,6 +344,11 @@ def build_daily_consumption_analysis_from_frames(
         "peak_slot": peak_slot,
         "time_slots": _build_time_slot_rows(time_comparison),
     }
+    payment_behavior_analysis = _build_payment_behavior_analysis(
+        today_frame,
+        today_total=today_total,
+        today_count=today_count,
+    )
     return {
         "member_id": member_id,
         "analysis_date": str(analysis_day),
@@ -321,4 +358,5 @@ def build_daily_consumption_analysis_from_frames(
         "anomaly_detection": anomaly_detection,
         "previous_day_comparison": previous_day_comparison,
         "time_slot_analysis": time_slot_analysis,
+        "payment_behavior_analysis": payment_behavior_analysis,
     }

@@ -79,6 +79,15 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         anomaly_detection = cast(JsonObject, result["anomaly_detection"])
         previous_day_comparison = cast(JsonObject, result["previous_day_comparison"])
         time_slot_analysis = cast(JsonObject, result["time_slot_analysis"])
+        payment_behavior_analysis = cast(JsonObject, result["payment_behavior_analysis"])
+        frictionless_spending = cast(
+            JsonObject,
+            payment_behavior_analysis["frictionless_spending"],
+        )
+        transaction_density = cast(
+            JsonObject,
+            payment_behavior_analysis["transaction_density"],
+        )
         high_spending_items = cast(list[JsonObject], anomaly_detection["high_spending_items"])
 
         self.assertEqual(result["member_id"], 1)
@@ -87,6 +96,14 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         self.assertEqual(high_spending_items[0]["description"], "SKT통신비")
         self.assertEqual(previous_day_comparison["yesterday_date"], "2024-03-31")
         self.assertEqual(time_slot_analysis["peak_slot"], "2.오전(06-11)")
+        self.assertEqual(frictionless_spending["transaction_count"], 1)
+        self.assertEqual(frictionless_spending["total_amount"], 1486)
+        self.assertAlmostEqual(float(frictionless_spending["ratio_percent"]), 1.1169)
+        self.assertEqual(transaction_density["transaction_count"], 9)
+        self.assertAlmostEqual(
+            float(transaction_density["average_amount_per_transaction"]),
+            14782.6667,
+        )
         json.dumps(result, ensure_ascii=False, allow_nan=False)
 
     def test_build_daily_consumption_analysis_json_reads_sqlite_transactions(self) -> None:
@@ -103,6 +120,11 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
 
         stable_metrics = cast(JsonObject, result["stable_metrics"])
         previous_day_comparison = cast(JsonObject, result["previous_day_comparison"])
+        payment_behavior_analysis = cast(JsonObject, result["payment_behavior_analysis"])
+        frictionless_spending = cast(
+            JsonObject,
+            payment_behavior_analysis["frictionless_spending"],
+        )
         source_paths = cast(JsonObject, result["source_paths"])
 
         self.assertEqual(result["member_id"], 1)
@@ -110,6 +132,8 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         self.assertEqual(source_paths["today_source"], str(settings.sqlite_db_path))
         self.assertEqual(stable_metrics["today_total"], 3500)
         self.assertEqual(previous_day_comparison["yesterday_total"], 2000)
+        self.assertEqual(frictionless_spending["transaction_count"], 0)
+        self.assertEqual(frictionless_spending["total_amount"], 0)
 
     def test_build_daily_consumption_analysis_json_validates_required_columns(self) -> None:
         """필수 CSV 컬럼이 없으면 분석 함수가 입력 오류를 명확한 예외로 알린다."""

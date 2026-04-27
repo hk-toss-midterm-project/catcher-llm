@@ -73,6 +73,15 @@ if st.button("일일 분석 실행", use_container_width=True):
     anomaly_detection = cast(JsonObject, result["anomaly_detection"])
     previous_day_comparison = cast(JsonObject, result["previous_day_comparison"])
     time_slot_analysis = cast(JsonObject, result["time_slot_analysis"])
+    payment_behavior_analysis = cast(JsonObject, result["payment_behavior_analysis"])
+    frictionless_spending = cast(
+        JsonObject,
+        payment_behavior_analysis["frictionless_spending"],
+    )
+    transaction_density = cast(
+        JsonObject,
+        payment_behavior_analysis["transaction_density"],
+    )
     source_paths = cast(JsonObject, result["source_paths"])
 
     metric_columns = st.columns(4)
@@ -85,6 +94,33 @@ if st.button("일일 분석 실행", use_container_width=True):
         _format_percent(stable_metrics["increase_rate_percent"]),
     )
     metric_columns[3].metric("피크 시간대", str(time_slot_analysis["peak_slot"] or "-"))
+
+    st.subheader("지출 마찰력 및 결제 밀도")
+    payment_columns = st.columns(5)
+    payment_columns[0].metric(
+        "마찰력 없는 지출 비중",
+        _format_percent(frictionless_spending["ratio_percent"]),
+    )
+    payment_columns[1].metric(
+        "마찰력 없는 지출액",
+        _format_amount(frictionless_spending["total_amount"]),
+    )
+    payment_columns[2].metric(
+        "마찰력 없는 결제 건수",
+        f"{frictionless_spending['transaction_count']}건",
+    )
+    payment_columns[3].metric(
+        "오늘 결제 횟수",
+        f"{transaction_density['transaction_count']}건",
+    )
+    payment_columns[4].metric(
+        "건당 평균 금액",
+        _format_amount(transaction_density["average_amount_per_transaction"]),
+    )
+    st.caption(
+        "마찰력 없는 지출 키워드: "
+        + ", ".join(str(keyword) for keyword in frictionless_spending["keywords"])
+    )
 
     st.subheader("이상 소비")
     anomaly_columns = st.columns(3)

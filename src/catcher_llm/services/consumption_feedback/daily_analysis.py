@@ -30,6 +30,7 @@ def _transaction_rows_to_frame(transactions: list[TransactionModel]) -> pd.DataF
             "사용 시간": transaction.used_at,
             "결제 내역": transaction.description or "",
             "업종 카테고리": transaction.category or "",
+            "결제 방식 (온/오프라인)": transaction.payment_channel or "",
         }
         for transaction in transactions
     ]
@@ -42,6 +43,7 @@ def _transaction_rows_to_frame(transactions: list[TransactionModel]) -> pd.DataF
             "사용 시간",
             "결제 내역",
             "업종 카테고리",
+            "결제 방식 (온/오프라인)",
         ],
     )
 

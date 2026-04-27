@@ -15,6 +15,7 @@ from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackMemoryContext,
     RetrievedAdviceContext,
     UserProfileContext,
+    UserSpendingData,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
 
@@ -24,6 +25,16 @@ settings = get_settings()
 def _models_to_frame(models: Sequence[BaseModel]) -> pd.DataFrame:
     """Pydantic 모델 목록을 Streamlit 표로 렌더링할 DataFrame으로 변환한다."""
     return pd.DataFrame([model.model_dump() for model in models])
+
+
+def _format_amount(value: int | float) -> str:
+    """일일 분석 금액 지표를 원화 표시 문자열로 변환한다."""
+    return f"{value:,.0f}원"
+
+
+def _format_percent(value: int | float) -> str:
+    """일일 분석 비율 지표를 퍼센트 표시 문자열로 변환한다."""
+    return f"{value:,.2f}%"
 
 
 def _render_evidence_table(evidences: Sequence[DailyFeedbackEvidence]) -> None:
@@ -57,6 +68,38 @@ def _render_contexts(contexts: Sequence[RetrievedAdviceContext]) -> None:
             expanded=index == 1,
         ):
             st.write(context.content)
+
+
+def _render_daily_analysis_summary(daily_analysis: UserSpendingData | None) -> None:
+    """최종 피드백에 사용된 일일 분석 핵심 지표를 화면에 요약 표시한다."""
+    if daily_analysis is None:
+        return
+
+    frictionless_spending = daily_analysis.payment_behavior_analysis.frictionless_spending
+    transaction_density = daily_analysis.payment_behavior_analysis.transaction_density
+
+    st.subheader("지출 마찰력 및 결제 밀도")
+    metric_columns = st.columns(5)
+    metric_columns[0].metric(
+        "마찰력 없는 지출 비중",
+        _format_percent(frictionless_spending.ratio_percent),
+    )
+    metric_columns[1].metric(
+        "마찰력 없는 지출액",
+        _format_amount(frictionless_spending.total_amount),
+    )
+    metric_columns[2].metric(
+        "마찰력 없는 결제 건수",
+        f"{frictionless_spending.transaction_count}건",
+    )
+    metric_columns[3].metric(
+        "오늘 결제 횟수",
+        f"{transaction_density.transaction_count}건",
+    )
+    metric_columns[4].metric(
+        "건당 평균 금액",
+        _format_amount(transaction_density.average_amount_per_transaction),
+    )
 
 
 def _render_profile_and_memory_context(
@@ -117,6 +160,7 @@ if st.button("일일 피드백 생성", width="stretch"):
             st.subheader("생성된 RAG 검색 질의")
             st.write(result.retrieval_queries)
         if result.daily_analysis is not None:
+            _render_daily_analysis_summary(result.daily_analysis)
             with st.expander("일일 분석 JSON"):
                 st.json(result.daily_analysis.model_dump())
         if result.interpretation_result:
@@ -137,6 +181,8 @@ if st.button("일일 피드백 생성", width="stretch"):
     st.subheader(feedback.summary_title)
     st.write(feedback.scolding_message)
     st.info(feedback.tomorrow_mission)
+
+    _render_daily_analysis_summary(result.daily_analysis)
 
     st.subheader("피드백 근거")
     _render_evidence_table(feedback.key_evidences)

@@ -151,6 +151,9 @@ def build_core_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
     stable_metrics = user_data.stable_metrics
     anomaly = user_data.anomaly_detection
     previous_day = user_data.previous_day_comparison
+    payment_behavior = user_data.payment_behavior_analysis
+    frictionless_spending = payment_behavior.frictionless_spending
+    transaction_density = payment_behavior.transaction_density
 
     metrics = [
         make_spending_metric(
@@ -209,6 +212,41 @@ def build_core_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
             "time_slot",
             "time_slot_analysis.peak_slot",
             "분석 기준일 지출액이 가장 큰 시간대",
+        ),
+        make_spending_metric(
+            "마찰력 없는 지출 비중",
+            frictionless_spending.ratio_percent,
+            "percent",
+            "payment_behavior_analysis.frictionless_spending.ratio_percent",
+            "온라인/간편결제/앱결제/배달 결제액이 오늘 총 지출에서 차지하는 비중",
+        ),
+        make_spending_metric(
+            "마찰력 없는 지출 건수",
+            frictionless_spending.transaction_count,
+            "count",
+            "payment_behavior_analysis.frictionless_spending.transaction_count",
+            "온라인/간편결제/앱결제/배달 키워드가 포함된 당일 결제 건수",
+        ),
+        make_spending_metric(
+            "마찰력 없는 지출액",
+            frictionless_spending.total_amount,
+            "KRW",
+            "payment_behavior_analysis.frictionless_spending.total_amount",
+            "온라인/간편결제/앱결제/배달 키워드가 포함된 당일 결제 금액 합계",
+        ),
+        make_spending_metric(
+            "오늘 결제 횟수",
+            transaction_density.transaction_count,
+            "count",
+            "payment_behavior_analysis.transaction_density.transaction_count",
+            "분석 기준일 전체 결제 건수",
+        ),
+        make_spending_metric(
+            "1회 결제당 평균 금액",
+            transaction_density.average_amount_per_transaction,
+            "KRW",
+            "payment_behavior_analysis.transaction_density.average_amount_per_transaction",
+            "분석 기준일 총 지출을 결제 횟수로 나눈 건당 평균 금액",
         ),
     ]
 

@@ -101,6 +101,54 @@ def _render_time_slot_table(items: Sequence[TimeSlotComparison]) -> None:
     st.dataframe(frame, width="stretch", hide_index=True)
 
 
+def _find_metric(metrics: Sequence[SpendingMetric], name: str) -> SpendingMetric | None:
+    """지표 이름으로 핵심 소비 지표를 찾아 화면 요약에 사용할 수 있게 반환한다."""
+    for metric in metrics:
+        if metric.name == name:
+            return metric
+    return None
+
+
+def _metric_value_text(metrics: Sequence[SpendingMetric], name: str) -> str:
+    """지표 이름에 해당하는 값을 Streamlit metric 값 문자열로 변환한다."""
+    metric = _find_metric(metrics, name)
+    if metric is None:
+        return "-"
+    if metric.unit == "KRW" and isinstance(metric.value, int | float):
+        return f"{metric.value:,.0f}원"
+    if metric.unit == "percent" and isinstance(metric.value, int | float):
+        return f"{metric.value:,.2f}%"
+    if metric.unit == "count":
+        return f"{metric.value}건"
+    return str(metric.value)
+
+
+def _render_payment_behavior_summary(metrics: Sequence[SpendingMetric]) -> None:
+    """지출 마찰력과 결제 밀도 지표를 개발 확인용 메트릭으로 표시한다."""
+    st.subheader("지출 마찰력 및 결제 밀도")
+    metric_columns = st.columns(5)
+    metric_columns[0].metric(
+        "마찰력 없는 지출 비중",
+        _metric_value_text(metrics, "마찰력 없는 지출 비중"),
+    )
+    metric_columns[1].metric(
+        "마찰력 없는 지출액",
+        _metric_value_text(metrics, "마찰력 없는 지출액"),
+    )
+    metric_columns[2].metric(
+        "마찰력 없는 결제 건수",
+        _metric_value_text(metrics, "마찰력 없는 지출 건수"),
+    )
+    metric_columns[3].metric(
+        "오늘 결제 횟수",
+        _metric_value_text(metrics, "오늘 결제 횟수"),
+    )
+    metric_columns[4].metric(
+        "건당 평균 금액",
+        _metric_value_text(metrics, "1회 결제당 평균 금액"),
+    )
+
+
 def _render_indicator_summary(indicators: SpendingIndicatorPayload) -> None:
     """추출된 소비 지표 묶음의 핵심 요약과 상세 표를 표시한다."""
     metric_columns = st.columns(4)
@@ -121,6 +169,8 @@ def _render_indicator_summary(indicators: SpendingIndicatorPayload) -> None:
 
     st.subheader("핵심 소비 지표")
     _render_metric_table(indicators.metrics)
+
+    _render_payment_behavior_summary(indicators.metrics)
 
     st.subheader("카테고리 비중 변화")
     _render_category_table(indicators.category_ratio_changes)

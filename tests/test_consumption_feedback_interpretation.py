@@ -51,6 +51,11 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
         self.assertEqual(spending_indicators.main_category_shift.previous_category, "식비")
         self.assertEqual(spending_indicators.main_category_shift.current_category, "생활")
         self.assertEqual(spending_indicators.time_slot_diffs[0].time_slot, "2.오전(06-11)")
+        self.assertEqual(metric_by_name["마찰력 없는 지출 비중"].value, 0.0)
+        self.assertEqual(
+            metric_by_name["마찰력 없는 지출 비중"].source_json_path,
+            "payment_behavior_analysis.frictionless_spending.ratio_percent",
+        )
         self.assertIn("indicator_json", analysis_input)
         self.assertIn("raw_json", analysis_input)
         self.assertIn("user_profile_json", analysis_input)
@@ -142,7 +147,13 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
 
         self.assertEqual(user_data.source_paths.past_source, "data/raw/csv/consumption_v1.csv")
         self.assertEqual(user_data.stable_metrics.today_total, 133044)
+        self.assertEqual(
+            user_data.payment_behavior_analysis.frictionless_spending.total_amount,
+            1486,
+        )
         self.assertIn("anomaly_detection.high_spending_items", analysis_input["indicator_json"])
+        self.assertIn("payment_behavior_analysis", analysis_input["raw_json"])
+        self.assertIn("마찰력 없는 지출 비중", analysis_input["indicator_json"])
         self.assertEqual(analysis_input["user_profile_json"], "{}")
 
 

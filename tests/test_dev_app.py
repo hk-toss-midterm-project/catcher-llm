@@ -10,8 +10,66 @@ from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackServiceResult,
     DailyFeedbackSessionContext,
     UserProfileContext,
+    UserSpendingData,
 )
 from catcher_llm.ui.dev_navigation import get_dev_page_specs, get_repo_root
+
+
+def _make_daily_analysis_result() -> dict[str, object]:
+    """일일 분석 개발 페이지 테스트에 사용할 새 지표 포함 결과를 만든다."""
+    return {
+        "member_id": 1,
+        "analysis_date": "2024-04-01",
+        "source_paths": {"past_source": "sqlite", "today_source": "sqlite"},
+        "outlier_thresholds": {
+            "q1": 1000.0,
+            "q3": 3000.0,
+            "iqr": 2000.0,
+            "lower_bound": 0.0,
+            "upper_bound": 6000.0,
+        },
+        "stable_metrics": {
+            "past_daily_stable_average": 2000.0,
+            "today_total": 133044,
+            "increase_rate_percent": 10.5,
+            "category_ratio_changes": [],
+        },
+        "anomaly_detection": {
+            "past_daily_original_average": 2100.0,
+            "spike_ratio": 1.1,
+            "is_spike": False,
+            "high_spending_threshold": 6000.0,
+            "high_spending_items": [],
+        },
+        "previous_day_comparison": {
+            "yesterday_date": "2024-03-31",
+            "yesterday_total": 10000,
+            "today_total": 133044,
+            "amount_diff": 123044,
+            "amount_diff_rate_percent": 1230.44,
+            "yesterday_count": 2,
+            "today_count": 9,
+            "count_diff": 7,
+            "yesterday_main_category": "식비",
+            "today_main_category": "생활",
+        },
+        "time_slot_analysis": {
+            "peak_slot": "2.오전(06-11)",
+            "time_slots": [],
+        },
+        "payment_behavior_analysis": {
+            "frictionless_spending": {
+                "keywords": ["온라인", "간편결제", "앱결제", "배달"],
+                "transaction_count": 1,
+                "total_amount": 1486,
+                "ratio_percent": 1.1169,
+            },
+            "transaction_density": {
+                "transaction_count": 9,
+                "average_amount_per_transaction": 14782.6667,
+            },
+        },
+    }
 
 
 def test_get_repo_root_points_to_project_root() -> None:
@@ -78,6 +136,31 @@ def test_dev_app_renders_default_page_without_exception() -> None:
     assert len(app.exception) == 0
 
 
+def test_daily_analysis_dev_page_renders_payment_behavior_metrics() -> None:
+    """일일 분석 개발 페이지가 지출 마찰력과 결제 밀도 지표를 표시하는지 검증한다."""
+    with patch(
+        "catcher_llm.services.consumption_feedback.daily_analysis."
+        "build_daily_consumption_analysis_json",
+        return_value=_make_daily_analysis_result(),
+    ):
+        app = AppTest.from_file("dev_pages/04_daily_analysis.py")
+        app.run(timeout=10)
+        app.button[0].click().run(timeout=10)
+
+    assert len(app.exception) == 0
+    assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
+
+
+def test_consumption_interpretation_dev_page_renders_payment_behavior_metrics() -> None:
+    """소비 해석 개발 페이지가 추출 지표 요약에 새 결제 행동 지표를 표시하는지 검증한다."""
+    app = AppTest.from_file("dev_pages/05_consumption_interpretation.py")
+
+    app.run(timeout=10)
+
+    assert len(app.exception) == 0
+    assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
+
+
 def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:
     """일일 피드백 개발 페이지가 서비스의 사용자 프로필과 메모리 컨텍스트를 표시하는지 검증한다."""
     fake_result = DailyFeedbackServiceResult(
@@ -107,6 +190,7 @@ def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:
             ],
         ),
         retrieval_queries=["비상금 300만원 만들기 목표 소비 절약 방법"],
+        daily_analysis=UserSpendingData.model_validate(_make_daily_analysis_result()),
     )
 
     with patch(
@@ -118,5 +202,6 @@ def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:
         app.button[0].click().run(timeout=10)
 
     assert len(app.exception) == 0
+    assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
     assert any(expander.label == "사용자 프로필 JSON" for expander in app.expander)
     assert any(expander.label == "메모리/세션 컨텍스트 JSON" for expander in app.expander)

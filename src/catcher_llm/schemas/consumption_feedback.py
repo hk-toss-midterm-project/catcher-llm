@@ -101,6 +101,29 @@ class TimeSlotAnalysis(BaseModel):
     time_slots: list[TimeSlotComparison]
 
 
+class FrictionlessSpending(BaseModel):
+    """온라인/간편결제 기반 마찰력 없는 지출 지표를 표현한다."""
+
+    keywords: list[str] = Field(default_factory=list)
+    transaction_count: int = 0
+    total_amount: int = 0
+    ratio_percent: float = 0.0
+
+
+class TransactionDensity(BaseModel):
+    """당일 결제 빈도와 건당 평균 결제 금액 지표를 표현한다."""
+
+    transaction_count: int = 0
+    average_amount_per_transaction: float = 0.0
+
+
+class PaymentBehaviorAnalysis(BaseModel):
+    """당일 지출 마찰력과 결제 밀도 분석 결과를 표현한다."""
+
+    frictionless_spending: FrictionlessSpending = Field(default_factory=FrictionlessSpending)
+    transaction_density: TransactionDensity = Field(default_factory=TransactionDensity)
+
+
 class UserSpendingData(BaseModel):
     """일일 소비 분석 JSON 전체 구조를 검증 가능한 입력 모델로 표현한다."""
 
@@ -112,6 +135,9 @@ class UserSpendingData(BaseModel):
     anomaly_detection: AnomalyDetection
     previous_day_comparison: PreviousDayComparison
     time_slot_analysis: TimeSlotAnalysis
+    payment_behavior_analysis: PaymentBehaviorAnalysis = Field(
+        default_factory=PaymentBehaviorAnalysis
+    )
 
 
 class SpendingMetric(BaseModel):
