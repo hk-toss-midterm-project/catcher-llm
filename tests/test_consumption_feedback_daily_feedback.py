@@ -17,6 +17,7 @@ from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackEvidence,
     DailyFeedbackResult,
     RetrievedAdviceContext,
+    UserProfileContext,
 )
 from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
@@ -77,8 +78,14 @@ def _make_feedback_settings(root: Path) -> Settings:
 
 class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
     def test_build_feedback_retrieval_queries_uses_spending_and_action_signals(self) -> None:
-        """소비 분석과 해석 결과에서 RAG 검색에 쓸 소비 코칭 질의를 생성하는지 검증한다."""
+        """소비 분석, 해석 결과, 사용자 프로필에서 RAG 검색 질의를 생성하는지 검증한다."""
         user_data = load_user_spending_data(Path("notebook/team02/02_Layer4/user_data.json"))
+        user_profile = UserProfileContext(
+            user_id=1,
+            job="개발자",
+            persona="절약형",
+            saving_goal_text="비상금 300만원 만들기",
+        )
         interpretation_result = {
             "action_result": ActionAnalysisResult(
                 immediate_cuts=[
@@ -97,6 +104,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         queries = build_feedback_retrieval_queries(
             user_data,
             interpretation_result=interpretation_result,
+            user_profile=user_profile,
             max_queries=5,
         )
 
@@ -105,6 +113,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertTrue(any("생활" in query for query in queries))
         self.assertTrue(any("SKT통신비" in query for query in queries))
         self.assertTrue(any("통신비 자동이체 점검" in query for query in queries))
+        self.assertTrue(any("비상금" in query for query in queries))
 
     def test_daily_feedback_prompt_requires_json_and_retrieved_contexts(self) -> None:
         """최종 일일 피드백 프롬프트가 사용자·메모리 컨텍스트까지 입력으로 받는지 검증한다."""
@@ -276,6 +285,14 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
                     )
                     .one()
                 )
+                refreshed_memory = (
+                    db_session.query(UserMemoryModel)
+                    .filter_by(
+                        user_id=1,
+                        period_type="daily",
+                    )
+                    .one()
+                )
 
         self.assertIsNone(result.error)
         self.assertIsNotNone(result.feedback)
@@ -285,6 +302,11 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertGreaterEqual(len(result.retrieval_queries), 1)
         retrieve_contexts.assert_called_once()
         feedback_payload = feedback_chain.invoke.call_args.args[0]
+        interpretation_payload = interpretation_chain.invoke.call_args.args[0]
+        retrieval_query_text = "\n".join(result.retrieval_queries)
+        self.assertIn("user_profile_json", interpretation_payload)
+        self.assertIn("비상금 300만원 만들기", interpretation_payload["user_profile_json"])
+        self.assertIn("비상금 300만원 만들기", retrieval_query_text)
         self.assertIn("daily_json", feedback_payload)
         self.assertIn("interpretation_json", feedback_payload)
         self.assertIn("retrieved_contexts", feedback_payload)
@@ -296,6 +318,10 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIsNotNone(saved_session.daily_analysis_result)
         self.assertIn("오늘 총 지출", saved_session.feedback_reason or "")
         self.assertEqual(saved_session.todo_tomorrow, "내일 오전 고정비 결제 알림을 확인합니다.")
+        self.assertIn("2024-03-31", refreshed_memory.summary)
+        self.assertIn("2024-04-01", refreshed_memory.summary)
+        self.assertIn("간식 결제를 줄인다", refreshed_memory.summary)
+        self.assertIn("내일 오전 고정비 결제 알림을 확인합니다.", refreshed_memory.summary)
 
 
 if __name__ == "__main__":

@@ -42,8 +42,12 @@ class SelfReportRagServiceTests(unittest.TestCase):
             get_config.return_value.raw_data_dir = "raw"
             get_config.return_value.source_files = ["doc.pdf"]
 
-            result_amount = generate_self_report_rag_reply("201812 회원월당 소비성 금액은 얼마인가?")
-            result_ratio = generate_self_report_rag_reply("201812 변동비 누수 후보 비율은 얼마인가?")
+            result_amount = generate_self_report_rag_reply(
+                "201812 회원월당 소비성 금액은 얼마인가?"
+            )
+            result_ratio = generate_self_report_rag_reply(
+                "201812 변동비 누수 후보 비율은 얼마인가?"
+            )
             result_priority = generate_self_report_rag_reply("절약 타깃은 어떤 순서인가?")
             result_burden = generate_self_report_rag_reply("소비후잔액부담지수는 어떤 수준인가?")
 

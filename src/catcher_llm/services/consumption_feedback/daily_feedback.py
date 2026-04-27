@@ -44,6 +44,7 @@ from catcher_llm.services.user_data_service import ensure_user_database
 _DEFAULT_RETRIEVAL_QUERY = "일일 소비 절약 실천 방법"
 _DAILY_MEMORY_PERIOD_TYPE = "daily"
 _DEFAULT_RECENT_SESSION_LIMIT = 7
+_DEFAULT_MEMORY_SESSION_LIMIT = 14
 
 
 def _parse_analysis_date(value: str | date) -> date:
@@ -212,6 +213,121 @@ def save_daily_feedback_session(
         session_row.todo_tomorrow = feedback.tomorrow_mission
 
 
+def _truncate_context_text(value: str | None, *, max_length: int = 180) -> str:
+    """메모리 요약에 넣을 긴 텍스트를 한 줄 길이로 제한한다."""
+    if value is None:
+        return "-"
+    normalized = " ".join(value.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 1]}…"
+
+
+def _extract_feedback_reason_summary(feedback_reason: str | None) -> str:
+    """session.feedback_reason JSON에서 근거 제목을 우선 추출해 짧은 요약 문자열로 만든다."""
+    if feedback_reason is None:
+        return "-"
+    try:
+        raw_reasons = json.loads(feedback_reason)
+    except json.JSONDecodeError:
+        return _truncate_context_text(feedback_reason)
+
+    if not isinstance(raw_reasons, list):
+        return _truncate_context_text(feedback_reason)
+
+    titles: list[str] = []
+    for raw_reason in raw_reasons:
+        if not isinstance(raw_reason, dict):
+            continue
+        title = raw_reason.get("title")
+        if isinstance(title, str) and title.strip():
+            titles.append(title.strip())
+
+    if not titles:
+        return _truncate_context_text(feedback_reason)
+    return _truncate_context_text(", ".join(titles))
+
+
+def _extract_daily_total_summary(daily_analysis_result: str | None) -> str:
+    """저장된 일일 분석 JSON에서 오늘 총 지출액을 짧은 문자열로 추출한다."""
+    if daily_analysis_result is None:
+        return "-"
+    try:
+        raw_analysis = json.loads(daily_analysis_result)
+    except json.JSONDecodeError:
+        return "-"
+
+    if not isinstance(raw_analysis, dict):
+        return "-"
+    stable_metrics = raw_analysis.get("stable_metrics")
+    if not isinstance(stable_metrics, dict):
+        return "-"
+    today_total = stable_metrics.get("today_total")
+    if not isinstance(today_total, int | float):
+        return "-"
+    return f"{today_total:,.0f}원"
+
+
+def build_daily_memory_summary_from_sessions(sessions: Sequence[SessionModel]) -> str:
+    """최근 일일 피드백 세션 목록을 장기 메모리 summary 문자열로 압축한다."""
+    if not sessions:
+        return "아직 누적된 일일 피드백 세션이 없습니다."
+
+    lines = ["최근 일일 소비 피드백 누적 요약:"]
+    for session_row in sessions:
+        daily_total = _extract_daily_total_summary(session_row.daily_analysis_result)
+        reason_summary = _extract_feedback_reason_summary(session_row.feedback_reason)
+        tomorrow_mission = _truncate_context_text(session_row.todo_tomorrow)
+        lines.append(
+            "- "
+            f"{session_row.analysis_date}: "
+            f"총소비 {daily_total}; "
+            f"핵심근거 {reason_summary}; "
+            f"다음미션 {tomorrow_mission}"
+        )
+    return "\n".join(lines)
+
+
+def refresh_daily_user_memory(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+    recent_session_limit: int = _DEFAULT_MEMORY_SESSION_LIMIT,
+) -> str:
+    """최근 session 기록을 바탕으로 user_memories의 daily 요약을 생성하거나 갱신한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        recent_sessions = list(
+            session.scalars(
+                select(SessionModel)
+                .where(SessionModel.user_id == member_id)
+                .order_by(SessionModel.analysis_date.desc(), SessionModel.id.desc())
+                .limit(recent_session_limit)
+            )
+        )
+        summary = build_daily_memory_summary_from_sessions(list(reversed(recent_sessions)))
+
+        memory = session.scalar(
+            select(UserMemoryModel).where(
+                UserMemoryModel.user_id == member_id,
+                UserMemoryModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
+            )
+        )
+        if memory is None:
+            memory = UserMemoryModel(
+                user_id=member_id,
+                period_type=_DAILY_MEMORY_PERIOD_TYPE,
+                summary=summary,
+            )
+            session.add(memory)
+        else:
+            memory.summary = summary
+
+    return summary
+
+
 def _append_unique_query(queries: list[str], query: str) -> None:
     """비어 있지 않고 아직 없는 RAG 검색 질의만 목록에 추가한다."""
     normalized_query = " ".join(query.split())
@@ -253,9 +369,10 @@ def build_feedback_retrieval_queries(
     user_data: UserSpendingData,
     *,
     interpretation_result: dict[str, object] | None = None,
+    user_profile: UserProfileContext | None = None,
     max_queries: int = 4,
 ) -> list[str]:
-    """소비 분석과 해석 결과에서 최종 피드백용 RAG 검색 질의를 생성한다."""
+    """소비 분석, 해석 결과, 사용자 프로필에서 최종 피드백용 RAG 검색 질의를 생성한다."""
     indicators = extract_spending_indicators(user_data)
     queries: list[str] = []
 
@@ -277,6 +394,14 @@ def build_feedback_retrieval_queries(
     action_result = (interpretation_result or {}).get("action_result")
     for mission in _iter_action_missions(action_result):
         _append_unique_query(queries, f"{mission.title} 실천 방법")
+
+    if user_profile is not None:
+        if user_profile.saving_goal_text:
+            _append_unique_query(queries, f"{user_profile.saving_goal_text} 목표 소비 절약 방법")
+        if user_profile.job and current_category:
+            _append_unique_query(queries, f"{user_profile.job} {current_category} 소비 줄이는 방법")
+        if user_profile.persona:
+            _append_unique_query(queries, f"{user_profile.persona} 소비 습관 개선 방법")
 
     _append_unique_query(queries, _DEFAULT_RETRIEVAL_QUERY)
     return queries[:max_queries]
@@ -415,14 +540,24 @@ def generate_daily_feedback(
             settings=config,
         )
         user_data = parse_user_spending_data(daily_payload)
+        user_profile = load_user_profile_context(
+            member_id=member_id,
+            settings=config,
+        )
         interpretation_chain = build_spending_analysis_chain(
             settings=config,
             temperature=interpretation_temperature,
         )
-        interpretation_result = interpretation_chain.invoke(make_spending_analysis_input(user_data))
+        interpretation_result = interpretation_chain.invoke(
+            make_spending_analysis_input(
+                user_data,
+                user_profile=user_profile,
+            )
+        )
         retrieval_queries = build_feedback_retrieval_queries(
             user_data,
             interpretation_result=interpretation_result,
+            user_profile=user_profile,
             max_queries=max_queries,
         )
         advice_contexts = retrieve_feedback_contexts(
@@ -444,10 +579,6 @@ def generate_daily_feedback(
                 retrieval_queries=retrieval_queries,
             )
 
-        user_profile = load_user_profile_context(
-            member_id=member_id,
-            settings=config,
-        )
         memory_context = load_daily_feedback_memory_context(
             member_id=member_id,
             analysis_date=analysis_day,
@@ -476,6 +607,10 @@ def generate_daily_feedback(
             analysis_date=analysis_day,
             daily_analysis=user_data,
             feedback=feedback_result,
+            settings=config,
+        )
+        refresh_daily_user_memory(
+            member_id=member_id,
             settings=config,
         )
     except Exception as exc:

@@ -18,9 +18,7 @@ def load_ragas_result_frame(csv_path: str | Path) -> pd.DataFrame:
     frame = pd.read_csv(csv_path)
 
     missing_columns = [
-        column
-        for column in ("user_input", *RAGAS_METRIC_COLUMNS)
-        if column not in frame.columns
+        column for column in ("user_input", *RAGAS_METRIC_COLUMNS) if column not in frame.columns
     ]
     if missing_columns:
         raise ValueError(f"ragas 결과 CSV에 필요한 컬럼이 없습니다: {missing_columns}")
@@ -53,7 +51,9 @@ def build_ragas_question_score_frame(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def build_ragas_dashboard_html(frame: pd.DataFrame, title: str = "RAGAS Evaluation Dashboard") -> str:
+def build_ragas_dashboard_html(
+    frame: pd.DataFrame, title: str = "RAGAS Evaluation Dashboard"
+) -> str:
     """ragas 결과 DataFrame을 요약 막대그래프와 질문별 히트맵 HTML로 렌더링한다."""
     summary = build_ragas_metric_summary(frame)
     question_scores = build_ragas_question_score_frame(frame)

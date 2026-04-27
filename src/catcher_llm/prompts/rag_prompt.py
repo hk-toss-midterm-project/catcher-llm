@@ -6,8 +6,8 @@ from langchain_core.prompts import ChatPromptTemplate
 def build_rag_prompt(system_instruction: str | None = None) -> ChatPromptTemplate:
     """검색된 문서만 근거로 답하도록 지시하는 기본 RAG 프롬프트를 만든다."""
     instruction = system_instruction or (
-        "검색된 문서만 근거로 질문에 답하세요. "
-        "문서가 부족하면 확인할 수 없다고 답하세요. "
+        "검색된 문맥과 문서만 근거로 질문에 답하세요. "
+        "문맥이 부족하면 확인할 수 없다고 답하세요. "
         "답변 끝에는 사용한 출처를 간단히 언급하세요."
     )
     return ChatPromptTemplate.from_messages(
@@ -15,7 +15,7 @@ def build_rag_prompt(system_instruction: str | None = None) -> ChatPromptTemplat
             ("system", instruction),
             (
                 "human",
-                "이전 대화\n{history}\n\n검색된 문서:\n{context}\n\n질문:\n{question}",
+                "이전 대화\n{history}\n\n검색된 문맥:\n{context}\n\n질문:\n{question}",
             ),
         ]
     )

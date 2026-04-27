@@ -31,6 +31,11 @@ def _extract_indicator_json(payload: dict[str, str]) -> str:
     return payload["indicator_json"]
 
 
+def _extract_user_profile_json(payload: dict[str, str]) -> str:
+    """체인 병렬 실행 중 입력 페이로드의 사용자 프로필 JSON 문자열을 전달한다."""
+    return payload["user_profile_json"]
+
+
 def build_consumption_pattern_chain(
     llm: BaseChatModel,
 ) -> Runnable[dict[str, str], PatternAnalysisResult]:
@@ -70,6 +75,7 @@ def prepare_cause_payload(payload: dict[str, object]) -> dict[str, str]:
     return {
         "raw_json": str(payload["raw_json"]),
         "indicator_json": str(payload["indicator_json"]),
+        "user_profile_json": str(payload["user_profile_json"]),
         "pattern_text": pattern_result.model_dump_json(indent=2),
         "problem_text": problem_result.model_dump_json(indent=2),
     }
@@ -89,6 +95,7 @@ def prepare_action_payload(payload: dict[str, object]) -> dict[str, str]:
     return {
         "raw_json": str(payload["raw_json"]),
         "indicator_json": str(payload["indicator_json"]),
+        "user_profile_json": str(payload["user_profile_json"]),
         "pattern_text": pattern_result.model_dump_json(indent=2),
         "problem_text": problem_result.model_dump_json(indent=2),
         "cause_text": cause_result.model_dump_json(indent=2),
@@ -106,6 +113,7 @@ def build_spending_analysis_chain(
     diagnosis_chain = RunnableParallel(
         raw_json=RunnableLambda(_extract_raw_json),
         indicator_json=RunnableLambda(_extract_indicator_json),
+        user_profile_json=RunnableLambda(_extract_user_profile_json),
         pattern_result=build_consumption_pattern_chain(chat_model),
         problem_result=build_consumption_problem_chain(chat_model),
     )

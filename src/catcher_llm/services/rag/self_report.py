@@ -62,7 +62,9 @@ def _normalize_self_report_answer(question: str, rag_response: RAGResponse) -> s
             return f"절약 타깃은 {first}, {second}, {third} 순이다."
 
     if "소비후잔액부담지수" in question:
-        burden_match = re.search(r"소비후잔액부담지수는?\s*([0-9.]+)로?\s*([0-9]+개월\s*최고치)?", context_text)
+        burden_match = re.search(
+            r"소비후잔액부담지수는?\s*([0-9.]+)로?\s*([0-9]+개월\s*최고치)?", context_text
+        )
         if burden_match:
             burden_value = burden_match.group(1)
             burden_suffix = burden_match.group(2)

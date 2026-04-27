@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from catcher_llm.schemas.consumption_feedback import (
     AnomalyDetection,
@@ -17,6 +18,7 @@ from catcher_llm.schemas.consumption_feedback import (
     ProblemAnalysisResult,
     SpendingIndicatorPayload,
     SpendingMetric,
+    UserProfileContext,
     UserSpendingData,
 )
 
@@ -240,12 +242,28 @@ def extract_spending_indicators(user_data: UserSpendingData) -> SpendingIndicato
     )
 
 
-def make_spending_analysis_input(user_data: UserSpendingData) -> dict[str, str]:
-    """소비 분석 체인에 넣을 원본 JSON과 추출 지표 JSON 입력을 생성한다."""
+def _serialize_user_profile_context(user_profile: object | None) -> str:
+    """사용자 프로필 객체를 해석 체인 입력용 JSON 문자열로 변환한다."""
+    if user_profile is None:
+        return "{}"
+    if isinstance(user_profile, UserProfileContext):
+        return user_profile.model_dump_json(indent=2)
+    if isinstance(user_profile, dict):
+        return json.dumps(cast(dict[str, object], user_profile), ensure_ascii=False, indent=2)
+    return json.dumps({"value": str(user_profile)}, ensure_ascii=False, indent=2)
+
+
+def make_spending_analysis_input(
+    user_data: UserSpendingData,
+    *,
+    user_profile: object | None = None,
+) -> dict[str, str]:
+    """소비 분석 체인에 넣을 원본 JSON, 추출 지표 JSON, 사용자 프로필 입력을 생성한다."""
     spending_indicators = extract_spending_indicators(user_data)
     return {
         "raw_json": user_data.model_dump_json(indent=2),
         "indicator_json": spending_indicators.model_dump_json(indent=2),
+        "user_profile_json": _serialize_user_profile_context(user_profile),
     }
 
 
@@ -260,6 +278,7 @@ def prepare_cause_payload(payload: dict[str, object]) -> dict[str, str]:
     return {
         "raw_json": str(payload["raw_json"]),
         "indicator_json": str(payload["indicator_json"]),
+        "user_profile_json": str(payload["user_profile_json"]),
         "pattern_text": pattern_result.model_dump_json(indent=2),
         "problem_text": problem_result.model_dump_json(indent=2),
     }
@@ -279,6 +298,7 @@ def prepare_action_payload(payload: dict[str, object]) -> dict[str, str]:
     return {
         "raw_json": str(payload["raw_json"]),
         "indicator_json": str(payload["indicator_json"]),
+        "user_profile_json": str(payload["user_profile_json"]),
         "pattern_text": pattern_result.model_dump_json(indent=2),
         "problem_text": problem_result.model_dump_json(indent=2),
         "cause_text": cause_result.model_dump_json(indent=2),

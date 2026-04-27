@@ -15,7 +15,10 @@ class SavingTipsRagServiceTests(unittest.TestCase):
         with (
             patch("catcher_llm.services.rag.saving_tips.get_rag_pipeline_config") as get_config,
             patch("catcher_llm.services.rag.saving_tips.get_saving_tips_prompt"),
-            patch("catcher_llm.services.rag.saving_tips._get_saving_tips_source_files", return_value=[]),
+            patch(
+                "catcher_llm.services.rag.saving_tips._get_saving_tips_source_files",
+                return_value=[],
+            ),
             patch("catcher_llm.services.rag.saving_tips.generate_rag_reply") as generate_reply,
         ):
             get_config.return_value.raw_data_dir = Path("raw")
@@ -46,12 +49,16 @@ class SavingTipsRagServiceTests(unittest.TestCase):
         self.assertIn("질문의 핵심 명사를 답변 첫머리에 다시 포함한다", messages[0].content)
         self.assertIn("카페 소비가 잦을 경우", messages[1].content)
 
-    def test_generate_saving_tips_rag_reply_uses_tighter_default_top_k_prompt_and_text_source(self) -> None:
+    def test_generate_saving_tips_rag_reply_uses_tighter_default_top_k_prompt_and_text_source(
+        self,
+    ) -> None:
         """절약 팁 RAG 서비스가 전용 프롬프트와 가이드 텍스트 소스를 사용하는지 검증한다."""
         with (
             patch("catcher_llm.services.rag.saving_tips.get_rag_pipeline_config") as get_config,
             patch("catcher_llm.services.rag.saving_tips.get_saving_tips_prompt") as get_prompt,
-            patch("catcher_llm.services.rag.saving_tips._get_saving_tips_source_files") as get_sources,
+            patch(
+                "catcher_llm.services.rag.saving_tips._get_saving_tips_source_files"
+            ) as get_sources,
             patch("catcher_llm.services.rag.saving_tips.generate_rag_reply") as generate_reply,
         ):
             get_config.return_value.raw_data_dir = Path("raw")
