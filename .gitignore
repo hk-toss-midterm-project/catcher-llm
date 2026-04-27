@@ -6,11 +6,14 @@ dist/
 wheels/
 *.egg-info
 .pytest_cache/
+.ruff_cache/
 
 # Virtual environments
 .venv
 .env
 .streamlit/secrets.toml
+.uv-cache/
+.uv_cache/
 
 # Local SQLite seed metadata
 data/sqlite/app.sqlite3.seed-meta.json
