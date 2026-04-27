@@ -1,9 +1,8 @@
 from datetime import timedelta
 
 import pandas as pd
-import streamlit as st
 import plotly.express as px
-
+import streamlit as st
 
 st.set_page_config(page_title="리포트 조회", page_icon="📑", layout="wide")
 
@@ -131,26 +130,18 @@ if report_type == "일간 레포트":
         # -----------------------------
         col1, col2, col3 = st.columns(3)
 
-        col1.metric(
-            "오늘 총 소비",
-            f"{today_total:,.0f}원",
-            f"{diff_amount:,.0f}원"
-        )
+        col1.metric("오늘 총 소비", f"{today_total:,.0f}원", f"{diff_amount:,.0f}원")
 
-        col2.metric(
-            "거래 건수",
-            f"{today_count}건"
-        )
+        col2.metric("거래 건수", f"{today_count}건")
 
-        col3.metric(
-            "평균 결제 금액",
-            f"{today_avg:,.0f}원"
-        )
+        col3.metric("평균 결제 금액", f"{today_avg:,.0f}원")
 
         st.markdown("### 🧾 전날 대비 소비 요약")
 
         if yesterday_df.empty:
-            compare_text = "전날 데이터가 없어 비교는 어렵지만, 오늘 소비 내역을 기준으로 분석했어요."
+            compare_text = (
+                "전날 데이터가 없어 비교는 어렵지만, 오늘 소비 내역을 기준으로 분석했어요."
+            )
         else:
             if diff_amount > 0:
                 compare_text = f"오늘은 전날보다 {diff_amount:,.0f}원 더 사용했어요. 약 {diff_rate:.1f}% 증가했어요."
@@ -166,38 +157,40 @@ if report_type == "일간 레포트":
         # -----------------------------
         st.markdown("### 📌 오늘 가장 많이 쓴 카테고리")
 
-        category_sum = (
-            today_df.groupby(CATEGORY_COL)[AMOUNT_COL]
-            .sum()
-            .sort_values(ascending=False)
-        )
+        category_sum = today_df.groupby(CATEGORY_COL)[AMOUNT_COL].sum().sort_values(ascending=False)
 
         fig = px.pie(
-            values=category_sum.values,
-            names=category_sum.index,
-            title="카테고리별 소비 비율"
+            values=category_sum.values, names=category_sum.index, title="카테고리별 소비 비율"
         )
-
 
         top_category = category_sum.index[0]
         top_category_amount = category_sum.iloc[0]
 
         st.markdown(
             f"""
-            오늘 가장 소비가 많았던 카테고리는  
+            오늘 가장 소비가 많았던 카테고리는
             **{top_category}**이고, 총 **{top_category_amount:,.0f}원**을 사용했어요.
             """
         )
 
         st.plotly_chart(fig, use_container_width=True)
-        fig.update_traces(textposition='inside', textinfo='percent+label')
+        fig.update_traces(textposition="inside", textinfo="percent+label")
 
         # -----------------------------
         # 소비 피드백
         # -----------------------------
         st.markdown("### 💬 오늘의 소비 피드백")
 
-        food_keywords = ["배달의민족", "쿠팡이츠", "스타벅스", "이디야", "투썸플레이스", "맥도날드", "CU", "GS25"]
+        food_keywords = [
+            "배달의민족",
+            "쿠팡이츠",
+            "스타벅스",
+            "이디야",
+            "투썸플레이스",
+            "맥도날드",
+            "CU",
+            "GS25",
+        ]
         food_like_df = today_df[today_df[PLACE_COL].astype(str).isin(food_keywords)]
 
         late_night_df = today_df[today_df[DATE_COL].dt.hour >= 21]
@@ -205,16 +198,24 @@ if report_type == "일간 레포트":
         feedbacks = []
 
         if diff_amount > 0 and yesterday_total > 0:
-            feedbacks.append(f"전날보다 소비가 늘었어요. 특히 증가한 소비가 꼭 필요한 지출이었는지 확인해보면 좋아요.")
+            feedbacks.append(
+                "전날보다 소비가 늘었어요. 특히 증가한 소비가 꼭 필요한 지출이었는지 확인해보면 좋아요."
+            )
 
         if top_category == "식비":
-            feedbacks.append("오늘은 식비 비중이 높아요. 카페, 편의점, 배달 소비가 반복되면 하루 총액이 쉽게 커질 수 있어요.")
+            feedbacks.append(
+                "오늘은 식비 비중이 높아요. 카페, 편의점, 배달 소비가 반복되면 하루 총액이 쉽게 커질 수 있어요."
+            )
 
         if len(food_like_df) >= 3:
-            feedbacks.append("식비성 결제가 여러 번 발생했어요. 내일은 카페나 간식 소비를 한 번만 줄여도 절약 효과가 있어요.")
+            feedbacks.append(
+                "식비성 결제가 여러 번 발생했어요. 내일은 카페나 간식 소비를 한 번만 줄여도 절약 효과가 있어요."
+            )
 
         if len(late_night_df) > 0:
-            feedbacks.append("21시 이후 소비가 있었어요. 야간 소비는 충동 소비로 이어지기 쉬우니 한 번 점검해보면 좋아요.")
+            feedbacks.append(
+                "21시 이후 소비가 있었어요. 야간 소비는 충동 소비로 이어지기 쉬우니 한 번 점검해보면 좋아요."
+            )
 
         if not feedbacks:
             feedbacks.append("오늘 소비는 비교적 안정적인 편이에요. 이 흐름을 유지해보세요.")
