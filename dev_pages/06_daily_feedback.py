@@ -12,7 +12,9 @@ from catcher_llm.config.settings import get_settings
 from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackAction,
     DailyFeedbackEvidence,
+    DailyFeedbackMemoryContext,
     RetrievedAdviceContext,
+    UserProfileContext,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
 
@@ -55,6 +57,19 @@ def _render_contexts(contexts: Sequence[RetrievedAdviceContext]) -> None:
             expanded=index == 1,
         ):
             st.write(context.content)
+
+
+def _render_profile_and_memory_context(
+    *,
+    user_profile: UserProfileContext | None,
+    memory_context: DailyFeedbackMemoryContext | None,
+) -> None:
+    """서비스가 최종 피드백에 전달한 사용자 프로필과 메모리 맥락을 JSON으로 표시한다."""
+    with st.expander("사용자 프로필 JSON"):
+        st.json(user_profile.model_dump() if user_profile is not None else {})
+
+    with st.expander("메모리/세션 컨텍스트 JSON"):
+        st.json(memory_context.model_dump() if memory_context is not None else {})
 
 
 with st.sidebar:
@@ -107,6 +122,10 @@ if st.button("일일 피드백 생성", width="stretch"):
         if result.interpretation_result:
             with st.expander("소비 해석 JSON"):
                 st.json(result.interpretation_result)
+        _render_profile_and_memory_context(
+            user_profile=result.user_profile,
+            memory_context=result.memory_context,
+        )
         st.stop()
 
     if result.feedback is None:
@@ -130,6 +149,11 @@ if st.button("일일 피드백 생성", width="stretch"):
 
     st.subheader("검색된 문서 근거")
     _render_contexts(result.retrieved_contexts)
+
+    _render_profile_and_memory_context(
+        user_profile=result.user_profile,
+        memory_context=result.memory_context,
+    )
 
     with st.expander("일일 분석 JSON"):
         if result.daily_analysis is not None:
