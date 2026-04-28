@@ -5,7 +5,6 @@ from langchain_core.runnables import Runnable, RunnableLambda, RunnableParallel,
 
 from catcher_llm.config.settings import Settings
 from catcher_llm.llm.models import get_chat_model
-from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.prompts.consumption_feedback import (
     build_consumption_action_prompt,
     build_consumption_cause_prompt,
@@ -23,6 +22,7 @@ from catcher_llm.prompts.consumption_feedback import (
     build_weekly_consumption_problem_prompt,
     build_weekly_feedback_prompt,
 )
+from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     CauseAnalysisResult,
@@ -278,8 +278,12 @@ def build_daily_feedback_chain(
 ) -> Runnable[dict[str, str], DailyFeedbackResult]:
     """일일 소비 분석 JSON, 해석 JSON, RAG 근거로 최종 피드백을 생성하는 체인을 만든다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
-    persona_override = PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
-    return build_daily_feedback_prompt(persona_override=persona_override) | chat_model.with_structured_output(DailyFeedbackResult)  # type: ignore[return-value]
+    persona_override = (
+        PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
+    )
+    return build_daily_feedback_prompt(
+        persona_override=persona_override
+    ) | chat_model.with_structured_output(DailyFeedbackResult)  # type: ignore[return-value]
 
 
 def build_weekly_feedback_chain(
@@ -291,8 +295,12 @@ def build_weekly_feedback_chain(
 ) -> Runnable[dict[str, str], WeeklyFeedbackResult]:
     """주간 소비 분석 JSON, 해석 JSON, RAG 근거로 최종 피드백을 생성하는 체인을 만든다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
-    persona_override = PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
-    return build_weekly_feedback_prompt(persona_override=persona_override) | chat_model.with_structured_output(WeeklyFeedbackResult)  # type: ignore[return-value]
+    persona_override = (
+        PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
+    )
+    return build_weekly_feedback_prompt(
+        persona_override=persona_override
+    ) | chat_model.with_structured_output(WeeklyFeedbackResult)  # type: ignore[return-value]
 
 
 def build_monthly_feedback_chain(
@@ -304,7 +312,9 @@ def build_monthly_feedback_chain(
 ) -> Runnable[dict[str, str], MonthlyFeedbackResult]:
     """월간 소비 분석 JSON, 해석 JSON, RAG 근거로 최종 피드백을 생성하는 체인을 만든다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
-    persona_override = PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
-    return build_monthly_feedback_prompt(persona_override=persona_override) | chat_model.with_structured_output(
-        MonthlyFeedbackResult
-    )  # type: ignore[return-value]
+    persona_override = (
+        PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
+    )
+    return build_monthly_feedback_prompt(
+        persona_override=persona_override
+    ) | chat_model.with_structured_output(MonthlyFeedbackResult)  # type: ignore[return-value]

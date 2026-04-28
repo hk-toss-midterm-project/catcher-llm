@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 
+from catcher_llm.analysis.transaction_schema import normalize_transaction_frame
 from catcher_llm.schemas.consumption_feedback import JsonObject, JsonValue
 
 # ===== 가맹점 분류 키워드 (노트북과 동일) =====
@@ -529,6 +530,7 @@ def build_weekly_consumption_analysis_from_frames(
     JsonObject
         주간 소비 분석 결과 딕셔너리.
     """
+    all_frame = normalize_transaction_frame(all_frame)
     _validate_columns(all_frame, "전체")
 
     ws = _parse_date(week_start)

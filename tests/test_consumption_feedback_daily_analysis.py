@@ -19,7 +19,7 @@ from catcher_llm.services.consumption_feedback.daily_analysis import (
 def _write_feedback_seed_csvs(csv_dir: Path) -> None:
     """일일 소비 피드백 서비스 테스트에 사용할 SQLite 시드 CSV를 작성한다."""
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "users_v1.csv").write_text(
+    (csv_dir / "users_v3.csv").write_text(
         "\n".join(
             [
                 "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나",
@@ -28,7 +28,7 @@ def _write_feedback_seed_csvs(csv_dir: Path) -> None:
         ),
         encoding="utf-8-sig",
     )
-    (csv_dir / "transactions_v1.csv").write_text(
+    (csv_dir / "transactions_v3.csv").write_text(
         "\n".join(
             [
                 "멤버 id,id,사용 금액,사용 시간,결제 내역,결제 장소 (가맹점 여부),할부 여부,할부 개월,할부 무/유이자 여부,거래 상태 (승인 / 취소),해외 결제,업종 카테고리,결제 방식 (온/오프라인)",
@@ -136,19 +136,15 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
     def test_build_daily_consumption_analysis_from_frames_matches_notebook_contract(
         self,
     ) -> None:
-        """pandas 기반 분석 함수가 노트북 검증 셀의 핵심 JSON 계약을 재현한다."""
-        past_frame = pd.read_csv("data/raw/csv/transactions_v1.csv", encoding="utf-8-sig")
-        today_frame = pd.read_csv(
-            "notebook/team02/data_pre/data_input_month.csv",
-            encoding="utf-8-sig",
-        )
+        """pandas 기반 분석 함수가 v3 거래 CSV의 영문 컬럼 입력을 분석 JSON으로 변환한다."""
+        past_frame = pd.read_csv("data/raw/csv/transactions_v3.csv", encoding="utf-8-sig")
 
         result = build_daily_consumption_analysis_from_frames(
             past_frame,
-            today_frame,
+            past_frame,
             member_id=1,
-            analysis_date="2024-04-01",
-            previous_date="2024-03-31",
+            analysis_date="2026-03-01",
+            previous_date="2026-02-28",
         )
         stable_metrics = cast(JsonObject, result["stable_metrics"])
         anomaly_detection = cast(JsonObject, result["anomaly_detection"])
@@ -163,21 +159,21 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
             JsonObject,
             payment_behavior_analysis["transaction_density"],
         )
-        high_spending_items = cast(list[JsonObject], anomaly_detection["high_spending_items"])
 
         self.assertEqual(result["member_id"], 1)
-        self.assertEqual(result["analysis_date"], "2024-04-01")
-        self.assertEqual(stable_metrics["today_total"], 133044)
-        self.assertEqual(high_spending_items[0]["description"], "SKT통신비")
-        self.assertEqual(previous_day_comparison["yesterday_date"], "2024-03-31")
-        self.assertEqual(time_slot_analysis["peak_slot"], "2.오전(06-11)")
-        self.assertEqual(frictionless_spending["transaction_count"], 1)
-        self.assertEqual(frictionless_spending["total_amount"], 1486)
-        self.assertAlmostEqual(float(frictionless_spending["ratio_percent"]), 1.1169)
-        self.assertEqual(transaction_density["transaction_count"], 9)
+        self.assertEqual(result["analysis_date"], "2026-03-01")
+        self.assertEqual(stable_metrics["today_total"], 183100)
+        self.assertEqual(len(cast(list[object], anomaly_detection["high_spending_items"])), 1)
+        self.assertEqual(previous_day_comparison["yesterday_date"], "2026-02-28")
+        self.assertEqual(previous_day_comparison["yesterday_total"], 85000)
+        self.assertEqual(time_slot_analysis["peak_slot"], "3.점심/오후(11-17)")
+        self.assertEqual(frictionless_spending["transaction_count"], 0)
+        self.assertEqual(frictionless_spending["total_amount"], 0)
+        self.assertAlmostEqual(float(frictionless_spending["ratio_percent"]), 0.0)
+        self.assertEqual(transaction_density["transaction_count"], 4)
         self.assertAlmostEqual(
             float(transaction_density["average_amount_per_transaction"]),
-            14782.6667,
+            45775.0,
         )
         json.dumps(result, ensure_ascii=False, allow_nan=False)
 

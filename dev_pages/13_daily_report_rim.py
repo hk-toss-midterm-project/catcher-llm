@@ -5,8 +5,8 @@ from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
 st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
@@ -399,7 +399,7 @@ with col1:
     member_id = st.text_input("Member ID", value="1")
 
 with col2:
-    analysis_date = st.date_input("분석 기준일", value=date(2024, 3, 31))
+    analysis_date = st.date_input("분석 기준일", value=date(2026, 3, 1))
 
 with col3:
     previous_date = st.date_input("전일 기준일", value=analysis_date - timedelta(days=1))
@@ -604,7 +604,9 @@ if run:
 
     with st.expander("상세 분석 & 데이터"):
         st.subheader("일일 분석 JSON")
-        st.json(daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis)
+        st.json(
+            daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis
+        )
 
         st.subheader("최종 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)

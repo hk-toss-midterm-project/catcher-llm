@@ -6,6 +6,7 @@ from typing import cast
 
 import pandas as pd
 
+from catcher_llm.analysis.transaction_schema import normalize_transaction_frame
 from catcher_llm.schemas.consumption_feedback import JsonObject, JsonValue
 
 _REQUIRED_COLUMNS = {
@@ -348,6 +349,8 @@ def build_daily_consumption_analysis_from_frames(
     daily_budget: float | int | None = None,
 ) -> JsonObject:
     """과거/기준일 소비 DataFrame에서 파이프라인용 일일 소비 분석 JSON을 만든다."""
+    past_frame = normalize_transaction_frame(past_frame)
+    today_full_frame = normalize_transaction_frame(today_full_frame)
     _validate_columns(past_frame, "과거")
     _validate_columns(today_full_frame, "기준일")
 

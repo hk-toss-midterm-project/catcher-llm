@@ -219,19 +219,25 @@ st.caption("user_weekly_analysis 결과를 주간 지표로 변환하고 구조�
 
 render_date_picker_styles()
 controls = st.columns(3)
-member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
+member_id_text = controls[0].text_input("Member ID", value="1")
 with controls[1]:
     week_start, week_end = select_week_range(
         "분석 주",
-        default_start=date(2024, 4, 1),
+        default_start=date(2026, 3, 1),
         key="weekly_interpretation_week",
     )
 with controls[2]:
     render_readonly_control("분석 주 종료일", week_end)
 
 try:
+    member_id = int(member_id_text.strip())
+except ValueError:
+    st.error("Member ID는 숫자로 입력해주세요.")
+    st.stop()
+
+try:
     weekly_data = _load_sqlite_weekly_data(
-        member_id=int(member_id),
+        member_id=member_id,
         week_start=week_start,
         week_end=week_end,
     )
@@ -239,7 +245,7 @@ except ValueError as error:
     st.error(str(error))
     st.stop()
 
-user_profile = _load_profile(int(member_id))
+user_profile = _load_profile(member_id)
 indicators = extract_weekly_spending_indicators(weekly_data)
 analysis_input = make_weekly_spending_analysis_input(weekly_data, user_profile=user_profile)
 

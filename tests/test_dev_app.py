@@ -128,6 +128,9 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "10_monthly_analysis.py",
         "11_monthly_interpretation.py",
         "12_monthly_feedback.py",
+        "13_daily_report_rim.py",
+        "14_weekly_report_rim.py",
+        "15_monthly_report_rim.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -142,6 +145,9 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "월간 소비 분석",
         "월간 소비 해석 체인",
         "월간 피드백",
+        "일간 보고서",
+        "주간 보고서",
+        "월간 보고서",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -156,9 +162,15 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "📈",
         "🧭",
         "🧾",
+        "📝",
+        "🗓️",
+        "📈",
     ]
     assert [spec.default for spec in specs] == [
         True,
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -203,6 +215,44 @@ def test_consumption_dev_pages_use_popover_date_picker_helper() -> None:
         assert "render_date_picker_styles()" in page_source
         assert ".date_input(" not in page_source
         assert 'text_input("분석 월"' not in page_source
+
+
+def test_consumption_dev_pages_use_march_first_2026_calendar_default() -> None:
+    """소비 개발 페이지의 달력 기본 기준일이 2026년 3월 1일로 설정되어 있는지 검증한다."""
+    daily_page_paths = [
+        Path("dev_pages/04_daily_analysis.py"),
+        Path("dev_pages/05_daily_interpretation.py"),
+        Path("dev_pages/06_daily_feedback.py"),
+    ]
+    weekly_page_paths = [
+        Path("dev_pages/07_weekly_analysis.py"),
+        Path("dev_pages/08_weekly_interpretation.py"),
+        Path("dev_pages/09_weekly_feedback.py"),
+    ]
+    monthly_page_paths = [
+        Path("dev_pages/10_monthly_analysis.py"),
+        Path("dev_pages/11_monthly_interpretation.py"),
+        Path("dev_pages/12_monthly_feedback.py"),
+    ]
+
+    for page_path in daily_page_paths + weekly_page_paths:
+        page_source = page_path.read_text(encoding="utf-8")
+        assert "date(2026, 3, 1)" in page_source
+
+    for page_path in monthly_page_paths:
+        page_source = page_path.read_text(encoding="utf-8")
+        assert 'default_month="2026-03"' in page_source
+
+
+def test_report_dev_pages_use_march_first_2026_calendar_default() -> None:
+    """리포트 개발 페이지의 기본 분석 기간이 2026년 3월 1일 기준인지 검증한다."""
+    daily_report_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+    weekly_report_source = Path("dev_pages/14_weekly_report_rim.py").read_text(encoding="utf-8")
+    monthly_report_source = Path("dev_pages/15_monthly_report_rim.py").read_text(encoding="utf-8")
+
+    assert "value=date(2026, 3, 1)" in daily_report_source
+    assert "value=date(2026, 3, 1)" in weekly_report_source
+    assert 'value="2026-03"' in monthly_report_source
 
 
 def test_date_picker_helper_uses_streamlit_date_picker_popover() -> None:

@@ -113,7 +113,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     week_start, week_end = select_week_range(
         "분석 주",
-        default_start=date(2024, 4, 1),
+        default_start=date(2026, 3, 1),
         key="weekly_feedback_week",
     )
 with controls[2]:

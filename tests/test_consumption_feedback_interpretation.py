@@ -127,29 +127,25 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
 
     def test_parse_user_spending_data_accepts_daily_analysis_json_shape(self) -> None:
         """일일 분석 서비스 JSON을 추가 변환 없이 해석 입력 모델로 읽을 수 있는지 검증한다."""
-        past_frame = pd.read_csv("data/raw/csv/transactions_v1.csv", encoding="utf-8-sig")
-        today_frame = pd.read_csv(
-            "notebook/team02/data_pre/data_input_month.csv",
-            encoding="utf-8-sig",
-        )
+        past_frame = pd.read_csv("data/raw/csv/transactions_v3.csv", encoding="utf-8-sig")
         raw_result = build_daily_consumption_analysis_from_frames(
             past_frame,
-            today_frame,
+            past_frame,
             member_id=1,
-            analysis_date="2024-04-01",
-            previous_date="2024-03-31",
-            past_source_path="data/raw/csv/transactions_v1.csv",
-            today_source_path="notebook/team02/data_pre/data_input_month.csv",
+            analysis_date="2026-03-01",
+            previous_date="2026-02-28",
+            past_source_path="data/raw/csv/transactions_v3.csv",
+            today_source_path="data/raw/csv/transactions_v3.csv",
         )
 
         user_data = parse_user_spending_data(raw_result)
         analysis_input = make_spending_analysis_input(user_data)
 
-        self.assertEqual(user_data.source_paths.past_source, "data/raw/csv/transactions_v1.csv")
-        self.assertEqual(user_data.stable_metrics.today_total, 133044)
+        self.assertEqual(user_data.source_paths.past_source, "data/raw/csv/transactions_v3.csv")
+        self.assertEqual(user_data.stable_metrics.today_total, 183100)
+        self.assertEqual(user_data.previous_day_comparison.yesterday_total, 85000)
         self.assertEqual(
-            user_data.payment_behavior_analysis.frictionless_spending.total_amount,
-            1486,
+            user_data.payment_behavior_analysis.transaction_density.transaction_count, 4
         )
         self.assertIn("anomaly_detection.high_spending_items", analysis_input["indicator_json"])
         self.assertIn("daily_metrics", analysis_input["raw_json"])

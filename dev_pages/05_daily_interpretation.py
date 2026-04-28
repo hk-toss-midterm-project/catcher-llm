@@ -226,7 +226,7 @@ if source_option == "SQLite 일일 분석 JSON":
     with controls[1]:
         analysis_day = select_daily_date(
             "분석 기준일",
-            default=date(2024, 3, 31),
+            default=date(2026, 3, 1),
             key="daily_interpretation_day",
         )
     with controls[2]:

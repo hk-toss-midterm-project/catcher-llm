@@ -228,24 +228,30 @@ st.caption("user_monthly_analysis 결과를 월간 지표로 변환하고 구조
 
 render_date_picker_styles()
 controls = st.columns(2)
-member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
+member_id_text = controls[0].text_input("Member ID", value="1")
 with controls[1]:
     analysis_month = select_month(
         "분석 월",
-        default_month="2024-04",
+        default_month="2026-03",
         key="monthly_interpretation_month",
     )
 
 try:
+    member_id = int(member_id_text.strip())
+except ValueError:
+    st.error("Member ID는 숫자로 입력해주세요.")
+    st.stop()
+
+try:
     monthly_data = _load_sqlite_monthly_data(
-        member_id=int(member_id),
+        member_id=member_id,
         analysis_month=analysis_month,
     )
 except ValueError as error:
     st.error(str(error))
     st.stop()
 
-user_profile = _load_profile(int(member_id))
+user_profile = _load_profile(member_id)
 indicators = extract_monthly_spending_indicators(monthly_data)
 analysis_input = make_monthly_spending_analysis_input(monthly_data, user_profile=user_profile)
 
