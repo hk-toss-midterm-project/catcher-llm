@@ -59,7 +59,7 @@ def _hash_file_for_seed_metadata(path: Path) -> str:
 
 def _write_seed_csvs(csv_dir: Path, *, encoding: str = "utf-8") -> None:
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "members_v1.csv").write_text(
+    (csv_dir / "users_v1.csv").write_text(
         "\n".join(
             [
                 "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나",
@@ -69,7 +69,7 @@ def _write_seed_csvs(csv_dir: Path, *, encoding: str = "utf-8") -> None:
         ),
         encoding=encoding,
     )
-    (csv_dir / "consumption_v1.csv").write_text(
+    (csv_dir / "transactions_v1.csv").write_text(
         "\n".join(
             [
                 "멤버 id,id,사용 금액,사용 시간,결제 내역,결제 장소 (가맹점 여부),할부 여부,할부 개월,할부 무/유이자 여부,거래 상태 (승인 / 취소),해외 결제,업종 카테고리,결제 방식 (온/오프라인)",
@@ -98,10 +98,13 @@ def _make_settings(tmp_path: Path, *, csv_encoding: str = "utf-8") -> Settings:
 
 
 def test_ensure_user_database_seeds_sqlite_from_csv(tmp_path: Path) -> None:
+    """변경된 users/transactions CSV 파일명으로 SQLite 시드가 동작하는지 검증한다."""
     settings = _make_settings(tmp_path)
 
     result = ensure_user_database(settings=settings)
 
+    assert settings.members_csv_path.name == "users_v1.csv"
+    assert settings.consumption_csv_path.name == "transactions_v1.csv"
     assert settings.sqlite_db_path.exists()
     assert result.user_count == 2
     assert result.transaction_count == 3

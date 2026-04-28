@@ -181,12 +181,12 @@ class Settings:
     @property
     def members_csv_path(self) -> Path:
         """로컬 사용자 시드 CSV 경로를 반환한다."""
-        return self.raw_data_dir / "csv" / "members_v1.csv"
+        return self.raw_data_dir / "csv" / "users_v1.csv"
 
     @property
     def consumption_csv_path(self) -> Path:
         """로컬 소비내역 시드 CSV 경로를 반환한다."""
-        return self.raw_data_dir / "csv" / "consumption_v1.csv"
+        return self.raw_data_dir / "csv" / "transactions_v1.csv"
 
     @property
     def session_sqlite_db_path(self) -> Path:
