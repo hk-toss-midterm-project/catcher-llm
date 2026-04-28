@@ -25,6 +25,9 @@ _CAFE_KEYWORDS = [
 _CONVENIENCE_KEYWORDS = ["CU", "GS25", "세븐일레븐", "미니스톱", "emart24", "이마트24"]
 _TAXI_KEYWORDS = ["카카오택시", "타다", "우티"]
 
+_ESSENTIAL_CATEGORIES = ["교통", "의료", "생활"]
+_FRICTIONLESS_KEYWORDS = ["온라인", "간편결제", "앱결제", "배달"]
+
 _FIXED_PAYMENT_KEYWORD = "자동이체"
 _WASTE_CATEGORIES = ["식비", "쇼핑"]
 _ESSENTIAL_CATEGORIES = ["교통", "의료", "생활"]
@@ -413,6 +416,184 @@ def _build_saving_monthly(
     }
 
 
+def _build_cash_flow_volatility(weekly_trend: JsonObject) -> JsonObject:
+    """[10] 현금 흐름 변동성 지수 (Cash Flow Volatility)"""
+    weekly_breakdown = weekly_trend.get("weekly_breakdown", [])
+    weekly_amounts = (
+        [r["total_amount"] for r in weekly_breakdown] if isinstance(weekly_breakdown, list) else []
+    )
+
+    if not weekly_amounts:
+        return {
+            "mean_weekly": 0,
+            "std_weekly": 0,
+            "cv_index": 0.0,
+            "pace_status": "주차별 데이터가 부족합니다.",
+            "weekly_ratios": [],
+        }
+
+    s = pd.Series(weekly_amounts)
+    mean_weekly = float(s.mean())
+    std_weekly = float(s.std(ddof=0)) if len(s) > 0 else 0.0
+
+    cv_index = (std_weekly / mean_weekly) if mean_weekly > 0 else 0.0
+
+    if cv_index > 0.5:
+        pace_status = "위험 (초반 과소비 후 후반 쪼들림 등 변동성이 매우 큼)"
+    elif cv_index > 0.3:
+        pace_status = "주의 (주차별 소비 편차가 꽤 있는 편)"
+    else:
+        pace_status = "안정 (매주 일정한 페이스로 소비 중)"
+
+    total_amount = sum(weekly_amounts)
+    weekly_ratios = [
+        {
+            "week_num": i + 1,
+            "amount": int(amt),  # type: ignore[arg-type]
+            "ratio_percent": _round_float((amt / total_amount * 100) if total_amount > 0 else 0.0),  # type: ignore[operator]
+        }
+        for i, amt in enumerate(weekly_amounts)
+    ]
+
+    return {
+        "mean_weekly": _to_amount(mean_weekly),
+        "std_weekly": _to_amount(std_weekly),
+        "cv_index": _round_float(cv_index),
+        "pace_status": pace_status,
+        "weekly_ratios": weekly_ratios,  # type: ignore[dict-item]
+    }
+
+
+def _build_spending_concentration(df_this: pd.DataFrame) -> JsonObject:
+    """[11] 파레토 지출 쏠림 지수 (Spending Concentration Index)"""
+    df_variable = df_this[~df_this["업종 카테고리"].isin(_ESSENTIAL_CATEGORIES)]
+
+    if df_variable.empty:
+        return {
+            "total_variable_amount": 0,
+            "top_1_category": None,
+            "top_1_amount": 0,
+            "top_1_ratio_percent": 0.0,
+            "top_2_category": None,
+            "top_2_amount": 0,
+            "top_2_ratio_percent": 0.0,
+            "top_2_combined_ratio_percent": 0.0,
+            "concentration_status": "변동비 카테고리 지출 내역이 없습니다.",
+        }
+
+    var_total = float(df_variable["사용 금액"].sum())
+    var_cat = df_variable.groupby("업종 카테고리")["사용 금액"].sum().sort_values(ascending=False)
+
+    top_1_cat = str(var_cat.index[0])
+    top_1_amt = float(var_cat.iloc[0])
+    top_1_ratio = (top_1_amt / var_total * 100) if var_total > 0 else 0.0
+
+    top_2_cat = None
+    top_2_amt = 0.0
+    top_2_ratio = 0.0
+    if len(var_cat) > 1:
+        top_2_cat = str(var_cat.index[1])
+        top_2_amt = float(var_cat.iloc[1])
+        top_2_ratio = (top_2_amt / var_total * 100) if var_total > 0 else 0.0
+
+    top_2_combined_ratio = top_1_ratio + top_2_ratio
+
+    if top_1_ratio >= 60:
+        concentration_status = "극심한 쏠림 (1위 항목 하나만 통제해도 예산 절감 효과 극대화)"
+    elif top_2_combined_ratio >= 80:
+        concentration_status = "파레토 쏠림 (상위 2개 항목이 전체 변동비의 80% 차지)"
+    else:
+        concentration_status = "분산 소비 (비교적 여러 항목에 골고루 지출 중)"
+
+    return {
+        "total_variable_amount": _to_amount(var_total),
+        "top_1_category": top_1_cat,
+        "top_1_amount": _to_amount(top_1_amt),
+        "top_1_ratio_percent": _round_float(top_1_ratio),
+        "top_2_category": top_2_cat,
+        "top_2_amount": _to_amount(top_2_amt),
+        "top_2_ratio_percent": _round_float(top_2_ratio),
+        "top_2_combined_ratio_percent": _round_float(top_2_combined_ratio),
+        "concentration_status": concentration_status,
+    }
+
+
+def _build_frictionless_and_density(df_this: pd.DataFrame, this_total: float) -> JsonObject:
+    """[12] 월간 지출 마찰력 및 밀도 분석"""
+    if "결제 방식 (온/오프라인)" not in df_this.columns:
+        return {
+            "frictionless_spending": {"total_amount": 0, "count": 0, "ratio_percent": 0.0},
+            "transaction_density": {"avg_daily_count": 0.0, "avg_per_transaction": 0},
+        }
+
+    is_fric = df_this["결제 방식 (온/오프라인)"].str.contains(
+        "|".join(_FRICTIONLESS_KEYWORDS), na=False
+    )
+    df_fric = df_this[is_fric]
+
+    fric_total = float(df_fric["사용 금액"].sum())
+    fric_count = int(len(df_fric))
+    fric_ratio = (fric_total / this_total * 100) if this_total > 0 else 0.0
+
+    daily_counts = df_this.groupby("date").size()
+    avg_daily_count = float(daily_counts.mean()) if not daily_counts.empty else 0.0
+    avg_per_swipe = (this_total / len(df_this)) if len(df_this) > 0 else 0.0
+
+    return {
+        "frictionless_spending": {
+            "total_amount": _to_amount(fric_total),
+            "count": fric_count,
+            "ratio_percent": _round_float(fric_ratio),
+        },
+        "transaction_density": {
+            "avg_daily_count": _round_float(avg_daily_count),
+            "avg_per_transaction": _to_amount(avg_per_swipe),
+        },
+    }
+
+
+def _build_installment_debt_pressure(df_this: pd.DataFrame, this_total: float) -> JsonObject:
+    """[13] 할부 부채 압박 지수 (Installment Debt Pressure Index)"""
+    if "할부 여부" not in df_this.columns:
+        df_this_copy = df_this.copy()
+        df_this_copy["할부 여부"] = "N"
+    else:
+        df_this_copy = df_this.copy()
+
+    df_install = df_this_copy[df_this_copy["할부 여부"] == "Y"].copy()
+    install_total = float(df_install["사용 금액"].sum()) if not df_install.empty else 0.0
+    install_count = int(len(df_install))
+    install_ratio = (install_total / this_total * 100) if this_total > 0 else 0.0
+
+    avg_months = 0.0
+    max_months = 0
+    items: list[JsonValue] = []
+
+    if not df_install.empty and "할부 개월" in df_install.columns:
+        df_install["할부 개월"] = pd.to_numeric(df_install["할부 개월"], errors="coerce").fillna(0)
+        avg_months = float(df_install["할부 개월"].mean())
+        max_months = int(df_install["할부 개월"].max())
+
+        items = [
+            {
+                "used_at": str(r["사용 시간"]),
+                "merchant": str(r["결제 내역"]),
+                "amount": _to_amount(r["사용 금액"]),
+                "installment_months": int(r["할부 개월"]),
+            }
+            for _, r in df_install.sort_values("사용 금액", ascending=False).iterrows()
+        ]
+
+    return {
+        "total_installment_amount": _to_amount(install_total),
+        "installment_count": install_count,
+        "installment_ratio_percent": _round_float(install_ratio),
+        "avg_installment_months": _round_float(avg_months),
+        "max_installment_months": max_months,
+        "items": items,
+    }
+
+
 # ---------------------------------------------------------------------------
 # 공개 API
 # ---------------------------------------------------------------------------
@@ -495,6 +676,10 @@ def build_monthly_consumption_analysis_from_frames(
         float(df_this[df_this["사용 금액"] < _MICRO_THRESHOLD]["사용 금액"].sum()),
         this_total,
     )
+    cash_flow_volatility = _build_cash_flow_volatility(weekly_trend)
+    spending_concentration = _build_spending_concentration(df_this)
+    frictionless_and_density = _build_frictionless_and_density(df_this, this_total)
+    installment_debt_pressure = _build_installment_debt_pressure(df_this, this_total)
 
     return {
         "member_id": member_id,
@@ -517,4 +702,8 @@ def build_monthly_consumption_analysis_from_frames(
         "late_night_spending": late_night_monthly,
         "high_spending": high_spending_monthly,
         "saving_potential": saving_monthly,
+        "cash_flow_volatility": cash_flow_volatility,
+        "spending_concentration": spending_concentration,
+        "frictionless_and_density": frictionless_and_density,
+        "installment_debt_pressure": installment_debt_pressure,
     }

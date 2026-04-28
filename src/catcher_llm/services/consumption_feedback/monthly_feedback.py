@@ -223,6 +223,48 @@ def _build_monthly_core_metrics(monthly_data: MonthlySpendingData) -> list[Spend
             "saving_potential.next_month_recommended_target",
             "이번 달 총 지출의 90%로 계산한 다음 달 권장 목표액",
         ),
+        make_spending_metric(
+            "평일 vs 주말 소비 변동성(CV)",
+            monthly_data.cash_flow_volatility.cv_index,
+            "ratio",
+            "cash_flow_volatility.cv_index",
+            "주차별 소비의 변동 계수 (0에 가까울수록 일정한 페이스)",
+        ),
+        make_spending_metric(
+            "월간 페이스 진단",
+            monthly_data.cash_flow_volatility.pace_status,
+            "status",
+            "cash_flow_volatility.pace_status",
+            "주차별 소비 편차 수준에 따른 안정/주의/위험 진단",
+        ),
+        make_spending_metric(
+            "변동비 지출 쏠림 1위 카테고리",
+            monthly_data.spending_concentration.top_1_category or "",
+            "category",
+            "spending_concentration.top_1_category",
+            "필수 지출 제외 변동비 중 가장 많은 비중을 차지하는 카테고리",
+        ),
+        make_spending_metric(
+            "변동비 지출 쏠림 진단",
+            monthly_data.spending_concentration.concentration_status,
+            "status",
+            "spending_concentration.concentration_status",
+            "파레토 분석 기반 지출 쏠림 정도 진단 (예: 극심한 쏠림, 분산 소비)",
+        ),
+        make_spending_metric(
+            "간편결제 비중",
+            monthly_data.frictionless_and_density.frictionless_spending.ratio_percent,
+            "percent",
+            "frictionless_and_density.frictionless_spending.ratio_percent",
+            "온라인/간편결제 등 마찰력 없는 지출이 전체에서 차지하는 비율",
+        ),
+        make_spending_metric(
+            "할부 결제 비중",
+            monthly_data.installment_debt_pressure.installment_ratio_percent,
+            "percent",
+            "installment_debt_pressure.installment_ratio_percent",
+            "이번 달 지출 중 할부 결제가 차지하는 비율",
+        ),
     ]
 
 
@@ -362,6 +404,12 @@ def build_monthly_feedback_retrieval_queries(
             _append_unique_query(queries, f"{user_profile.persona} 월간 소비 습관 개선 방법")
 
     _append_top_merchant_queries(queries, indicators.top_merchants)
+
+    # 파레토 지출 쏠림: 1위 변동비 카테고리 대상 쿼리
+    top_1_cat = monthly_data.spending_concentration.top_1_category
+    if top_1_cat:
+        _append_unique_query(queries, f"{top_1_cat} 지출 줄이는 방법")
+
     _append_unique_query(queries, _DEFAULT_MONTHLY_RETRIEVAL_QUERY)
     return queries[:max_queries]
 

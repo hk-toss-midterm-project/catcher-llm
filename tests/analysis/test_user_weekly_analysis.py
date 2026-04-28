@@ -116,6 +116,7 @@ def test_result_has_required_top_level_keys(base_frame: pd.DataFrame) -> None:
         "weekday_pattern",
         "waste_detection",
         "saving_potential",
+        "elasticity_analysis",
     }
     assert expected_keys.issubset(result.keys())
 
@@ -314,6 +315,26 @@ def test_saving_potential_delivery_save_is_avg(base_frame: pd.DataFrame) -> None
     delivery_avg = result["repeat_patterns"]["delivery"]["avg_per_transaction"]
     save = result["saving_potential"]["delivery_save_per_skip"]
     assert save == int(delivery_avg)
+
+
+# ---------------------------------------------------------------------------
+# [8] 소비 탄성 및 심리적 반동 분석
+# ---------------------------------------------------------------------------
+
+
+def test_elasticity_analysis_has_required_keys(base_frame: pd.DataFrame) -> None:
+    """탄성 분석 결과가 예상된 키를 가지고 있는지 검증한다."""
+    result = _run(base_frame)
+    elasticity = result["elasticity_analysis"]
+    expected_keys = {
+        "correlation",
+        "threshold",
+        "rebound_avg",
+        "normal_avg",
+        "cheat_effective",
+        "recommended_cheat_amount",
+    }
+    assert expected_keys.issubset(elasticity.keys())
 
 
 # ---------------------------------------------------------------------------

@@ -215,6 +215,22 @@ def _build_weekly_core_metrics(weekly_data: WeeklySpendingData) -> list[Spending
             "saving_potential.delivery_save_per_skip",
             "배달 주문을 한 번 줄였을 때 예상 절약 금액",
         ),
+        make_spending_metric(
+            "평일-주말 소비 상관관계",
+            weekly_data.elasticity_analysis.correlation
+            if weekly_data.elasticity_analysis.correlation is not None
+            else 0.0,
+            "ratio",
+            "elasticity_analysis.correlation",
+            "평일 지출과 주말 지출의 상관관계 (음수일수록 심리적 반동 위험 증가)",
+        ),
+        make_spending_metric(
+            "평일 지출 임계점",
+            weekly_data.elasticity_analysis.threshold or 0,
+            "KRW",
+            "elasticity_analysis.threshold",
+            "이 금액 미만으로 안 쓰면 주말 소비가 급증하는 평일 일평균 지출 수준",
+        ),
     ]
 
 
@@ -343,6 +359,11 @@ def build_weekly_feedback_retrieval_queries(
             _append_unique_query(queries, f"{user_profile.persona} 주간 소비 습관 개선 방법")
 
     _append_top_merchant_queries(queries, indicators.top_merchants)
+
+    # 소비 탄성: 치팅 데이 패턴이 확인된 경우 관련 쿼리 추가
+    if weekly_data.elasticity_analysis.cheat_effective:
+        _append_unique_query(queries, "소비 탄성 관리 가심비 지출 전략")
+
     _append_unique_query(queries, _DEFAULT_WEEKLY_RETRIEVAL_QUERY)
     return queries[:max_queries]
 

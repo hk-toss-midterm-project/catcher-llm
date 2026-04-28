@@ -510,6 +510,17 @@ class WeeklySavingPotential(BaseModel):
     worsened_categories: list[WeeklyCategoryDiff] = Field(default_factory=list)
 
 
+class WeeklyElasticityAnalysis(BaseModel):
+    """주간 소비 탄성 및 심리적 반동 분석 결과를 표현한다."""
+
+    correlation: float | None = None
+    threshold: int | None = None
+    rebound_avg: int | None = None
+    normal_avg: int | None = None
+    cheat_effective: bool | None = None
+    recommended_cheat_amount: int | None = None
+
+
 class WeeklySpendingData(BaseModel):
     """주간 소비 분석 JSON 전체 구조를 검증 가능한 입력 모델로 표현한다."""
 
@@ -524,6 +535,7 @@ class WeeklySpendingData(BaseModel):
     weekday_pattern: WeeklyWeekdayPattern
     waste_detection: WeeklyWasteDetection
     saving_potential: WeeklySavingPotential
+    elasticity_analysis: WeeklyElasticityAnalysis = Field(default_factory=WeeklyElasticityAnalysis)
 
 
 class WeeklyCategoryChangeIndicator(BaseModel):
@@ -756,6 +768,76 @@ class MonthlySavingPotential(BaseModel):
     next_month_recommended_target: int
 
 
+class MonthlyCashFlowVolatility(BaseModel):
+    """월간 현금 흐름 변동성 지수(Cash Flow Volatility) 결과를 표현한다."""
+
+    mean_weekly: int = 0
+    std_weekly: int = 0
+    cv_index: float = 0.0
+    pace_status: str = ""
+    weekly_ratios: list[JsonValue] = Field(default_factory=list)
+
+
+class MonthlySpendingConcentration(BaseModel):
+    """월간 파레토 지출 쏠림 지수(Spending Concentration Index) 결과를 표현한다."""
+
+    total_variable_amount: int = 0
+    top_1_category: str | None = None
+    top_1_amount: int = 0
+    top_1_ratio_percent: float = 0.0
+    top_2_category: str | None = None
+    top_2_amount: int = 0
+    top_2_ratio_percent: float = 0.0
+    top_2_combined_ratio_percent: float = 0.0
+    concentration_status: str = ""
+
+
+class MonthlyFrictionlessSpending(BaseModel):
+    """월간 마찰력 없는 지출(온라인/간편결제) 지표를 표현한다."""
+
+    total_amount: int = 0
+    count: int = 0
+    ratio_percent: float = 0.0
+
+
+class MonthlyTransactionDensity(BaseModel):
+    """월간 결제 밀도(일평균 결제 횟수, 건당 평균액) 지표를 표현한다."""
+
+    avg_daily_count: float = 0.0
+    avg_per_transaction: int = 0
+
+
+class MonthlyFrictionlessAndDensity(BaseModel):
+    """월간 지출 마찰력 및 밀도 분석 지표를 표현한다."""
+
+    frictionless_spending: MonthlyFrictionlessSpending = Field(
+        default_factory=MonthlyFrictionlessSpending
+    )
+    transaction_density: MonthlyTransactionDensity = Field(
+        default_factory=MonthlyTransactionDensity
+    )
+
+
+class MonthlyInstallmentItem(BaseModel):
+    """월간 할부 결제 항목을 표현한다."""
+
+    used_at: str
+    merchant: str
+    amount: int
+    installment_months: int
+
+
+class MonthlyInstallmentDebtPressure(BaseModel):
+    """월간 할부 부채 압박 지수(Installment Debt Pressure Index) 결과를 표현한다."""
+
+    total_installment_amount: int = 0
+    installment_count: int = 0
+    installment_ratio_percent: float = 0.0
+    avg_installment_months: float = 0.0
+    max_installment_months: int = 0
+    items: list[MonthlyInstallmentItem] = Field(default_factory=list)
+
+
 class MonthlySpendingData(BaseModel):
     """월간 소비 분석 JSON 전체 구조를 검증 가능한 입력 모델로 표현한다."""
 
@@ -774,6 +856,18 @@ class MonthlySpendingData(BaseModel):
     late_night_spending: MonthlyLateNightSpending
     high_spending: MonthlyHighSpending
     saving_potential: MonthlySavingPotential
+    cash_flow_volatility: MonthlyCashFlowVolatility = Field(
+        default_factory=MonthlyCashFlowVolatility
+    )
+    spending_concentration: MonthlySpendingConcentration = Field(
+        default_factory=MonthlySpendingConcentration
+    )
+    frictionless_and_density: MonthlyFrictionlessAndDensity = Field(
+        default_factory=MonthlyFrictionlessAndDensity
+    )
+    installment_debt_pressure: MonthlyInstallmentDebtPressure = Field(
+        default_factory=MonthlyInstallmentDebtPressure
+    )
 
 
 class MonthlyCategoryChangeIndicator(BaseModel):

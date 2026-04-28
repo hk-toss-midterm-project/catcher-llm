@@ -127,6 +127,10 @@ def test_result_has_required_top_level_keys(base_frame: pd.DataFrame) -> None:
         "late_night_spending",
         "high_spending",
         "saving_potential",
+        "cash_flow_volatility",
+        "spending_concentration",
+        "frictionless_and_density",
+        "installment_debt_pressure",
     }
     assert expected_keys.issubset(result.keys())
 
@@ -386,6 +390,81 @@ def test_saving_potential_next_month_target_is_90pct(base_frame: pd.DataFrame) -
     this_total = result["monthly_summary"]["this_month_total"]
     expected_target = int(this_total * 0.90)
     assert result["saving_potential"]["next_month_recommended_target"] == expected_target
+
+
+# ---------------------------------------------------------------------------
+# [10] 현금 흐름 변동성 지수
+# ---------------------------------------------------------------------------
+
+
+def test_cash_flow_volatility_has_required_keys(base_frame: pd.DataFrame) -> None:
+    """현금 흐름 변동성 지수 딕셔너리에 필수 키가 모두 존재하는지 검증한다."""
+    result = _run(base_frame)
+    cfv = result["cash_flow_volatility"]
+    required = {
+        "mean_weekly",
+        "std_weekly",
+        "cv_index",
+        "pace_status",
+        "weekly_ratios",
+    }
+    assert required.issubset(cfv.keys())
+
+
+# ---------------------------------------------------------------------------
+# [11] 파레토 지출 쏠림 지수
+# ---------------------------------------------------------------------------
+
+
+def test_spending_concentration_has_required_keys(base_frame: pd.DataFrame) -> None:
+    """파레토 지출 쏠림 지수 딕셔너리에 필수 키가 모두 존재하는지 검증한다."""
+    result = _run(base_frame)
+    sc = result["spending_concentration"]
+    required = {
+        "total_variable_amount",
+        "top_1_category",
+        "top_1_amount",
+        "top_1_ratio_percent",
+        "top_2_category",
+        "top_2_amount",
+        "top_2_ratio_percent",
+        "top_2_combined_ratio_percent",
+        "concentration_status",
+    }
+    assert required.issubset(sc.keys())
+
+
+# ---------------------------------------------------------------------------
+# [12] 월간 지출 마찰력 및 밀도 분석
+# ---------------------------------------------------------------------------
+
+
+def test_frictionless_and_density_has_required_keys(base_frame: pd.DataFrame) -> None:
+    """지출 마찰력 및 밀도 분석 딕셔너리에 필수 키가 모두 존재하는지 검증한다."""
+    result = _run(base_frame)
+    fad = result["frictionless_and_density"]
+    assert "frictionless_spending" in fad
+    assert "transaction_density" in fad
+
+
+# ---------------------------------------------------------------------------
+# [13] 할부 부채 압박 지수
+# ---------------------------------------------------------------------------
+
+
+def test_installment_debt_pressure_has_required_keys(base_frame: pd.DataFrame) -> None:
+    """할부 부채 압박 지수 딕셔너리에 필수 키가 모두 존재하는지 검증한다."""
+    result = _run(base_frame)
+    idp = result["installment_debt_pressure"]
+    required = {
+        "total_installment_amount",
+        "installment_count",
+        "installment_ratio_percent",
+        "avg_installment_months",
+        "max_installment_months",
+        "items",
+    }
+    assert required.issubset(idp.keys())
 
 
 # ---------------------------------------------------------------------------

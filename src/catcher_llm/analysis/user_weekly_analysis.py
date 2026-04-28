@@ -348,6 +348,96 @@ def _build_saving_potential(
     }
 
 
+def _build_elasticity_analysis(df: pd.DataFrame) -> JsonObject:
+    """[8] 소비 탄성 및 심리적 반동 분석"""
+    if df.empty:
+        return {
+            "correlation": None,
+            "threshold": None,
+            "rebound_avg": None,
+            "normal_avg": None,
+            "cheat_effective": None,
+            "recommended_cheat_amount": None,
+        }
+
+    df_local = df.copy()
+    df_local["week_id"] = df_local["사용 시간"].dt.isocalendar().week
+    df_local["year"] = df_local["사용 시간"].dt.year
+
+    weekly_stats: list[dict[str, Any]] = []
+    for (_yr, _wk), group in df_local.groupby(["year", "week_id"]):
+        weekday_data = group[group["weekday"] <= 4]
+        weekend_data = group[group["weekday"] >= 5]
+
+        wd_daily_avg = (
+            weekday_data.groupby("date")["사용 금액"].sum().mean()
+            if not weekday_data.empty
+            else 0.0
+        )
+        we_total = weekend_data["사용 금액"].sum()
+        friday_spending = group[group["weekday"] == 4]["사용 금액"].sum()
+
+        weekly_stats.append(
+            {
+                "weekday_avg": float(wd_daily_avg),
+                "weekend_total": float(we_total),
+                "friday_spending": float(friday_spending),
+            }
+        )
+
+    df_elastic = pd.DataFrame(weekly_stats)
+
+    if len(df_elastic) <= 1:
+        return {
+            "correlation": None,
+            "threshold": None,
+            "rebound_avg": None,
+            "normal_avg": None,
+            "cheat_effective": None,
+            "recommended_cheat_amount": None,
+        }
+
+    corr = df_elastic["weekday_avg"].corr(df_elastic["weekend_total"])
+    if pd.isna(corr):
+        corr = 0.0
+
+    threshold = float(df_elastic["weekday_avg"].quantile(0.3))
+    if pd.isna(threshold):
+        threshold = 0.0
+
+    rebound_weeks = df_elastic[df_elastic["weekday_avg"] <= threshold]
+    normal_weeks = df_elastic[df_elastic["weekday_avg"] > threshold]
+
+    rebound_avg = float(rebound_weeks["weekend_total"].mean()) if not rebound_weeks.empty else 0.0
+    normal_avg = float(normal_weeks["weekend_total"].mean()) if not normal_weeks.empty else 0.0
+
+    if pd.isna(rebound_avg):
+        rebound_avg = 0.0
+    if pd.isna(normal_avg):
+        normal_avg = 0.0
+
+    cheat_effective = df_elastic[
+        (df_elastic["friday_spending"] > df_elastic["friday_spending"].median())
+        & (df_elastic["weekend_total"] < df_elastic["weekend_total"].median())
+    ]
+
+    is_cheat_effective = not cheat_effective.empty
+    recommended_cheat_amount = (
+        float(df_elastic["friday_spending"].median()) if is_cheat_effective else None
+    )
+
+    return {
+        "correlation": _round_float(corr),
+        "threshold": _to_amount(threshold),
+        "rebound_avg": _to_amount(rebound_avg),
+        "normal_avg": _to_amount(normal_avg),
+        "cheat_effective": is_cheat_effective,
+        "recommended_cheat_amount": _to_amount(recommended_cheat_amount)
+        if recommended_cheat_amount is not None
+        else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # 공개 API
 # ---------------------------------------------------------------------------
@@ -428,6 +518,7 @@ def build_weekly_consumption_analysis_from_frames(
         repeat_patterns["delivery"],  # type: ignore[arg-type]
         repeat_patterns["cafe"],  # type: ignore[arg-type]
     )
+    elasticity_analysis = _build_elasticity_analysis(df)
 
     return {
         "member_id": member_id,
@@ -446,4 +537,5 @@ def build_weekly_consumption_analysis_from_frames(
         "weekday_pattern": weekday_pattern,
         "waste_detection": waste_detection,
         "saving_potential": saving_potential,
+        "elasticity_analysis": elasticity_analysis,
     }
