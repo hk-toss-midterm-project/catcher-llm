@@ -58,6 +58,81 @@ def _make_feedback_settings(root: Path) -> Settings:
 
 
 class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
+    def test_daily_metrics_follow_period_metric_document(self) -> None:
+        """문서의 일일 소비 분석 10개 핵심 지표와 특수 지표가 계산되는지 검증한다."""
+        past_frame = pd.DataFrame(
+            [
+                {
+                    "멤버 id": 1,
+                    "id": 1,
+                    "사용 금액": 4000,
+                    "사용 시간": "2024-03-30 10:00:00",
+                    "결제 내역": "마트",
+                    "업종 카테고리": "생활",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 2,
+                    "사용 금액": 6000,
+                    "사용 시간": "2024-03-30 20:00:00",
+                    "결제 내역": "식당",
+                    "업종 카테고리": "식비",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 3,
+                    "사용 금액": 8000,
+                    "사용 시간": "2024-03-31 11:00:00",
+                    "결제 내역": "쇼핑몰",
+                    "업종 카테고리": "쇼핑",
+                    "결제 방식 (온/오프라인)": "온라인",
+                },
+            ]
+        )
+        today_frame = pd.DataFrame(
+            [
+                {
+                    "멤버 id": 1,
+                    "id": 4,
+                    "사용 금액": 3000,
+                    "사용 시간": "2024-04-01 10:00:00",
+                    "결제 내역": "마트",
+                    "업종 카테고리": "생활",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 5,
+                    "사용 금액": 7000,
+                    "사용 시간": "2024-04-01 22:30:00",
+                    "결제 내역": "배달의민족",
+                    "업종 카테고리": "식비",
+                    "결제 방식 (온/오프라인)": "배달",
+                },
+            ]
+        )
+
+        result = build_daily_consumption_analysis_from_frames(
+            past_frame,
+            today_frame,
+            member_id=1,
+            analysis_date="2024-04-01",
+            previous_date="2024-03-31",
+            daily_budget=8000,
+        )
+
+        metrics = cast(JsonObject, result["daily_metrics"])
+        self.assertEqual(metrics["daily_total_amount"], 10000)
+        self.assertEqual(metrics["daily_transaction_count"], 2)
+        self.assertEqual(metrics["daily_average_transaction_amount"], 5000.0)
+        self.assertEqual(metrics["daily_max_transaction_amount"], 7000)
+        self.assertEqual(metrics["late_night_ratio_percent"], 70.0)
+        self.assertEqual(metrics["daily_budget_usage_rate_percent"], 125.0)
+        self.assertEqual(metrics["no_spending_day"], False)
+        self.assertAlmostEqual(float(metrics["daily_anomaly_score"]), 1.1111)
+
     def test_build_daily_consumption_analysis_from_frames_matches_notebook_contract(
         self,
     ) -> None:

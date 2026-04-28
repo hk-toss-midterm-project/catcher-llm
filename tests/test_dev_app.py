@@ -84,6 +84,22 @@ def _make_daily_analysis_result() -> dict[str, object]:
                 "average_amount_per_transaction": 14782.6667,
             },
         },
+        "daily_metrics": {
+            "daily_total_amount": 133044,
+            "daily_transaction_count": 9,
+            "daily_average_transaction_amount": 14782.6667,
+            "daily_max_transaction_amount": 50000,
+            "late_night_ratio_percent": 0.0,
+            "daily_budget_usage_rate_percent": None,
+            "no_spending_day": False,
+            "daily_anomaly_score": 1.1,
+            "time_slot_amounts": [],
+            "category_spending": [],
+            "special_metrics": {
+                "impulse_spending_score": 0.2,
+                "daily_spending_risk": 1.1,
+            },
+        },
     }
 
 
@@ -411,6 +427,33 @@ def test_daily_analysis_dev_page_renders_payment_behavior_metrics() -> None:
 
     assert len(app.exception) == 0
     assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
+    assert any(subheader.value == "문서 기준 일일 핵심 지표" for subheader in app.subheader)
+
+
+def test_consumption_analysis_pages_render_period_document_metrics() -> None:
+    """일일·주간·월간 분석 페이지가 문서 기준 기간별 지표 섹션을 렌더링하는지 검증한다."""
+    page_expectations = {
+        Path("dev_pages/04_daily_analysis.py"): [
+            "문서 기준 일일 핵심 지표",
+            "daily_metrics",
+            "일일 예산 소진율",
+        ],
+        Path("dev_pages/07_weekly_analysis.py"): [
+            "문서 기준 주간 핵심 지표",
+            "weekly_metrics",
+            "주말 과소비 지수",
+        ],
+        Path("dev_pages/10_monthly_analysis.py"): [
+            "문서 기준 월간 핵심 지표",
+            "monthly_metrics",
+            "고정비 부담률",
+        ],
+    }
+
+    for page_path, expected_fragments in page_expectations.items():
+        page_source = page_path.read_text(encoding="utf-8")
+        for expected_fragment in expected_fragments:
+            assert expected_fragment in page_source
 
 
 def test_consumption_interpretation_dev_page_renders_payment_behavior_metrics() -> None:

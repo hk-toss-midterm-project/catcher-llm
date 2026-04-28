@@ -143,6 +143,31 @@ def test_member_id_and_months_are_echoed(base_frame: pd.DataFrame) -> None:
     assert result["prev_month"] == _PREV_MONTH
 
 
+def test_monthly_metrics_follow_period_metric_document(base_frame: pd.DataFrame) -> None:
+    """문서의 월간 소비 분석 10개 핵심 지표와 특수 지표가 계산되는지 검증한다."""
+    result = build_monthly_consumption_analysis_from_frames(
+        base_frame,
+        member_id=_MEMBER_ID,
+        analysis_month=_ANALYSIS_MONTH,
+        monthly_budget=400_000,
+        monthly_income=1_000_000,
+        salary_day=1,
+    )
+
+    metrics = result["monthly_metrics"]
+
+    assert metrics["monthly_total_amount"] == 338_000
+    assert metrics["monthly_budget_usage_rate_percent"] == pytest.approx(84.5, abs=0.001)
+    assert metrics["previous_month_change_rate_percent"] == pytest.approx(207.2727, abs=0.001)
+    assert metrics["fixed_cost_amount"] == 65_000
+    assert metrics["fixed_cost_ratio_percent"] == pytest.approx(19.2308, abs=0.001)
+    assert metrics["variable_cost_amount"] == 273_000
+    assert metrics["subscription_total"] == 0
+    assert metrics["fixed_cost_burden_rate_percent"] == pytest.approx(6.5, abs=0.001)
+    assert metrics["post_salary_spending_increase_rate_percent"] is not None
+    assert metrics["month_end_pressure_index"] is not None
+
+
 # ---------------------------------------------------------------------------
 # [1] 월간 총 지출 요약
 # ---------------------------------------------------------------------------

@@ -18,6 +18,8 @@ _REQUIRED_COLUMNS = {
     "결제 방식 (온/오프라인)",
 }
 _FRICTIONLESS_KEYWORDS = ["온라인", "간편결제", "앱결제", "배달"]
+_ESSENTIAL_CATEGORIES = {"교통", "의료", "생활"}
+_LATE_NIGHT_START_HOUR = 22
 _TIME_SLOT_ORDER = {
     "1.새벽(00-06)": 1,
     "2.오전(06-11)": 2,
@@ -164,6 +166,92 @@ def _build_payment_behavior_analysis(
     }
 
 
+def _build_daily_category_spending(
+    today_frame: pd.DataFrame, today_total: float
+) -> list[JsonValue]:
+    """문서형 일일 지표에 사용할 카테고리별 소비 금액·비중·건수를 만든다."""
+    rows: list[JsonValue] = []
+    category_amounts = today_frame.groupby("업종 카테고리")["사용 금액"].sum()
+    category_counts = today_frame.groupby("업종 카테고리").size()
+    for category, amount in category_amounts.sort_values(ascending=False).items():
+        amount_float = float(amount)
+        rows.append(
+            {
+                "category": str(category),
+                "total_amount": _to_amount(amount_float),
+                "ratio_percent": _round_float(_safe_rate(amount_float, today_total) * 100),
+                "transaction_count": int(category_counts.get(category, 0)),
+            }
+        )
+    return rows
+
+
+def _build_daily_metrics(
+    past_member_frame: pd.DataFrame,
+    today_frame: pd.DataFrame,
+    time_comparison: pd.DataFrame,
+    *,
+    today_total: float,
+    today_count: int,
+    past_daily_original_avg: float,
+    spike_ratio: float,
+    daily_budget: float | int | None,
+) -> JsonObject:
+    """문서의 일일 소비 분석 10개 핵심 지표와 특수 지표를 계산한다."""
+    daily_average_transaction_amount = _safe_rate(today_total, float(today_count))
+    daily_max_transaction_amount = (
+        float(today_frame["사용 금액"].max()) if not today_frame.empty else 0.0
+    )
+
+    if "hour" in today_frame.columns:
+        late_night_frame = today_frame[today_frame["hour"] >= _LATE_NIGHT_START_HOUR]
+    else:
+        late_night_frame = today_frame[
+            pd.to_datetime(today_frame["사용 시간"]).dt.hour >= _LATE_NIGHT_START_HOUR
+        ]
+    late_night_amount = float(late_night_frame["사용 금액"].sum())
+    late_night_ratio = _safe_rate(late_night_amount, today_total)
+
+    category_spending = _build_daily_category_spending(today_frame, today_total)
+    daily_budget_usage_rate = (
+        _safe_rate(today_total, float(daily_budget)) * 100 if daily_budget is not None else None
+    )
+
+    nonessential_total = float(
+        today_frame[~today_frame["업종 카테고리"].astype("string").isin(_ESSENTIAL_CATEGORIES)][
+            "사용 금액"
+        ].sum()
+    )
+    nonessential_ratio = _safe_rate(nonessential_total, today_total)
+    past_daily_counts = past_member_frame.groupby("date").size()
+    past_daily_count_avg = float(past_daily_counts.mean()) if not past_daily_counts.empty else 0.0
+    count_increase_rate = _safe_rate(
+        float(today_count) - past_daily_count_avg, past_daily_count_avg
+    )
+    impulse_spending_score = (
+        late_night_ratio * 0.3 + nonessential_ratio * 0.4 + count_increase_rate * 0.3
+    )
+
+    return {
+        "daily_total_amount": _to_amount(today_total),
+        "daily_transaction_count": today_count,
+        "daily_average_transaction_amount": _round_float(daily_average_transaction_amount),
+        "daily_max_transaction_amount": _to_amount(daily_max_transaction_amount),
+        "time_slot_amounts": _build_time_slot_rows(time_comparison),
+        "late_night_ratio_percent": _round_float(late_night_ratio * 100),
+        "category_spending": category_spending,
+        "daily_budget_usage_rate_percent": None
+        if daily_budget_usage_rate is None
+        else _round_float(daily_budget_usage_rate),
+        "no_spending_day": bool(today_count == 0),
+        "daily_anomaly_score": _round_float(spike_ratio),
+        "special_metrics": {
+            "impulse_spending_score": _round_float(impulse_spending_score),
+            "daily_spending_risk": _round_float(_safe_rate(today_total, past_daily_original_avg)),
+        },
+    }
+
+
 def _prepare_member_frames(
     past_frame: pd.DataFrame,
     today_full_frame: pd.DataFrame,
@@ -257,6 +345,7 @@ def build_daily_consumption_analysis_from_frames(
     previous_date: str | date = "2024-03-31",
     past_source_path: str | Path | None = None,
     today_source_path: str | Path | None = None,
+    daily_budget: float | int | None = None,
 ) -> JsonObject:
     """과거/기준일 소비 DataFrame에서 파이프라인용 일일 소비 분석 JSON을 만든다."""
     _validate_columns(past_frame, "과거")
@@ -349,6 +438,16 @@ def build_daily_consumption_analysis_from_frames(
         today_total=today_total,
         today_count=today_count,
     )
+    daily_metrics = _build_daily_metrics(
+        past_member_frame,
+        today_frame,
+        time_comparison,
+        today_total=today_total,
+        today_count=today_count,
+        past_daily_original_avg=past_daily_original_avg,
+        spike_ratio=spike_ratio,
+        daily_budget=daily_budget,
+    )
     return {
         "member_id": member_id,
         "analysis_date": str(analysis_day),
@@ -359,4 +458,5 @@ def build_daily_consumption_analysis_from_frames(
         "previous_day_comparison": previous_day_comparison,
         "time_slot_analysis": time_slot_analysis,
         "payment_behavior_analysis": payment_behavior_analysis,
+        "daily_metrics": daily_metrics,
     }

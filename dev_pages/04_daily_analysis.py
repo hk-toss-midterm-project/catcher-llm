@@ -38,6 +38,45 @@ def _json_rows_to_frame(rows: object) -> pd.DataFrame:
     return pd.DataFrame(json_rows)
 
 
+def _render_document_daily_metrics(daily_metrics: JsonObject) -> None:
+    """문서 기준 일일 핵심 지표와 특수 지표를 화면에 표시한다."""
+    st.subheader("문서 기준 일일 핵심 지표")
+    metric_columns = st.columns(4)
+    metric_columns[0].metric(
+        "일일 총 소비금액", _format_amount(daily_metrics["daily_total_amount"])
+    )
+    metric_columns[1].metric("일일 거래 건수", f"{daily_metrics['daily_transaction_count']}건")
+    metric_columns[2].metric(
+        "일일 평균 거래금액",
+        _format_amount(daily_metrics["daily_average_transaction_amount"]),
+    )
+    metric_columns[3].metric(
+        "일일 최대 결제금액",
+        _format_amount(daily_metrics["daily_max_transaction_amount"]),
+    )
+
+    risk_columns = st.columns(4)
+    risk_columns[0].metric(
+        "야간 소비 비중",
+        _format_percent(daily_metrics["late_night_ratio_percent"]),
+    )
+    risk_columns[1].metric(
+        "일일 예산 소진율",
+        _format_percent(daily_metrics["daily_budget_usage_rate_percent"]),
+    )
+    risk_columns[2].metric("무소비일 여부", "Y" if daily_metrics["no_spending_day"] else "N")
+    risk_columns[3].metric("일일 이상 소비 점수", f"{daily_metrics['daily_anomaly_score']}x")
+
+    special_metrics = cast(JsonObject, daily_metrics["special_metrics"])
+    special_columns = st.columns(2)
+    special_columns[0].metric("충동소비 점수", str(special_metrics["impulse_spending_score"]))
+    special_columns[1].metric("하루 소비 위험도", f"{special_metrics['daily_spending_risk']}x")
+
+    category_frame = _json_rows_to_frame(daily_metrics["category_spending"])
+    if not category_frame.empty:
+        st.dataframe(category_frame, use_container_width=True, hide_index=True)
+
+
 with st.sidebar:
     st.title("🧪 Catcher Dev")
     st.caption("SQLite 거래 데이터 기준 일일 소비 분석 JSON을 확인합니다.")
@@ -81,6 +120,7 @@ if st.button("일일 분석 실행", use_container_width=True):
     previous_day_comparison = cast(JsonObject, result["previous_day_comparison"])
     time_slot_analysis = cast(JsonObject, result["time_slot_analysis"])
     payment_behavior_analysis = cast(JsonObject, result["payment_behavior_analysis"])
+    daily_metrics = cast(JsonObject, result["daily_metrics"])
     frictionless_spending = cast(
         JsonObject,
         payment_behavior_analysis["frictionless_spending"],
@@ -101,6 +141,8 @@ if st.button("일일 분석 실행", use_container_width=True):
         _format_percent(stable_metrics["increase_rate_percent"]),
     )
     metric_columns[3].metric("피크 시간대", str(time_slot_analysis["peak_slot"] or "-"))
+
+    _render_document_daily_metrics(daily_metrics)
 
     st.subheader("지출 마찰력 및 결제 밀도")
     payment_columns = st.columns(5)

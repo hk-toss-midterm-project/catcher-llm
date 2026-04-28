@@ -258,6 +258,62 @@ def _build_weekday_pattern(df_this: pd.DataFrame, this_total: float) -> JsonObje
     }
 
 
+def _build_weekly_metrics(
+    df_this: pd.DataFrame,
+    cat_rows: list[JsonValue],
+    repeat_patterns: JsonObject,
+    this_total: float,
+    prev_total: float,
+    week_start: date,
+    week_end: date,
+    weekly_budget: float | int | None,
+) -> JsonObject:
+    """문서의 주간 소비 분석 10개 핵심 지표와 특수 지표를 계산한다."""
+    all_days = pd.date_range(week_start, week_end, freq="D").date
+    daily_amounts = df_this.groupby("date")["사용 금액"].sum().reindex(all_days, fill_value=0.0)
+    weekday_total = float(df_this[df_this["weekday"] <= 4]["사용 금액"].sum())
+    weekend_total = float(df_this[df_this["weekday"] >= 5]["사용 금액"].sum())
+    previous_week_change_rate = _safe_rate(this_total - prev_total, prev_total) * 100
+    weekly_budget_usage_rate = (
+        _safe_rate(this_total, float(weekly_budget)) * 100 if weekly_budget is not None else None
+    )
+    weekday_daily_average = _safe_rate(weekday_total, 5.0)
+    weekend_daily_average = _safe_rate(weekend_total, 2.0)
+    weekend_overspending_index = _safe_rate(weekend_daily_average, weekday_daily_average)
+    max_day_ratio = _safe_rate(float(daily_amounts.max()), this_total) * 100
+
+    return {
+        "weekly_total_amount": _to_amount(this_total),
+        "weekly_average_daily_amount": _round_float(_safe_rate(this_total, 7.0)),
+        "weekly_transaction_count": int(len(df_this)),
+        "weekday_spending_ratio_percent": _round_float(_safe_rate(weekday_total, this_total) * 100),
+        "weekend_spending_ratio_percent": _round_float(_safe_rate(weekend_total, this_total) * 100),
+        "weekday_spending_pattern": [
+            {
+                "weekday": _WEEKDAY_NAMES[int(day) if isinstance(day, int) else int(day)],
+                "weekday_num": int(day),
+                "total_amount": _to_amount(float(amount)),
+            }
+            for day, amount in df_this.groupby("weekday")["사용 금액"].sum().items()
+        ],
+        "category_spending": cat_rows,
+        "previous_week_change_rate_percent": _round_float(previous_week_change_rate),
+        "weekly_spending_volatility": _round_float(float(daily_amounts.std(ddof=0))),
+        "weekly_budget_usage_rate_percent": None
+        if weekly_budget_usage_rate is None
+        else _round_float(weekly_budget_usage_rate),
+        "special_metrics": {
+            "weekend_overspending_index": _round_float(weekend_overspending_index),
+            "weekday_concentration_ratio_percent": _round_float(max_day_ratio),
+            "routine_indicators": {
+                "top_merchants": repeat_patterns.get("top_merchants", []),
+                "consecutive_merchants": repeat_patterns.get("consecutive_merchants", []),
+            },
+        },
+        "weekend_overspending_index": _round_float(weekend_overspending_index),
+    }
+
+
 def _build_waste_detection(
     df_this: pd.DataFrame,
     this_total: float,
@@ -450,6 +506,7 @@ def build_weekly_consumption_analysis_from_frames(
     week_start: str | date = "2024-04-01",
     week_end: str | date = "2024-04-07",
     source_path: str | Path | None = None,
+    weekly_budget: float | int | None = None,
 ) -> JsonObject:
     """과거+당주 소비 DataFrame에서 주간 소비 분석 JSON을 만든다.
 
@@ -512,6 +569,16 @@ def build_weekly_consumption_analysis_from_frames(
     category_summary = _build_category_summary(df_this, df_prev, this_total)
     repeat_patterns = _build_repeat_patterns(df_this)
     weekday_pattern = _build_weekday_pattern(df_this, this_total)
+    weekly_metrics = _build_weekly_metrics(
+        df_this,
+        category_summary,
+        repeat_patterns,
+        this_total,
+        prev_total,
+        ws,
+        we,
+        weekly_budget,
+    )
     waste_detection = _build_waste_detection(df_this, this_total, upper_bound)
     saving_potential = _build_saving_potential(
         category_summary,
@@ -533,6 +600,7 @@ def build_weekly_consumption_analysis_from_frames(
         },
         "weekly_summary": weekly_summary,
         "category_summary": category_summary,
+        "weekly_metrics": weekly_metrics,
         "repeat_patterns": repeat_patterns,
         "weekday_pattern": weekday_pattern,
         "waste_detection": waste_detection,

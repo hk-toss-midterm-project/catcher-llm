@@ -129,6 +129,29 @@ def test_member_id_and_dates_are_echoed(base_frame: pd.DataFrame) -> None:
     assert result["week_end"] == str(_WEEK_END)
 
 
+def test_weekly_metrics_follow_period_metric_document(base_frame: pd.DataFrame) -> None:
+    """문서의 주간 소비 분석 10개 핵심 지표와 특수 지표가 계산되는지 검증한다."""
+    result = build_weekly_consumption_analysis_from_frames(
+        base_frame,
+        member_id=_MEMBER_ID,
+        week_start=_WEEK_START,
+        week_end=_WEEK_END,
+        weekly_budget=140_000,
+    )
+
+    metrics = result["weekly_metrics"]
+
+    assert metrics["weekly_total_amount"] == 154_500
+    assert metrics["weekly_transaction_count"] == 7
+    assert metrics["weekly_average_daily_amount"] == pytest.approx(22_071.4286, abs=0.001)
+    assert metrics["weekday_spending_ratio_percent"] == pytest.approx(67.6375, abs=0.001)
+    assert metrics["weekend_spending_ratio_percent"] == pytest.approx(32.3625, abs=0.001)
+    assert metrics["previous_week_change_rate_percent"] == pytest.approx(243.3333, abs=0.001)
+    assert metrics["weekly_budget_usage_rate_percent"] == pytest.approx(110.3571, abs=0.001)
+    assert metrics["weekly_spending_volatility"] > 0
+    assert metrics["weekend_overspending_index"] > 0
+
+
 # ---------------------------------------------------------------------------
 # [1] 주간 총 지출 요약
 # ---------------------------------------------------------------------------

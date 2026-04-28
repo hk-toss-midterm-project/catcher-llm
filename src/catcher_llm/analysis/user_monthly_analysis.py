@@ -29,6 +29,7 @@ _ESSENTIAL_CATEGORIES = ["교통", "의료", "생활"]
 _FRICTIONLESS_KEYWORDS = ["온라인", "간편결제", "앱결제", "배달"]
 
 _FIXED_PAYMENT_KEYWORD = "자동이체"
+_SUBSCRIPTION_KEYWORDS = ["구독", "OTT", "넷플릭스", "유튜브", "멤버십", "정기결제"]
 _WASTE_CATEGORIES = ["식비", "쇼핑"]
 _ESSENTIAL_CATEGORIES = ["교통", "의료", "생활"]
 
@@ -594,6 +595,160 @@ def _build_installment_debt_pressure(df_this: pd.DataFrame, this_total: float) -
     }
 
 
+def _build_monthly_category_spending(cat_deep: list[JsonValue]) -> list[JsonValue]:
+    """문서형 월간 지표에 사용할 카테고리별 소비 금액·비중 목록을 만든다."""
+    rows: list[JsonValue] = []
+    for raw_row in cat_deep:
+        if not isinstance(raw_row, dict):
+            continue
+        rows.append(
+            {
+                "category": raw_row.get("category"),
+                "total_amount": raw_row.get("total_amount", 0),
+                "ratio_percent": raw_row.get("ratio_percent", 0.0),
+                "transaction_count": raw_row.get("transaction_count", 0),
+            }
+        )
+    return rows
+
+
+def _build_subscription_total(df_this: pd.DataFrame) -> int:
+    """가맹점명과 결제 방식 키워드로 월간 구독료 합계를 추정한다."""
+    keyword_pattern = "|".join(_SUBSCRIPTION_KEYWORDS)
+    merchant_match = df_this["결제 내역"].astype("string").str.contains(keyword_pattern, na=False)
+    payment_match = (
+        df_this["결제 방식 (온/오프라인)"].astype("string").str.contains(keyword_pattern, na=False)
+    )
+    return _to_amount(float(df_this[merchant_match | payment_match]["사용 금액"].sum()))
+
+
+def _build_post_salary_spending_increase_rate(
+    df_this: pd.DataFrame,
+    *,
+    year: int,
+    month: int,
+    salary_day: int | None,
+) -> float | None:
+    """급여일 직후 7일의 일평균 소비가 나머지 기간 대비 얼마나 증가했는지 계산한다."""
+    if salary_day is None:
+        return None
+
+    last_day = calendar.monthrange(year, month)[1]
+    normalized_salary_day = min(max(salary_day, 1), last_day)
+    salary_start = date(year, month, normalized_salary_day)
+    salary_end = date(year, month, min(normalized_salary_day + 6, last_day))
+    post_salary_frame = df_this[(df_this["date"] >= salary_start) & (df_this["date"] <= salary_end)]
+    baseline_frame = df_this[(df_this["date"] < salary_start) | (df_this["date"] > salary_end)]
+    post_days = (salary_end - salary_start).days + 1
+    baseline_days = max(last_day - post_days, 0)
+    post_daily_average = _safe_rate(float(post_salary_frame["사용 금액"].sum()), float(post_days))
+    baseline_daily_average = _safe_rate(
+        float(baseline_frame["사용 금액"].sum()),
+        float(baseline_days),
+    )
+    return _round_float(
+        _safe_rate(post_daily_average - baseline_daily_average, baseline_daily_average) * 100
+    )
+
+
+def _build_month_end_pressure_index(
+    df_this: pd.DataFrame, *, year: int, month: int
+) -> float | None:
+    """월말 7일 일평균 소비를 월말 이전 일평균 소비와 비교한 압박 지수를 계산한다."""
+    last_day = calendar.monthrange(year, month)[1]
+    month_end_start = date(year, month, max(1, last_day - 6))
+    month_end_frame = df_this[df_this["date"] >= month_end_start]
+    before_month_end_frame = df_this[df_this["date"] < month_end_start]
+    end_days = last_day - month_end_start.day + 1
+    before_days = month_end_start.day - 1
+    end_daily_average = _safe_rate(float(month_end_frame["사용 금액"].sum()), float(end_days))
+    before_daily_average = _safe_rate(
+        float(before_month_end_frame["사용 금액"].sum()),
+        float(before_days),
+    )
+    if before_daily_average == 0:
+        return None
+    return _round_float(_safe_rate(end_daily_average, before_daily_average))
+
+
+def _build_monthly_metrics(
+    df_this: pd.DataFrame,
+    cat_deep: list[JsonValue],
+    fixed_variable: JsonObject,
+    this_total: float,
+    prev_total: float,
+    *,
+    year: int,
+    month: int,
+    monthly_budget: float | int | None,
+    monthly_income: float | int | None,
+    salary_day: int | None,
+) -> JsonObject:
+    """문서의 월간 소비 분석 10개 핵심 지표와 특수 지표를 계산한다."""
+    monthly_budget_usage_rate = (
+        _safe_rate(this_total, float(monthly_budget)) * 100 if monthly_budget is not None else None
+    )
+    fixed_cost_amount = float(fixed_variable.get("fixed_total", 0))
+    variable_cost_amount = float(fixed_variable.get("variable_total", 0))
+    fixed_cost_burden_rate = (
+        _safe_rate(fixed_cost_amount, float(monthly_income)) * 100
+        if monthly_income is not None
+        else None
+    )
+    essential_variable_total = float(
+        df_this[
+            df_this["업종 카테고리"].isin(_ESSENTIAL_CATEGORIES)
+            & ~df_this["결제 방식 (온/오프라인)"]
+            .astype("string")
+            .str.contains(
+                _FIXED_PAYMENT_KEYWORD,
+                na=False,
+            )
+        ]["사용 금액"].sum()
+    )
+    spending_capacity = (
+        _to_amount(float(monthly_income) - fixed_cost_amount - essential_variable_total)
+        if monthly_income is not None
+        else None
+    )
+
+    return {
+        "monthly_total_amount": _to_amount(this_total),
+        "monthly_budget_usage_rate_percent": None
+        if monthly_budget_usage_rate is None
+        else _round_float(monthly_budget_usage_rate),
+        "previous_month_change_rate_percent": _round_float(
+            _safe_rate(this_total - prev_total, prev_total) * 100
+        ),
+        "fixed_cost_amount": _to_amount(fixed_cost_amount),
+        "fixed_cost_ratio_percent": fixed_variable.get("fixed_ratio_percent", 0.0),
+        "variable_cost_amount": _to_amount(variable_cost_amount),
+        "category_monthly_spending_ratio": _build_monthly_category_spending(cat_deep),
+        "subscription_total": _build_subscription_total(df_this),
+        "post_salary_spending_increase_rate_percent": _build_post_salary_spending_increase_rate(
+            df_this,
+            year=year,
+            month=month,
+            salary_day=salary_day,
+        ),
+        "month_end_pressure_index": _build_month_end_pressure_index(
+            df_this,
+            year=year,
+            month=month,
+        ),
+        "special_metrics": {
+            "fixed_cost_burden_rate_percent": None
+            if fixed_cost_burden_rate is None
+            else _round_float(fixed_cost_burden_rate),
+            "spending_capacity": spending_capacity,
+            "subscription_leakage_rate_percent": None,
+        },
+        "fixed_cost_burden_rate_percent": None
+        if fixed_cost_burden_rate is None
+        else _round_float(fixed_cost_burden_rate),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 공개 API
 # ---------------------------------------------------------------------------
@@ -605,6 +760,9 @@ def build_monthly_consumption_analysis_from_frames(
     member_id: int = 1,
     analysis_month: str = "2024-04",
     source_path: str | Path | None = None,
+    monthly_budget: float | int | None = None,
+    monthly_income: float | int | None = None,
+    salary_day: int | None = None,
 ) -> JsonObject:
     """과거+당월 소비 DataFrame에서 월간 소비 분석 JSON을 만든다.
 
@@ -664,6 +822,18 @@ def build_monthly_consumption_analysis_from_frames(
     )
     fixed_variable = _build_fixed_variable(df_this, this_total)
     cat_deep, top_savable = _build_category_deep(df_this, df_prev, this_total)
+    monthly_metrics = _build_monthly_metrics(
+        df_this,
+        cat_deep,
+        fixed_variable,
+        this_total,
+        prev_total,
+        year=year,
+        month=month,
+        monthly_budget=monthly_budget,
+        monthly_income=monthly_income,
+        salary_day=salary_day,
+    )
     repeat_monthly = _build_repeat_monthly(df_this)
     weekly_trend = _build_weekly_trend(df_this, year, month)
     micro_monthly = _build_micro_monthly(df_this, this_total)
@@ -693,6 +863,7 @@ def build_monthly_consumption_analysis_from_frames(
             "upper_bound": _round_float(upper_bound),
         },
         "monthly_summary": monthly_summary,
+        "monthly_metrics": monthly_metrics,
         "fixed_variable": fixed_variable,
         "category_deep": cat_deep,
         "top_savable_categories": top_savable,
