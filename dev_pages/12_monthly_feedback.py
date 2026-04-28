@@ -7,6 +7,7 @@ import streamlit as st
 from pydantic import BaseModel
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.schemas.consumption_feedback import (
     MonthlyFeedbackAction,
     MonthlyFeedbackEvidence,
@@ -16,6 +17,8 @@ from catcher_llm.schemas.consumption_feedback import (
 )
 from catcher_llm.services.consumption_feedback.monthly_feedback import generate_monthly_feedback
 from catcher_llm.ui.date_picker import render_date_picker_styles, select_month
+
+_MONTHLY_PERSONA_KEY = "monthly_persona"
 
 settings = get_settings()
 
@@ -121,6 +124,32 @@ chunk_overlap = retrieval_controls[1].number_input("Chunk overlap", min_value=0,
 top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=3, step=1)
 max_queries = retrieval_controls[3].number_input("Max queries", min_value=1, value=4, step=1)
 
+if _MONTHLY_PERSONA_KEY not in st.session_state:
+    st.session_state[_MONTHLY_PERSONA_KEY] = None
+
+_monthly_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
+_monthly_persona_labels = list(_monthly_persona_label_to_key.keys())
+_monthly_current_key = st.session_state[_MONTHLY_PERSONA_KEY]
+_monthly_expander_title = (
+    "🎭 페르소나"
+    if _monthly_current_key is None
+    else f"🎭 페르소나 — {PERSONAS[_monthly_current_key]['label']}"
+)
+_monthly_current_index = (
+    None
+    if _monthly_current_key is None
+    else _monthly_persona_labels.index(PERSONAS[_monthly_current_key]["label"])
+)
+with st.expander(_monthly_expander_title, expanded=False):
+    _monthly_selected = st.radio(
+        "피드백을 전달할 페르소나를 선택하세요",
+        options=_monthly_persona_labels,
+        index=_monthly_current_index,
+        key=f"{_MONTHLY_PERSONA_KEY}_radio",
+    )
+    if _monthly_selected is not None:
+        st.session_state[_MONTHLY_PERSONA_KEY] = _monthly_persona_label_to_key[_monthly_selected]
+
 if st.button("월간 피드백 생성", width="stretch"):
     with st.spinner("월간 피드백 생성 중..."):
         result = generate_monthly_feedback(
@@ -131,6 +160,7 @@ if st.button("월간 피드백 생성", width="stretch"):
             chunk_overlap=int(chunk_overlap),
             top_k=int(top_k),
             max_queries=int(max_queries),
+            persona_key=st.session_state.get(_MONTHLY_PERSONA_KEY),
         )
 
     if result.error:

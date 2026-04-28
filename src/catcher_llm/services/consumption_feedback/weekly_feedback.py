@@ -468,6 +468,7 @@ def generate_weekly_feedback(
     source_files: Sequence[Path] | None = None,
     interpretation_temperature: float = 0.0,
     feedback_temperature: float = 0.0,
+    persona_key: str | None = None,
 ) -> WeeklyFeedbackServiceResult:
     """주간 소비 분석, 해석, RAG 검색, 최종 주간 피드백 생성을 한 번에 실행한다."""
     config = settings or get_settings()
@@ -545,6 +546,7 @@ def generate_weekly_feedback(
         feedback_chain = build_weekly_feedback_chain(
             settings=config,
             temperature=feedback_temperature,
+            persona_key=persona_key,
         )
         feedback = feedback_chain.invoke(
             make_weekly_feedback_input(

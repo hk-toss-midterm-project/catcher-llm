@@ -8,6 +8,7 @@ import streamlit as st
 from pydantic import BaseModel
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackAction,
     DailyFeedbackEvidence,
@@ -18,6 +19,8 @@ from catcher_llm.schemas.consumption_feedback import (
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
 from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
+
+_DAILY_PERSONA_KEY = "daily_persona"
 
 settings = get_settings()
 
@@ -147,6 +150,32 @@ chunk_overlap = retrieval_controls[1].number_input("Chunk overlap", min_value=0,
 top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=3, step=1)
 max_queries = retrieval_controls[3].number_input("Max queries", min_value=1, value=4, step=1)
 
+if _DAILY_PERSONA_KEY not in st.session_state:
+    st.session_state[_DAILY_PERSONA_KEY] = None
+
+_daily_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
+_daily_persona_labels = list(_daily_persona_label_to_key.keys())
+_daily_current_key = st.session_state[_DAILY_PERSONA_KEY]
+_daily_expander_title = (
+    "🎭 페르소나"
+    if _daily_current_key is None
+    else f"🎭 페르소나 — {PERSONAS[_daily_current_key]['label']}"
+)
+_daily_current_index = (
+    None
+    if _daily_current_key is None
+    else _daily_persona_labels.index(PERSONAS[_daily_current_key]["label"])
+)
+with st.expander(_daily_expander_title, expanded=False):
+    _daily_selected = st.radio(
+        "피드백을 전달할 페르소나를 선택하세요",
+        options=_daily_persona_labels,
+        index=_daily_current_index,
+        key=f"{_DAILY_PERSONA_KEY}_radio",
+    )
+    if _daily_selected is not None:
+        st.session_state[_DAILY_PERSONA_KEY] = _daily_persona_label_to_key[_daily_selected]
+
 if st.button("일일 피드백 생성", width="stretch"):
     with st.spinner("일일 피드백 생성 중..."):
         result = generate_daily_feedback(
@@ -158,6 +187,7 @@ if st.button("일일 피드백 생성", width="stretch"):
             chunk_overlap=int(chunk_overlap),
             top_k=int(top_k),
             max_queries=int(max_queries),
+            persona_key=st.session_state.get(_DAILY_PERSONA_KEY),
         )
 
     if result.error:
