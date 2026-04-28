@@ -175,7 +175,6 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
         )
     return ChatPromptTemplate.from_messages(
         [
-<<<<<<< Updated upstream
             (
                 "system",
                 "당신은 사용자의 소비 데이터를 꼼꼼히 분석하여 온화하게 조언해주는 ***금융 동반자***이다. "
