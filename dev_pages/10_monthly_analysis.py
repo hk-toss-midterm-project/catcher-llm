@@ -99,51 +99,25 @@ def _render_risk_summary(
 
 
 def _render_document_monthly_metrics(monthly_metrics: JsonObject) -> None:
-    """문서 기준 월간 핵심 지표와 특수 지표를 화면에 표시한다."""
-    st.subheader("문서 기준 월간 핵심 지표")
-    metric_columns = st.columns(4)
+    """기존 요약과 겹치지 않는 문서 기준 월간 추가 지표를 화면에 표시한다."""
+    st.subheader("문서 기준 월간 추가 지표")
+    metric_columns = st.columns(5)
     metric_columns[0].metric(
-        "월간 총 소비금액",
-        _format_amount(monthly_metrics["monthly_total_amount"]),
-    )
-    metric_columns[1].metric(
         "월간 예산 대비 사용률",
         _format_percent(monthly_metrics["monthly_budget_usage_rate_percent"]),
     )
+    metric_columns[1].metric("구독료 합계", _format_amount(monthly_metrics["subscription_total"]))
     metric_columns[2].metric(
-        "전월 대비 소비 증감률",
-        _format_percent(monthly_metrics["previous_month_change_rate_percent"]),
-    )
-    metric_columns[3].metric("구독료 합계", _format_amount(monthly_metrics["subscription_total"]))
-
-    structure_columns = st.columns(4)
-    structure_columns[0].metric("고정비 금액", _format_amount(monthly_metrics["fixed_cost_amount"]))
-    structure_columns[1].metric(
-        "고정비 비중",
-        _format_percent(monthly_metrics["fixed_cost_ratio_percent"]),
-    )
-    structure_columns[2].metric(
-        "변동비 금액", _format_amount(monthly_metrics["variable_cost_amount"])
-    )
-    structure_columns[3].metric(
         "고정비 부담률",
         _format_percent(monthly_metrics["fixed_cost_burden_rate_percent"]),
     )
-
-    flow_columns = st.columns(2)
-    flow_columns[0].metric(
+    metric_columns[3].metric(
         "급여일 이후 소비 증가율",
         _format_percent(monthly_metrics["post_salary_spending_increase_rate_percent"]),
     )
-    flow_columns[1].metric(
+    metric_columns[4].metric(
         "월말 소비 압박 지수",
         str(monthly_metrics["month_end_pressure_index"] or "-"),
-    )
-
-    _render_table(
-        "카테고리별 월간 소비 비중",
-        monthly_metrics["category_monthly_spending_ratio"],
-        "카테고리별 월간 소비 비중 데이터가 없습니다.",
     )
 
 

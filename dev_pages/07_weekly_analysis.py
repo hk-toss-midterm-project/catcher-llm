@@ -97,55 +97,34 @@ def _render_waste_summary(waste_detection: JsonObject) -> None:
 
 
 def _render_document_weekly_metrics(weekly_metrics: JsonObject) -> None:
-    """문서 기준 주간 핵심 지표와 특수 지표를 화면에 표시한다."""
-    st.subheader("문서 기준 주간 핵심 지표")
-    metric_columns = st.columns(4)
+    """기존 요약과 겹치지 않는 문서 기준 주간 추가 지표를 화면에 표시한다."""
+    st.subheader("문서 기준 주간 추가 지표")
+    metric_columns = st.columns(3)
     metric_columns[0].metric(
-        "주간 총 소비금액", _format_amount(weekly_metrics["weekly_total_amount"])
-    )
-    metric_columns[1].metric(
-        "주간 평균 일 소비금액",
-        _format_amount(weekly_metrics["weekly_average_daily_amount"]),
-    )
-    metric_columns[2].metric("주간 거래 건수", f"{weekly_metrics['weekly_transaction_count']}건")
-    metric_columns[3].metric(
-        "전주 대비 소비 증감률",
-        _format_percent(weekly_metrics["previous_week_change_rate_percent"]),
-    )
-
-    pattern_columns = st.columns(4)
-    pattern_columns[0].metric(
         "주중 소비 비중",
         _format_percent(weekly_metrics["weekday_spending_ratio_percent"]),
     )
-    pattern_columns[1].metric(
+    metric_columns[1].metric(
         "주말 소비 비중",
         _format_percent(weekly_metrics["weekend_spending_ratio_percent"]),
     )
-    pattern_columns[2].metric(
+    metric_columns[2].metric(
         "주간 소비 변동성",
         _format_amount(weekly_metrics["weekly_spending_volatility"]),
     )
-    pattern_columns[3].metric(
+    special_metrics = cast(JsonObject, weekly_metrics["special_metrics"])
+    special_columns = st.columns(3)
+    special_columns[0].metric(
         "주간 예산 소진율",
         _format_percent(weekly_metrics["weekly_budget_usage_rate_percent"]),
     )
-
-    special_metrics = cast(JsonObject, weekly_metrics["special_metrics"])
-    special_columns = st.columns(2)
-    special_columns[0].metric(
+    special_columns[1].metric(
         "주말 과소비 지수",
         str(special_metrics["weekend_overspending_index"]),
     )
-    special_columns[1].metric(
+    special_columns[2].metric(
         "소비 요일 편중도",
         _format_percent(special_metrics["weekday_concentration_ratio_percent"]),
-    )
-
-    _render_table(
-        "문서 기준 요일별 소비 패턴",
-        weekly_metrics["weekday_spending_pattern"],
-        "요일별 소비 패턴 데이터가 없습니다.",
     )
 
 
