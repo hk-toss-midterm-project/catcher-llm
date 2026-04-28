@@ -152,6 +152,9 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
             1486,
         )
         self.assertIn("anomaly_detection.high_spending_items", analysis_input["indicator_json"])
+        self.assertIn("daily_metrics", analysis_input["raw_json"])
+        self.assertIn("daily_metrics.late_night_ratio_percent", analysis_input["indicator_json"])
+        self.assertIn("충동소비 점수", analysis_input["indicator_json"])
         self.assertIn("payment_behavior_analysis", analysis_input["raw_json"])
         self.assertIn("마찰력 없는 지출 비중", analysis_input["indicator_json"])
         self.assertEqual(analysis_input["user_profile_json"], "{}")

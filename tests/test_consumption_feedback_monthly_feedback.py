@@ -97,6 +97,12 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
 
         self.assertEqual(monthly_data.analysis_month, "2024-04")
         self.assertIn("monthly_summary.this_month_total", analysis_input["indicator_json"])
+        self.assertIn("monthly_metrics", analysis_input["raw_json"])
+        self.assertIn(
+            "monthly_metrics.fixed_cost_burden_rate_percent",
+            analysis_input["indicator_json"],
+        )
+        self.assertIn("구독료 합계", analysis_input["indicator_json"])
         self.assertIn("fixed_variable.fixed_total", analysis_input["indicator_json"])
         self.assertIn("high_spending.items", analysis_input["indicator_json"])
         self.assertIn("배달의민족", analysis_input["raw_json"])
@@ -271,6 +277,10 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         retrieval_query_text = "\n".join(result.retrieval_queries)
         self.assertIn(
             "monthly_summary.this_month_total",
+            interpretation_payload["indicator_json"],
+        )
+        self.assertIn(
+            "monthly_metrics.fixed_cost_burden_rate_percent",
             interpretation_payload["indicator_json"],
         )
         self.assertIn("비상금 300만원 만들기", interpretation_payload["user_profile_json"])

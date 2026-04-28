@@ -123,6 +123,7 @@ def _build_monthly_core_metrics(monthly_data: MonthlySpendingData) -> list[Spend
     fixed_variable = monthly_data.fixed_variable
     repeat_patterns = monthly_data.repeat_patterns
     saving_potential = monthly_data.saving_potential
+    monthly_metrics = monthly_data.monthly_metrics
 
     return [
         make_spending_metric(
@@ -264,6 +265,41 @@ def _build_monthly_core_metrics(monthly_data: MonthlySpendingData) -> list[Spend
             "percent",
             "installment_debt_pressure.installment_ratio_percent",
             "이번 달 지출 중 할부 결제가 차지하는 비율",
+        ),
+        make_spending_metric(
+            "월간 예산 대비 사용률",
+            monthly_metrics.monthly_budget_usage_rate_percent,
+            "percent",
+            "monthly_metrics.monthly_budget_usage_rate_percent",
+            "설정된 월간 예산 대비 분석 월 소비 금액 비율",
+        ),
+        make_spending_metric(
+            "구독료 합계",
+            monthly_metrics.subscription_total,
+            "KRW",
+            "monthly_metrics.subscription_total",
+            "구독성 결제로 분류된 월간 소비 금액 합계",
+        ),
+        make_spending_metric(
+            "고정비 부담률",
+            monthly_metrics.fixed_cost_burden_rate_percent,
+            "percent",
+            "monthly_metrics.fixed_cost_burden_rate_percent",
+            "월 소득 대비 고정비 지출 비중",
+        ),
+        make_spending_metric(
+            "급여일 이후 소비 증가율",
+            monthly_metrics.post_salary_spending_increase_rate_percent,
+            "percent",
+            "monthly_metrics.post_salary_spending_increase_rate_percent",
+            "급여일 이후 일평균 소비가 급여일 이전보다 증가한 비율",
+        ),
+        make_spending_metric(
+            "월말 소비 압박 지수",
+            monthly_metrics.month_end_pressure_index,
+            "ratio",
+            "monthly_metrics.month_end_pressure_index",
+            "월말 일평균 소비가 월말 이전 일평균 소비 대비 얼마나 커졌는지 나타내는 배율",
         ),
     ]
 

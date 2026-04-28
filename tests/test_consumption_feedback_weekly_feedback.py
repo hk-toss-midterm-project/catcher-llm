@@ -94,6 +94,12 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
 
         self.assertEqual(weekly_data.week_start, "2024-04-01")
         self.assertIn("weekly_summary.this_week_total", analysis_input["indicator_json"])
+        self.assertIn("weekly_metrics", analysis_input["raw_json"])
+        self.assertIn(
+            "weekly_metrics.weekend_spending_ratio_percent",
+            analysis_input["indicator_json"],
+        )
+        self.assertIn("주말 과소비 지수", analysis_input["indicator_json"])
         self.assertIn("waste_detection.high_spending.items", analysis_input["indicator_json"])
         self.assertIn("배달의민족", analysis_input["raw_json"])
         self.assertIn("비상금", analysis_input["user_profile_json"])
@@ -267,6 +273,10 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         feedback_payload = feedback_chain.invoke.call_args.args[0]
         retrieval_query_text = "\n".join(result.retrieval_queries)
         self.assertIn("weekly_summary.this_week_total", interpretation_payload["indicator_json"])
+        self.assertIn(
+            "weekly_metrics.weekend_spending_ratio_percent",
+            interpretation_payload["indicator_json"],
+        )
         self.assertIn("비상금 300만원 만들기", interpretation_payload["user_profile_json"])
         self.assertIn("배달 주문 1회 줄이기", retrieval_query_text)
         self.assertIn("weekly_json", feedback_payload)
