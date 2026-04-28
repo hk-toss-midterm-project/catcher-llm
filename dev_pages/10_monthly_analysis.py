@@ -10,6 +10,7 @@ from catcher_llm.schemas.consumption_feedback import JsonObject
 from catcher_llm.services.consumption_feedback.monthly_analysis import (
     build_monthly_consumption_analysis_json,
 )
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_month
 
 settings = get_settings()
 
@@ -106,9 +107,15 @@ with st.sidebar:
 st.title("📈 월간 소비 분석")
 st.caption("consumption_feedback.monthly_analysis 서비스를 실행해 화면에서 결과를 점검합니다.")
 
+render_date_picker_styles()
 controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-analysis_month = controls[1].text_input("분석 월", value="2024-04", help="YYYY-MM 형식")
+with controls[1]:
+    analysis_month = select_month(
+        "분석 월",
+        default_month="2024-04",
+        key="monthly_analysis_month",
+    )
 
 if st.button("월간 분석 실행", use_container_width=True):
     with st.spinner("월간 소비 분석 JSON 생성 중..."):

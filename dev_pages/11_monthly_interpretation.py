@@ -28,6 +28,7 @@ from catcher_llm.services.consumption_feedback.monthly_feedback import (
     make_monthly_spending_analysis_input,
     parse_monthly_spending_data,
 )
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_month
 
 settings = get_settings()
 
@@ -225,9 +226,15 @@ with st.sidebar:
 st.title("🧭 월간 소비 해석 체인")
 st.caption("user_monthly_analysis 결과를 월간 지표로 변환하고 구조화 해석 체인을 실행합니다.")
 
+render_date_picker_styles()
 controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-analysis_month = controls[1].text_input("분석 월", value="2024-04", help="YYYY-MM 형식")
+with controls[1]:
+    analysis_month = select_month(
+        "분석 월",
+        default_month="2024-04",
+        key="monthly_interpretation_month",
+    )
 
 try:
     monthly_data = _load_sqlite_monthly_data(

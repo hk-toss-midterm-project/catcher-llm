@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date
 from typing import cast
 
 import pandas as pd
@@ -28,6 +28,8 @@ from catcher_llm.services.consumption_feedback.weekly_feedback import (
     make_weekly_spending_analysis_input,
     parse_weekly_spending_data,
 )
+from catcher_llm.ui.components import render_readonly_control
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_week_range
 
 settings = get_settings()
 
@@ -215,12 +217,17 @@ with st.sidebar:
 st.title("🧭 주간 소비 해석 체인")
 st.caption("user_weekly_analysis 결과를 주간 지표로 변환하고 구조화 해석 체인을 실행합니다.")
 
+render_date_picker_styles()
 controls = st.columns(3)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-week_start_input = controls[1].date_input("분석 주 시작일", value=date(2024, 4, 1))
-week_start = cast(date, week_start_input)
-week_end_input = controls[2].date_input("분석 주 종료일", value=week_start + timedelta(days=6))
-week_end = cast(date, week_end_input)
+with controls[1]:
+    week_start, week_end = select_week_range(
+        "분석 주",
+        default_start=date(2024, 4, 1),
+        key="weekly_interpretation_week",
+    )
+with controls[2]:
+    render_readonly_control("분석 주 종료일", week_end)
 
 try:
     weekly_data = _load_sqlite_weekly_data(

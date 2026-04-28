@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, timedelta
-from typing import cast
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -17,6 +16,8 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklySpendingData,
 )
 from catcher_llm.services.consumption_feedback.weekly_feedback import generate_weekly_feedback
+from catcher_llm.ui.components import render_readonly_control
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_week_range
 
 settings = get_settings()
 
@@ -103,12 +104,17 @@ with st.sidebar:
 st.title("🧾 주간 피드백")
 st.caption("generate_weekly_feedback 서비스를 실행해 최종 주간 소비 피드백 결과를 점검합니다.")
 
+render_date_picker_styles()
 controls = st.columns(3)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-week_start_input = controls[1].date_input("분석 주 시작일", value=date(2024, 4, 1))
-week_start = cast(date, week_start_input)
-week_end_input = controls[2].date_input("분석 주 종료일", value=week_start + timedelta(days=6))
-week_end = cast(date, week_end_input)
+with controls[1]:
+    week_start, week_end = select_week_range(
+        "분석 주",
+        default_start=date(2024, 4, 1),
+        key="weekly_feedback_week",
+    )
+with controls[2]:
+    render_readonly_control("분석 주 종료일", week_end)
 
 retrieval_controls = st.columns(4)
 chunk_size = retrieval_controls[0].number_input("Chunk size", min_value=100, value=800, step=50)

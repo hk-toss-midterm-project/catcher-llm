@@ -15,6 +15,7 @@ from catcher_llm.schemas.consumption_feedback import (
     UserProfileContext,
 )
 from catcher_llm.services.consumption_feedback.monthly_feedback import generate_monthly_feedback
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_month
 
 settings = get_settings()
 
@@ -104,9 +105,15 @@ with st.sidebar:
 st.title("🧾 월간 피드백")
 st.caption("generate_monthly_feedback 서비스를 실행해 최종 월간 소비 피드백 결과를 점검합니다.")
 
+render_date_picker_styles()
 controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-analysis_month = controls[1].text_input("분석 월", value="2024-04", help="YYYY-MM 형식")
+with controls[1]:
+    analysis_month = select_month(
+        "분석 월",
+        default_month="2024-04",
+        key="monthly_feedback_month",
+    )
 
 retrieval_controls = st.columns(4)
 chunk_size = retrieval_controls[0].number_input("Chunk size", min_value=100, value=800, step=50)

@@ -11,6 +11,7 @@ from catcher_llm.schemas.consumption_feedback import JsonObject
 from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
 )
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
 
 settings = get_settings()
 
@@ -46,15 +47,21 @@ with st.sidebar:
 st.title("📊 일일 소비 분석")
 st.caption("consumption_feedback.daily_analysis 서비스를 실행해 화면에서 결과를 점검합니다.")
 
+render_date_picker_styles()
 controls = st.columns(3)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-analysis_day_input = controls[1].date_input("분석 기준일", value=date(2024, 3, 31))
-analysis_day = cast(date, analysis_day_input)
-previous_day_input = controls[2].date_input(
-    "전일 비교 기준일",
-    value=analysis_day - timedelta(days=1),
-)
-previous_day = cast(date, previous_day_input)
+with controls[1]:
+    analysis_day = select_daily_date(
+        "분석 기준일",
+        default=date(2024, 3, 31),
+        key="daily_analysis_day",
+    )
+with controls[2]:
+    previous_day = select_daily_date(
+        "전일 비교 기준일",
+        default=analysis_day - timedelta(days=1),
+        key="daily_previous_day",
+    )
 
 if st.button("일일 분석 실행", use_container_width=True):
     with st.spinner("일일 소비 분석 JSON 생성 중..."):

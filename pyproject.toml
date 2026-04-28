@@ -39,6 +39,7 @@ dependencies = [
     "faiss-cpu>=1.13.2",
     "ipykernel>=7.2.0",
     "langchain>=1.2.15",
+    "streamlit-date-picker>=0.0.5",
 ]
 
 [tool.hatch.build.targets.wheel]

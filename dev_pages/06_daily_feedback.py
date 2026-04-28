@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, timedelta
-from typing import cast
 
 import pandas as pd
 import streamlit as st
@@ -18,6 +17,7 @@ from catcher_llm.schemas.consumption_feedback import (
     UserSpendingData,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
 
 settings = get_settings()
 
@@ -125,15 +125,21 @@ with st.sidebar:
 st.title("📣 일일 피드백")
 st.caption("generate_daily_feedback 서비스를 실행해 최종 일일 소비 잔소리 결과를 점검합니다.")
 
+render_date_picker_styles()
 controls = st.columns(3)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-analysis_day_input = controls[1].date_input("분석 기준일", value=date(2024, 3, 31))
-analysis_day = cast(date, analysis_day_input)
-previous_day_input = controls[2].date_input(
-    "전일 비교 기준일",
-    value=analysis_day - timedelta(days=1),
-)
-previous_day = cast(date, previous_day_input)
+with controls[1]:
+    analysis_day = select_daily_date(
+        "분석 기준일",
+        default=date(2024, 3, 31),
+        key="daily_feedback_day",
+    )
+with controls[2]:
+    previous_day = select_daily_date(
+        "전일 비교 기준일",
+        default=analysis_day - timedelta(days=1),
+        key="daily_feedback_previous_day",
+    )
 
 retrieval_controls = st.columns(4)
 chunk_size = retrieval_controls[0].number_input("Chunk size", min_value=100, value=800, step=50)

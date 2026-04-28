@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import cast
 
 import pandas as pd
@@ -11,6 +11,8 @@ from catcher_llm.schemas.consumption_feedback import JsonObject
 from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
+from catcher_llm.ui.components import render_readonly_control
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_week_range
 
 settings = get_settings()
 
@@ -103,12 +105,17 @@ with st.sidebar:
 st.title("🗓️ 주간 소비 분석")
 st.caption("consumption_feedback.weekly_analysis 서비스를 실행해 화면에서 결과를 점검합니다.")
 
+render_date_picker_styles()
 controls = st.columns(3)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-week_start_input = controls[1].date_input("분석 주 시작일", value=date(2024, 4, 1))
-week_start = cast(date, week_start_input)
-week_end_input = controls[2].date_input("분석 주 종료일", value=week_start + timedelta(days=6))
-week_end = cast(date, week_end_input)
+with controls[1]:
+    week_start, week_end = select_week_range(
+        "분석 주",
+        default_start=date(2024, 4, 1),
+        key="weekly_analysis_week",
+    )
+with controls[2]:
+    render_readonly_control("분석 주 종료일", week_end)
 
 if st.button("주간 분석 실행", use_container_width=True):
     with st.spinner("주간 소비 분석 JSON 생성 중..."):
