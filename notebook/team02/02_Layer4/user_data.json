@@ -2,7 +2,7 @@
   "member_id": 1,
   "analysis_date": "2024-04-01",
   "source_paths": {
-    "past_csv": "../../../data/raw/csv/consumption_v1.csv",
+    "past_csv": "../../../data/raw/csv/transactions_v1.csv",
     "today_csv": "data_input_month.csv"
   },
   "outlier_thresholds": {

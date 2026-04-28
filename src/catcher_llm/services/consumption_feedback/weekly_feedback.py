@@ -129,6 +129,8 @@ def _build_weekly_core_metrics(weekly_data: WeeklySpendingData) -> list[Spending
     repeat_patterns = weekly_data.repeat_patterns
     waste_detection = weekly_data.waste_detection
     saving_potential = weekly_data.saving_potential
+    weekly_metrics = weekly_data.weekly_metrics
+    weekly_special_metrics = weekly_metrics.special_metrics
 
     return [
         make_spending_metric(
@@ -230,6 +232,48 @@ def _build_weekly_core_metrics(weekly_data: WeeklySpendingData) -> list[Spending
             "KRW",
             "elasticity_analysis.threshold",
             "이 금액 미만으로 안 쓰면 주말 소비가 급증하는 평일 일평균 지출 수준",
+        ),
+        make_spending_metric(
+            "주중 소비 비중",
+            weekly_metrics.weekday_spending_ratio_percent,
+            "percent",
+            "weekly_metrics.weekday_spending_ratio_percent",
+            "분석 주간 총 소비 중 주중 소비가 차지하는 비중",
+        ),
+        make_spending_metric(
+            "주말 소비 비중",
+            weekly_metrics.weekend_spending_ratio_percent,
+            "percent",
+            "weekly_metrics.weekend_spending_ratio_percent",
+            "분석 주간 총 소비 중 주말 소비가 차지하는 비중",
+        ),
+        make_spending_metric(
+            "주간 소비 변동성",
+            weekly_metrics.weekly_spending_volatility,
+            "KRW",
+            "weekly_metrics.weekly_spending_volatility",
+            "월요일부터 일요일까지 일별 소비 금액의 표준편차",
+        ),
+        make_spending_metric(
+            "주간 예산 소진율",
+            weekly_metrics.weekly_budget_usage_rate_percent,
+            "percent",
+            "weekly_metrics.weekly_budget_usage_rate_percent",
+            "설정된 주간 예산 대비 분석 주간 소비 금액 비율",
+        ),
+        make_spending_metric(
+            "주말 과소비 지수",
+            weekly_special_metrics.weekend_overspending_index,
+            "ratio",
+            "weekly_metrics.special_metrics.weekend_overspending_index",
+            "주중 일평균 소비 대비 주말 일평균 소비 배율",
+        ),
+        make_spending_metric(
+            "소비 요일 편중도",
+            weekly_special_metrics.weekday_concentration_ratio_percent,
+            "percent",
+            "weekly_metrics.special_metrics.weekday_concentration_ratio_percent",
+            "분석 주간 총 소비 중 최대 소비 요일이 차지하는 비중",
         ),
     ]
 

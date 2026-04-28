@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 type JsonObject = dict[str, JsonValue]
-type MetricValue = bool | int | float | str
+type MetricValue = bool | int | float | str | None
 type CategoryDirection = Literal["increase", "decrease", "flat"]
 type FindingConfidence = Literal["low", "medium", "high"]
 type ActionUrgency = Literal["immediate", "this_week", "this_month"]
@@ -126,6 +126,29 @@ class PaymentBehaviorAnalysis(BaseModel):
     transaction_density: TransactionDensity = Field(default_factory=TransactionDensity)
 
 
+class DailySpecialMetrics(BaseModel):
+    """문서 기준 일일 특수 지표를 표현한다."""
+
+    impulse_spending_score: float = 0.0
+    daily_spending_risk: float = 0.0
+
+
+class DailyMetrics(BaseModel):
+    """문서 기준 일일 소비 지표 묶음을 표현한다."""
+
+    daily_total_amount: int = 0
+    daily_transaction_count: int = 0
+    daily_average_transaction_amount: float = 0.0
+    daily_max_transaction_amount: int = 0
+    time_slot_amounts: list[JsonValue] = Field(default_factory=list)
+    late_night_ratio_percent: float = 0.0
+    category_spending: list[JsonValue] = Field(default_factory=list)
+    daily_budget_usage_rate_percent: float | None = None
+    no_spending_day: bool = False
+    daily_anomaly_score: float = 0.0
+    special_metrics: DailySpecialMetrics = Field(default_factory=DailySpecialMetrics)
+
+
 class UserSpendingData(BaseModel):
     """일일 소비 분석 JSON 전체 구조를 검증 가능한 입력 모델로 표현한다."""
 
@@ -140,6 +163,7 @@ class UserSpendingData(BaseModel):
     payment_behavior_analysis: PaymentBehaviorAnalysis = Field(
         default_factory=PaymentBehaviorAnalysis
     )
+    daily_metrics: DailyMetrics = Field(default_factory=DailyMetrics)
 
 
 class SpendingMetric(BaseModel):
@@ -521,6 +545,38 @@ class WeeklyElasticityAnalysis(BaseModel):
     recommended_cheat_amount: int | None = None
 
 
+class WeeklyRoutineIndicators(BaseModel):
+    """문서 기준 주간 루틴 지표에 포함되는 반복 소비 목록을 표현한다."""
+
+    top_merchants: list[JsonValue] = Field(default_factory=list)
+    consecutive_merchants: list[JsonValue] = Field(default_factory=list)
+
+
+class WeeklySpecialMetrics(BaseModel):
+    """문서 기준 주간 특수 지표를 표현한다."""
+
+    weekend_overspending_index: float = 0.0
+    weekday_concentration_ratio_percent: float = 0.0
+    routine_indicators: WeeklyRoutineIndicators = Field(default_factory=WeeklyRoutineIndicators)
+
+
+class WeeklyMetrics(BaseModel):
+    """문서 기준 주간 소비 지표 묶음을 표현한다."""
+
+    weekly_total_amount: int = 0
+    weekly_average_daily_amount: float = 0.0
+    weekly_transaction_count: int = 0
+    weekday_spending_ratio_percent: float = 0.0
+    weekend_spending_ratio_percent: float = 0.0
+    weekday_spending_pattern: list[JsonValue] = Field(default_factory=list)
+    category_spending: list[JsonValue] = Field(default_factory=list)
+    previous_week_change_rate_percent: float = 0.0
+    weekly_spending_volatility: float = 0.0
+    weekly_budget_usage_rate_percent: float | None = None
+    special_metrics: WeeklySpecialMetrics = Field(default_factory=WeeklySpecialMetrics)
+    weekend_overspending_index: float = 0.0
+
+
 class WeeklySpendingData(BaseModel):
     """주간 소비 분석 JSON 전체 구조를 검증 가능한 입력 모델로 표현한다."""
 
@@ -536,6 +592,7 @@ class WeeklySpendingData(BaseModel):
     waste_detection: WeeklyWasteDetection
     saving_potential: WeeklySavingPotential
     elasticity_analysis: WeeklyElasticityAnalysis = Field(default_factory=WeeklyElasticityAnalysis)
+    weekly_metrics: WeeklyMetrics = Field(default_factory=WeeklyMetrics)
 
 
 class WeeklyCategoryChangeIndicator(BaseModel):
@@ -838,6 +895,31 @@ class MonthlyInstallmentDebtPressure(BaseModel):
     items: list[MonthlyInstallmentItem] = Field(default_factory=list)
 
 
+class MonthlySpecialMetrics(BaseModel):
+    """문서 기준 월간 특수 지표를 표현한다."""
+
+    fixed_cost_burden_rate_percent: float | None = None
+    spending_capacity: int | None = None
+    subscription_leakage_rate_percent: float | None = None
+
+
+class MonthlyMetrics(BaseModel):
+    """문서 기준 월간 소비 지표 묶음을 표현한다."""
+
+    monthly_total_amount: int = 0
+    monthly_budget_usage_rate_percent: float | None = None
+    previous_month_change_rate_percent: float = 0.0
+    fixed_cost_amount: int = 0
+    fixed_cost_ratio_percent: float = 0.0
+    variable_cost_amount: int = 0
+    category_monthly_spending_ratio: list[JsonValue] = Field(default_factory=list)
+    subscription_total: int = 0
+    post_salary_spending_increase_rate_percent: float | None = None
+    month_end_pressure_index: float | None = None
+    special_metrics: MonthlySpecialMetrics = Field(default_factory=MonthlySpecialMetrics)
+    fixed_cost_burden_rate_percent: float | None = None
+
+
 class MonthlySpendingData(BaseModel):
     """월간 소비 분석 JSON 전체 구조를 검증 가능한 입력 모델로 표현한다."""
 
@@ -868,6 +950,7 @@ class MonthlySpendingData(BaseModel):
     installment_debt_pressure: MonthlyInstallmentDebtPressure = Field(
         default_factory=MonthlyInstallmentDebtPressure
     )
+    monthly_metrics: MonthlyMetrics = Field(default_factory=MonthlyMetrics)
 
 
 class MonthlyCategoryChangeIndicator(BaseModel):

@@ -427,33 +427,47 @@ def test_daily_analysis_dev_page_renders_payment_behavior_metrics() -> None:
 
     assert len(app.exception) == 0
     assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
-    assert any(subheader.value == "문서 기준 일일 핵심 지표" for subheader in app.subheader)
+    assert any(subheader.value == "문서 기준 일일 추가 지표" for subheader in app.subheader)
 
 
 def test_consumption_analysis_pages_render_period_document_metrics() -> None:
-    """일일·주간·월간 분석 페이지가 문서 기준 기간별 지표 섹션을 렌더링하는지 검증한다."""
+    """일일·주간·월간 분석 페이지가 중복 없는 문서 기준 추가 지표만 렌더링하는지 검증한다."""
     page_expectations = {
-        Path("dev_pages/04_daily_analysis.py"): [
-            "문서 기준 일일 핵심 지표",
-            "daily_metrics",
-            "일일 예산 소진율",
-        ],
-        Path("dev_pages/07_weekly_analysis.py"): [
-            "문서 기준 주간 핵심 지표",
-            "weekly_metrics",
-            "주말 과소비 지수",
-        ],
-        Path("dev_pages/10_monthly_analysis.py"): [
-            "문서 기준 월간 핵심 지표",
-            "monthly_metrics",
-            "고정비 부담률",
-        ],
+        Path("dev_pages/04_daily_analysis.py"): {
+            "included": [
+                "문서 기준 일일 추가 지표",
+                "daily_metrics",
+                "일일 예산 소진율",
+                "충동소비 점수",
+            ],
+            "excluded": ["일일 총 소비금액", "일일 거래 건수", "일일 평균 거래금액"],
+        },
+        Path("dev_pages/07_weekly_analysis.py"): {
+            "included": [
+                "문서 기준 주간 추가 지표",
+                "weekly_metrics",
+                "주간 소비 변동성",
+                "주말 과소비 지수",
+            ],
+            "excluded": ["주간 총 소비금액", "전주 대비 소비 증감률", "문서 기준 요일별 소비 패턴"],
+        },
+        Path("dev_pages/10_monthly_analysis.py"): {
+            "included": [
+                "문서 기준 월간 추가 지표",
+                "monthly_metrics",
+                "고정비 부담률",
+                "구독료 합계",
+            ],
+            "excluded": ["월간 총 소비금액", "전월 대비 소비 증감률", "카테고리별 월간 소비 비중"],
+        },
     }
 
     for page_path, expected_fragments in page_expectations.items():
         page_source = page_path.read_text(encoding="utf-8")
-        for expected_fragment in expected_fragments:
+        for expected_fragment in expected_fragments["included"]:
             assert expected_fragment in page_source
+        for duplicated_fragment in expected_fragments["excluded"]:
+            assert duplicated_fragment not in page_source
 
 
 def test_consumption_interpretation_dev_page_renders_payment_behavior_metrics() -> None:

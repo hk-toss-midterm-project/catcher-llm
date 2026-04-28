@@ -146,6 +146,56 @@ def _build_previous_day_metrics(previous_day: PreviousDayComparison) -> list[Spe
     ]
 
 
+def _build_document_daily_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
+    """문서 기준 일일 추가 지표를 해석 체인용 핵심 지표 목록으로 변환한다."""
+    daily_metrics = user_data.daily_metrics
+    special_metrics = daily_metrics.special_metrics
+    return [
+        make_spending_metric(
+            "야간 소비 비중",
+            daily_metrics.late_night_ratio_percent,
+            "percent",
+            "daily_metrics.late_night_ratio_percent",
+            "분석 기준일 총 소비 중 심야 시간대 소비가 차지하는 비중",
+        ),
+        make_spending_metric(
+            "일일 예산 소진율",
+            daily_metrics.daily_budget_usage_rate_percent,
+            "percent",
+            "daily_metrics.daily_budget_usage_rate_percent",
+            "설정된 일일 예산 대비 분석 기준일 소비 금액 비율",
+        ),
+        make_spending_metric(
+            "무소비일 여부",
+            daily_metrics.no_spending_day,
+            "boolean",
+            "daily_metrics.no_spending_day",
+            "분석 기준일에 소비가 전혀 없었는지 여부",
+        ),
+        make_spending_metric(
+            "일일 이상 소비 점수",
+            daily_metrics.daily_anomaly_score,
+            "ratio",
+            "daily_metrics.daily_anomaly_score",
+            "과거 원본 일평균 대비 분석 기준일 소비 배율",
+        ),
+        make_spending_metric(
+            "충동소비 점수",
+            special_metrics.impulse_spending_score,
+            "score",
+            "daily_metrics.special_metrics.impulse_spending_score",
+            "야간·비필수·거래 빈도 증가를 함께 고려한 일일 충동소비 점수",
+        ),
+        make_spending_metric(
+            "하루 소비 위험도",
+            special_metrics.daily_spending_risk,
+            "ratio",
+            "daily_metrics.special_metrics.daily_spending_risk",
+            "과거 원본 일평균 대비 하루 소비 위험 배율",
+        ),
+    ]
+
+
 def build_core_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
     """분석에 자주 쓰는 핵심 소비 지표를 원본 JSON에서 직접 추출한다."""
     stable_metrics = user_data.stable_metrics
@@ -248,6 +298,7 @@ def build_core_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
             "payment_behavior_analysis.transaction_density.average_amount_per_transaction",
             "분석 기준일 총 지출을 결제 횟수로 나눈 건당 평균 금액",
         ),
+        *_build_document_daily_metrics(user_data),
     ]
 
     high_spending_metric = _build_high_spending_metric(anomaly)
