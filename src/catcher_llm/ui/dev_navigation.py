@@ -16,6 +16,9 @@ _DEV_PAGE_METADATA: dict[str, tuple[str, str]] = {
     "10_monthly_analysis": ("월간 소비 분석", "📈"),
     "11_monthly_interpretation": ("월간 소비 해석 체인", "🧭"),
     "12_monthly_feedback": ("월간 피드백", "🧾"),
+    "13_daily_report_rim": ("일간 보고서", "📝"),
+    "14_weekly_report_rim": ("주간 보고서", "🗓️"),
+    "15_monthly_report_rim": ("월간 보고서", "📈"),
 }
 
 
