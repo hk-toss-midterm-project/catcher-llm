@@ -4,7 +4,10 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
-os.environ["JAVA_TOOL_OPTIONS"] = "-Dfile.encoding=UTF-8"
+os.environ["JAVA_TOOL_OPTIONS"] = (
+    "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -Duser.language=en -Duser.country=US"
+)
+
 from langchain_core.documents import Document
 from langchain_opendataloader_pdf import OpenDataLoaderPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
