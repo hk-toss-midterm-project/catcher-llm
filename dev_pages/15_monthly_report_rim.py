@@ -183,6 +183,20 @@ def inject_css():
             font-size: 18px;
             font-weight: 900;
         }
+
+        .vote-box {
+            padding: 24px;
+            border-radius: 22px;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            margin-top: 20px;
+        }
+
+        div[data-testid="stButton"] button {
+            border-radius: 14px;
+            font-weight: 900;
+            height: 48px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -212,7 +226,6 @@ def get_category_rows(monthly_data):
 
 def get_top_category(monthly_data):
     rows = get_category_rows(monthly_data)
-
     if not rows:
         return "-", 0
 
@@ -222,7 +235,6 @@ def get_top_category(monthly_data):
 
 def get_improved_category(monthly_data):
     rows = monthly_data.get("category_deep", []) or monthly_data.get("category_changes", [])
-
     improved = []
 
     for row in rows:
@@ -250,7 +262,6 @@ def get_improved_category(monthly_data):
 
 def get_worst_category(monthly_data):
     rows = monthly_data.get("category_deep", []) or monthly_data.get("category_changes", [])
-
     increased = []
 
     for row in rows:
@@ -288,10 +299,7 @@ def get_repeat_target(monthly_data):
     if not rows:
         return "-", 0, 0
 
-    top = max(
-        rows,
-        key=lambda x: x.get("visit_count", x.get("count", 0)),
-    )
+    top = max(rows, key=lambda x: x.get("visit_count", x.get("count", 0)))
 
     return (
         top.get("merchant", "-"),
@@ -410,7 +418,6 @@ def make_weekly_trend_chart(monthly_analysis):
 
 def make_category_change_chart(monthly_data):
     rows = monthly_data.get("category_deep", []) or monthly_data.get("category_changes", [])
-
     parsed = []
 
     for row in rows:
@@ -510,40 +517,46 @@ def get_action_text(feedback):
     )
 
 
-inject_css()
+def render_vote_buttons(member_id: str, month: str):
+    st.markdown('<div class="section">이 리포트는 어땠나요?</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="title">🏆 이번 달 소비 성적표</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="subtitle">월간 보고서는 소비 총액보다 “절약 목표 달성률과 다음 달 전략”에 집중합니다.</div>',
-    unsafe_allow_html=True,
-)
+    if "monthly_report_vote" not in st.session_state:
+        st.session_state.monthly_report_vote = None
 
-c1, c2 = st.columns(2)
+    selected = st.session_state.monthly_report_vote
 
-with c1:
-    member_id = st.text_input("Member ID", value="1")
+    like_type = "primary" if selected == "like" else "secondary"
+    dislike_type = "primary" if selected == "dislike" else "secondary"
 
-with c2:
-    month = st.text_input("분석 월", value=DEFAULT_CALENDAR_MONTH)
+    v1, v2, v3 = st.columns([1, 1, 3])
 
-run = st.button("월간 소비 성적표 생성", use_container_width=True)
+    with v1:
+        if st.button("👍 좋아요", use_container_width=True, type=like_type):
+            st.session_state.monthly_report_vote = "like"
+            st.session_state.monthly_report_vote_log = {
+                "member_id": member_id,
+                "month": month,
+                "vote": "like",
+            }
+            st.rerun()
 
-if run:
-    from catcher_llm.config.settings import get_settings
-    from catcher_llm.services.consumption_feedback.monthly_feedback import (
-        generate_monthly_feedback,
-    )
+    with v2:
+        if st.button("👎 싫어요", use_container_width=True, type=dislike_type):
+            st.session_state.monthly_report_vote = "dislike"
+            st.session_state.monthly_report_vote_log = {
+                "member_id": member_id,
+                "month": month,
+                "vote": "dislike",
+            }
+            st.rerun()
 
-    settings = get_settings()
+    if st.session_state.monthly_report_vote == "like":
+        st.success("좋아요가 반영되었습니다. 👍")
+    elif st.session_state.monthly_report_vote == "dislike":
+        st.warning("싫어요가 반영되었습니다. 다음 리포트 개선에 활용할게요.")
 
-    with st.spinner("이번 달 소비 성적표를 만들고 있어요..."):
-        result = call_monthly_feedback(
-            generate_monthly_feedback,
-            member_id=member_id,
-            month=month,
-            settings=settings,
-        )
 
+def render_monthly_report(result, member_id: str, month: str):
     if result.error:
         st.error(f"월간 피드백 생성 실패: {result.error}")
         st.stop()
@@ -568,10 +581,7 @@ if run:
 
     monthly_budget = max(prev_amount - goal_amount, 0) if goal_amount else prev_amount
     budget_gap = monthly_budget - total_amount
-
     saved_amount = max(prev_amount - total_amount, 0)
-
-    goal_rate = (saved_amount / goal_amount * 100) if goal_amount else 0
 
     top_category, top_category_amount = get_top_category(monthly_data)
     improved = get_improved_category(monthly_data)
@@ -732,6 +742,8 @@ if run:
         unsafe_allow_html=True,
     )
 
+    render_vote_buttons(member_id, month)
+
     with st.expander("상세 분석 & 데이터"):
         st.subheader("월간 분석 JSON")
         st.json(monthly_data)
@@ -742,5 +754,76 @@ if run:
         st.subheader("RAG 검색 질의")
         st.write(getattr(result, "retrieval_queries", []))
 
+        st.subheader("사용자 반응 로그")
+        st.json(st.session_state.get("monthly_report_vote_log", {}))
+
+
+inject_css()
+
+if "monthly_report_result" not in st.session_state:
+    st.session_state.monthly_report_result = None
+
+if "monthly_report_params" not in st.session_state:
+    st.session_state.monthly_report_params = {
+        "member_id": "1",
+        "month": DEFAULT_CALENDAR_MONTH,
+    }
+
+st.markdown('<div class="title">🏆 이번 달 소비 성적표</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="subtitle">월간 보고서는 소비 총액보다 “절약 목표 달성률과 다음 달 전략”에 집중합니다.</div>',
+    unsafe_allow_html=True,
+)
+
+c1, c2 = st.columns(2)
+
+with c1:
+    member_id = st.text_input(
+        "Member ID",
+        value=st.session_state.monthly_report_params["member_id"],
+    )
+
+with c2:
+    month = st.text_input(
+        "분석 월",
+        value=st.session_state.monthly_report_params["month"],
+    )
+
+run = st.button("월간 소비 성적표 생성", use_container_width=True)
+
+if run:
+    st.session_state.monthly_report_vote = None
+    st.session_state.monthly_report_vote_log = {}
+
+    from catcher_llm.config.settings import get_settings
+    from catcher_llm.services.consumption_feedback.monthly_feedback import (
+        generate_monthly_feedback,
+    )
+
+    settings = get_settings()
+
+    with st.spinner("이번 달 소비 성적표를 만들고 있어요..."):
+        result = call_monthly_feedback(
+            generate_monthly_feedback,
+            member_id=member_id,
+            month=month,
+            settings=settings,
+        )
+
+    st.session_state.monthly_report_result = result
+    st.session_state.monthly_report_params = {
+        "member_id": member_id,
+        "month": month,
+    }
+
+if st.session_state.monthly_report_result is not None:
+    saved_member_id = st.session_state.monthly_report_params["member_id"]
+    saved_month = st.session_state.monthly_report_params["month"]
+
+    render_monthly_report(
+        st.session_state.monthly_report_result,
+        saved_member_id,
+        saved_month,
+    )
 else:
     st.info("Member ID와 분석 월을 입력한 뒤, 월간 소비 성적표 생성을 눌러주세요.")
