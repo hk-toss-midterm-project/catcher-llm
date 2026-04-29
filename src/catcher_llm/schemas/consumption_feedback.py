@@ -315,7 +315,7 @@ class DailyFeedbackSessionContext(BaseModel):
     """최종 피드백에 참고할 과거 일일 피드백 세션 기록을 표현한다."""
 
     analysis_date: str
-    daily_analysis_result: str | None = None
+    analysis_result: str | None = None
     feedback_reason: str | None = None
     todo_tomorrow: str | None = None
 

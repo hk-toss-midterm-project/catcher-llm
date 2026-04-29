@@ -17,7 +17,12 @@ from catcher_llm.schemas.consumption_feedback import (
     UserProfileContext,
     UserSpendingData,
 )
-from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
+from catcher_llm.services.consumption_feedback.daily_feedback import (
+    generate_daily_feedback,
+    load_all_daily_sessions,
+    _extract_daily_total_summary,
+)
+from catcher_llm.services.consumption_feedback.interpretation import extract_feedback_reason_summary
 from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
 
 _DAILY_PERSONA_KEY = "daily_persona"
@@ -103,6 +108,29 @@ def _render_daily_analysis_summary(daily_analysis: UserSpendingData | None) -> N
         "건당 평균 금액",
         _format_amount(transaction_density.average_amount_per_transaction),
     )
+
+
+def _render_session_history(member_id: int) -> None:
+    """SQLite session 테이블의 daily 기록을 날짜 순으로 개별 행으로 표시한다."""
+    sessions = load_all_daily_sessions(member_id=member_id, settings=settings)
+
+    if not sessions:
+        st.info("저장된 일일 세션 기록이 없습니다.")
+        return
+
+    rows = []
+    for s in sessions:
+        rows.append(
+            {
+                "날짜": s.analysis_date,
+                "오늘 지출": _extract_daily_total_summary(s.analysis_result),
+                "피드백 메시지": (s.feedback_message or "-"),
+                "피드백 핵심 근거": extract_feedback_reason_summary(s.feedback_reason),
+                "다음 미션": s.todo_tomorrow or "-",
+            }
+        )
+
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def _render_profile_and_memory_context(
@@ -206,6 +234,9 @@ if st.button("일일 피드백 생성", width="stretch"):
             user_profile=result.user_profile,
             memory_context=result.memory_context,
         )
+        st.markdown("---")
+        st.subheader("📋 저장된 일일 세션 기록")
+        _render_session_history(int(member_id))
         st.stop()
 
     if result.feedback is None:
@@ -246,3 +277,7 @@ if st.button("일일 피드백 생성", width="stretch"):
 
     with st.expander("최종 피드백 JSON"):
         st.json(feedback.model_dump())
+
+    st.markdown("---")
+    st.subheader("📋 저장된 일일 세션 기록")
+    _render_session_history(int(member_id))

@@ -6,12 +6,16 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from catcher_llm.chains.consumption_feedback import (
+    build_memory_summary_chain,
     build_monthly_feedback_chain,
     build_monthly_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
+from catcher_llm.db.models import SessionModel, UserMemoryModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     ActionMission,
@@ -39,12 +43,18 @@ from catcher_llm.services.consumption_feedback.daily_feedback import (
     serialize_interpretation_result,
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
+    extract_feedback_reason_summary,
     get_category_direction,
     make_spending_metric,
+    truncate_context_text,
 )
 from catcher_llm.services.consumption_feedback.monthly_analysis import (
     build_monthly_consumption_analysis_json,
 )
+from catcher_llm.services.user_data_service import ensure_user_database
+
+_MONTHLY_MEMORY_PERIOD_TYPE = "monthly"
+_DEFAULT_MONTHLY_MEMORY_SESSION_LIMIT = 6
 
 _DEFAULT_MONTHLY_RETRIEVAL_QUERY = "월간 소비 절약 실천 방법"
 
@@ -466,6 +476,137 @@ def make_monthly_feedback_input(
     }
 
 
+def save_monthly_feedback_session(
+    *,
+    member_id: int,
+    analysis_month: str,
+    monthly_analysis: MonthlySpendingData,
+    feedback: MonthlyFeedbackResult,
+    settings: Settings | None = None,
+) -> None:
+    """최종 월간 피드백 실행 결과를 session 테이블에 해당 월 기준으로 저장하거나 갱신한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+    feedback_reason = json.dumps(
+        [evidence.model_dump() for evidence in feedback.key_evidences],
+        ensure_ascii=False,
+    )
+
+    with session_scope(config) as session:
+        session_row = session.scalar(
+            select(SessionModel).where(
+                SessionModel.user_id == member_id,
+                SessionModel.analysis_date == analysis_month,
+                SessionModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+        if session_row is None:
+            session_row = SessionModel(
+                user_id=member_id,
+                analysis_date=analysis_month,
+                period_type=_MONTHLY_MEMORY_PERIOD_TYPE,
+            )
+            session.add(session_row)
+
+        session_row.analysis_result = monthly_analysis.model_dump_json()
+        session_row.feedback_message = feedback.feedback_message
+        session_row.feedback_reason = feedback_reason
+        session_row.todo_tomorrow = feedback.next_month_mission
+
+
+def _extract_monthly_total_summary(analysis_result: str | None) -> str:
+    """저장된 월간 분석 JSON에서 해당 월 총 지출액을 짧은 문자열로 추출한다."""
+    if analysis_result is None:
+        return "-"
+    try:
+        raw_analysis = json.loads(analysis_result)
+    except json.JSONDecodeError:
+        return "-"
+
+    if not isinstance(raw_analysis, dict):
+        return "-"
+    monthly_summary = raw_analysis.get("monthly_summary")
+    if not isinstance(monthly_summary, dict):
+        return "-"
+    this_month_total = monthly_summary.get("this_month_total")
+    if not isinstance(this_month_total, int | float):
+        return "-"
+    return f"{this_month_total:,.0f}원"
+
+
+def _build_monthly_session_list_text(sessions: Sequence[SessionModel]) -> str:
+    """월간 세션 목록을 LLM 요약 체인에 넣을 텍스트 목록으로 직렬화한다."""
+    lines = []
+    for session_row in sessions:
+        monthly_total = _extract_monthly_total_summary(session_row.analysis_result)
+        reason_summary = extract_feedback_reason_summary(session_row.feedback_reason)
+        next_mission = truncate_context_text(session_row.todo_tomorrow)
+        lines.append(
+            f"- {session_row.analysis_date}: "
+            f"월간지출 {monthly_total}; "
+            f"핵심근거 {reason_summary}; "
+            f"다음미션 {next_mission}"
+        )
+    return "\n".join(lines)
+
+
+def build_monthly_memory_summary_from_sessions(
+    sessions: Sequence[SessionModel],
+    settings: Settings | None = None,
+) -> str:
+    """최근 월간 피드백 세션 목록을 LLM으로 통합 요약한 문자열로 만든다."""
+    if not sessions:
+        return "아직 누적된 월간 피드백 세션이 없습니다."
+    session_list = _build_monthly_session_list_text(sessions)
+    chain = build_memory_summary_chain("월간", settings)
+    return chain.invoke({"session_list": session_list})
+
+
+def refresh_monthly_user_memory(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+    recent_session_limit: int = _DEFAULT_MONTHLY_MEMORY_SESSION_LIMIT,
+) -> str:
+    """최근 월간 session 기록을 바탕으로 user_memories의 monthly 요약을 생성하거나 갱신한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        recent_sessions = list(
+            session.scalars(
+                select(SessionModel)
+                .where(
+                    SessionModel.user_id == member_id,
+                    SessionModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
+                )
+                .order_by(SessionModel.analysis_date.desc(), SessionModel.id.desc())
+                .limit(recent_session_limit)
+            )
+        )
+        summary = build_monthly_memory_summary_from_sessions(
+            list(reversed(recent_sessions)), config
+        )
+
+        memory = session.scalar(
+            select(UserMemoryModel).where(
+                UserMemoryModel.user_id == member_id,
+                UserMemoryModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+        if memory is None:
+            memory = UserMemoryModel(
+                user_id=member_id,
+                period_type=_MONTHLY_MEMORY_PERIOD_TYPE,
+                summary=summary,
+            )
+            session.add(memory)
+        else:
+            memory.summary = summary
+
+    return summary
+
+
 def _build_error_result(
     *,
     member_id: int,
@@ -589,6 +730,17 @@ def generate_monthly_feedback(
             feedback
             if isinstance(feedback, MonthlyFeedbackResult)
             else MonthlyFeedbackResult.model_validate(feedback)
+        )
+        save_monthly_feedback_session(
+            member_id=member_id,
+            analysis_month=analysis_month,
+            monthly_analysis=monthly_data,
+            feedback=feedback_result,
+            settings=config,
+        )
+        refresh_monthly_user_memory(
+            member_id=member_id,
+            settings=config,
         )
     except Exception as exc:
         return _build_error_result(

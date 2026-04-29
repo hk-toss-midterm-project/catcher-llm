@@ -27,7 +27,7 @@ from catcher_llm.db.session import (
 )
 
 _SEED_METADATA_SUFFIX = ".seed-meta.json"
-_SQLITE_SEED_SCHEMA_VERSION = 2
+_SQLITE_SEED_SCHEMA_VERSION = 3
 type SeedCellValue = int | str | datetime | None
 
 

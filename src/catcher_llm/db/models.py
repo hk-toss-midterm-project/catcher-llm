@@ -91,11 +91,17 @@ class UserMemoryModel(Base):
 
 class SessionModel(Base):
     __tablename__ = "session"
-    __table_args__ = (UniqueConstraint("user_id", "analysis_date", name="uq_session_user_date"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "analysis_date", "period_type", name="uq_session_period"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     analysis_date: Mapped[str] = mapped_column(String(20), nullable=False, default="")
-    daily_analysis_result: Mapped[str | None] = mapped_column(Text)
+    period_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="daily"
+    )  # 'daily', 'weekly', 'monthly'
+    analysis_result: Mapped[str | None] = mapped_column(Text)
+    feedback_message: Mapped[str | None] = mapped_column(Text)  # 자연어 피드백 본문 (scolding_message / feedback_message)
     feedback_reason: Mapped[str | None] = mapped_column(Text)
     todo_tomorrow: Mapped[str | None] = mapped_column(Text)

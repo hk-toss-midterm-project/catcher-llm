@@ -167,6 +167,9 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
         tone_instruction = (
             "- 조언 메시지(scolding_message)는 채택된 페르소나의 말투와 어조로 작성한다. "
             "캐릭터 고유의 탄식·과장·의성어·반말·사자성어 등을 적극 활용하라.\n"
+            "- tomorrow_mission 역시 페르소나 말투를 유지하되, "
+            "오늘 소비 데이터에 기반한 구체적이고 새로운 실행 제안을 작성한다. "
+            "캐릭터 프롬프트에 포함된 예시 문장을 그대로 복사하지 말고, 실제 소비 내역에 맞게 새로운 문장을 생성하라.\n"
         )
     else:
         system_msg = _base_system
@@ -545,6 +548,29 @@ def build_monthly_feedback_prompt(persona_override: str | None = None) -> ChatPr
                 "월간 소비 분석 JSON:\n{monthly_json}\n\n"
                 "소비 해석 JSON:\n{interpretation_json}\n\n"
                 "RAG 검색 문서 근거:\n{retrieved_contexts}",
+            ),
+        ]
+    )
+
+
+def build_memory_summary_prompt(period_label: str) -> ChatPromptTemplate:
+    """누적 세션 기록을 하나의 통합 요약문으로 합성하는 메모리 요약 프롬프트를 생성한다."""
+    return ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "당신은 사용자의 소비 피드백 세션 기록들을 읽고, "
+                "핵심 소비 패턴과 반복 문제, 개선 흐름을 간결하게 통합 요약하는 메모리 관리자다. "
+                "각 세션을 개별 나열하지 말고, 전체를 아우르는 하나의 흐름으로 합쳐서 서술하라. "
+                "소비 금액 절대값보다는 패턴과 습관의 변화에 집중하라. "
+                "모든 응답은 한국어 3~5문장으로 작성하라.",
+            ),
+            (
+                "human",
+                f"아래는 사용자의 최근 {period_label} 소비 피드백 세션 목록이다.\n"
+                "각 세션을 하나씩 나열하지 말고, 전체를 아우르는 통합 요약을 작성하라.\n"
+                "반복되는 소비 문제, 개선된 점, 앞으로 주의해야 할 점을 중심으로 3~5문장으로 요약하라.\n\n"
+                "세션 목록:\n{session_list}",
             ),
         ]
     )

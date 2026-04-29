@@ -392,3 +392,38 @@ def prepare_action_payload(payload: dict[str, object]) -> dict[str, str]:
         "problem_text": problem_result.model_dump_json(indent=2),
         "cause_text": cause_result.model_dump_json(indent=2),
     }
+
+
+def truncate_context_text(value: str | None, *, max_length: int = 180) -> str:
+    """메모리 요약에 넣을 긴 텍스트를 한 줄 길이로 제한한다."""
+    if value is None:
+        return "-"
+    normalized = " ".join(value.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 1]}…"
+
+
+def extract_feedback_reason_summary(feedback_reason: str | None) -> str:
+    """session.feedback_reason JSON에서 근거 제목을 우선 추출해 짧은 요약 문자열로 만든다."""
+    if feedback_reason is None:
+        return "-"
+    try:
+        raw_reasons = json.loads(feedback_reason)
+    except (json.JSONDecodeError, TypeError):
+        return truncate_context_text(feedback_reason)
+
+    if not isinstance(raw_reasons, list):
+        return truncate_context_text(str(feedback_reason))
+
+    titles: list[str] = []
+    for raw_reason in raw_reasons:
+        if not isinstance(raw_reason, dict):
+            continue
+        title = raw_reason.get("title")
+        if isinstance(title, str) and title.strip():
+            titles.append(title.strip())
+
+    if not titles:
+        return truncate_context_text(str(feedback_reason))
+    return truncate_context_text(", ".join(titles))

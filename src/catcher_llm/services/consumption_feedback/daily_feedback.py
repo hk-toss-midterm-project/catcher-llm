@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from catcher_llm.chains.consumption_feedback import (
     build_daily_feedback_chain,
+    build_memory_summary_chain,
     build_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
@@ -34,9 +35,11 @@ from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
+    extract_feedback_reason_summary,
     extract_spending_indicators,
     make_spending_analysis_input,
     parse_user_spending_data,
+    truncate_context_text,
 )
 from catcher_llm.services.rag.core import retrieve_context_records
 from catcher_llm.services.user_data_service import ensure_user_database
@@ -155,6 +158,7 @@ def load_daily_feedback_memory_context(
                 .where(
                     SessionModel.user_id == member_id,
                     SessionModel.analysis_date < str(analysis_date),
+                    SessionModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
                 )
                 .order_by(SessionModel.analysis_date.desc(), SessionModel.id.desc())
                 .limit(recent_session_limit)
@@ -169,7 +173,7 @@ def load_daily_feedback_memory_context(
         recent_sessions=[
             DailyFeedbackSessionContext(
                 analysis_date=item.analysis_date,
-                daily_analysis_result=item.daily_analysis_result,
+                analysis_result=item.analysis_result,
                 feedback_reason=item.feedback_reason,
                 todo_tomorrow=item.todo_tomorrow,
             )
@@ -199,61 +203,29 @@ def save_daily_feedback_session(
             select(SessionModel).where(
                 SessionModel.user_id == member_id,
                 SessionModel.analysis_date == str(analysis_date),
+                SessionModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
             )
         )
         if session_row is None:
             session_row = SessionModel(
                 user_id=member_id,
                 analysis_date=str(analysis_date),
+                period_type=_DAILY_MEMORY_PERIOD_TYPE,
             )
             session.add(session_row)
 
-        session_row.daily_analysis_result = daily_analysis.model_dump_json()
+        session_row.analysis_result = daily_analysis.model_dump_json()
+        session_row.feedback_message = feedback.scolding_message
         session_row.feedback_reason = feedback_reason
         session_row.todo_tomorrow = feedback.tomorrow_mission
 
 
-def _truncate_context_text(value: str | None, *, max_length: int = 180) -> str:
-    """메모리 요약에 넣을 긴 텍스트를 한 줄 길이로 제한한다."""
-    if value is None:
-        return "-"
-    normalized = " ".join(value.split())
-    if len(normalized) <= max_length:
-        return normalized
-    return f"{normalized[: max_length - 1]}…"
-
-
-def _extract_feedback_reason_summary(feedback_reason: str | None) -> str:
-    """session.feedback_reason JSON에서 근거 제목을 우선 추출해 짧은 요약 문자열로 만든다."""
-    if feedback_reason is None:
-        return "-"
-    try:
-        raw_reasons = json.loads(feedback_reason)
-    except json.JSONDecodeError:
-        return _truncate_context_text(feedback_reason)
-
-    if not isinstance(raw_reasons, list):
-        return _truncate_context_text(feedback_reason)
-
-    titles: list[str] = []
-    for raw_reason in raw_reasons:
-        if not isinstance(raw_reason, dict):
-            continue
-        title = raw_reason.get("title")
-        if isinstance(title, str) and title.strip():
-            titles.append(title.strip())
-
-    if not titles:
-        return _truncate_context_text(feedback_reason)
-    return _truncate_context_text(", ".join(titles))
-
-
-def _extract_daily_total_summary(daily_analysis_result: str | None) -> str:
+def _extract_daily_total_summary(analysis_result: str | None) -> str:
     """저장된 일일 분석 JSON에서 오늘 총 지출액을 짧은 문자열로 추출한다."""
-    if daily_analysis_result is None:
+    if analysis_result is None:
         return "-"
     try:
-        raw_analysis = json.loads(daily_analysis_result)
+        raw_analysis = json.loads(analysis_result)
     except json.JSONDecodeError:
         return "-"
 
@@ -268,24 +240,54 @@ def _extract_daily_total_summary(daily_analysis_result: str | None) -> str:
     return f"{today_total:,.0f}원"
 
 
-def build_daily_memory_summary_from_sessions(sessions: Sequence[SessionModel]) -> str:
-    """최근 일일 피드백 세션 목록을 장기 메모리 summary 문자열로 압축한다."""
-    if not sessions:
-        return "아직 누적된 일일 피드백 세션이 없습니다."
+def load_all_daily_sessions(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+) -> list[SessionModel]:
+    """session 테이블에서 해당 유저의 모든 daily 세션을 날짜 오름차순으로 반환한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
 
-    lines = ["최근 일일 소비 피드백 누적 요약:"]
+    with session_scope(config) as session:
+        return list(
+            session.scalars(
+                select(SessionModel)
+                .where(
+                    SessionModel.user_id == member_id,
+                    SessionModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
+                )
+                .order_by(SessionModel.analysis_date.asc())
+            )
+        )
+
+
+def _build_session_list_text(sessions: Sequence[SessionModel]) -> str:
+    """세션 목록을 LLM 요약 체인에 넣을 수 있는 텍스트 목록으로 직렬화한다."""
+    lines = []
     for session_row in sessions:
-        daily_total = _extract_daily_total_summary(session_row.daily_analysis_result)
-        reason_summary = _extract_feedback_reason_summary(session_row.feedback_reason)
-        tomorrow_mission = _truncate_context_text(session_row.todo_tomorrow)
+        daily_total = _extract_daily_total_summary(session_row.analysis_result)
+        reason_summary = extract_feedback_reason_summary(session_row.feedback_reason)
+        tomorrow_mission = truncate_context_text(session_row.todo_tomorrow)
         lines.append(
-            "- "
-            f"{session_row.analysis_date}: "
-            f"총소비 {daily_total}; "
+            f"- {session_row.analysis_date}: "
+            f"지출 {daily_total}; "
             f"핵심근거 {reason_summary}; "
             f"다음미션 {tomorrow_mission}"
         )
     return "\n".join(lines)
+
+
+def build_daily_memory_summary_from_sessions(
+    sessions: Sequence[SessionModel],
+    settings: Settings | None = None,
+) -> str:
+    """최근 일일 피드백 세션 목록을 LLM으로 통합 요약한 문자열로 만든다."""
+    if not sessions:
+        return "아직 누적된 일일 피드백 세션이 없습니다."
+    session_list = _build_session_list_text(sessions)
+    chain = build_memory_summary_chain("일일", settings)
+    return chain.invoke({"session_list": session_list})
 
 
 def refresh_daily_user_memory(
@@ -302,12 +304,15 @@ def refresh_daily_user_memory(
         recent_sessions = list(
             session.scalars(
                 select(SessionModel)
-                .where(SessionModel.user_id == member_id)
+                .where(
+                    SessionModel.user_id == member_id,
+                    SessionModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
+                )
                 .order_by(SessionModel.analysis_date.desc(), SessionModel.id.desc())
                 .limit(recent_session_limit)
             )
         )
-        summary = build_daily_memory_summary_from_sessions(list(reversed(recent_sessions)))
+        summary = build_daily_memory_summary_from_sessions(list(reversed(recent_sessions)), config)
 
         memory = session.scalar(
             select(UserMemoryModel).where(

@@ -7,12 +7,16 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from catcher_llm.chains.consumption_feedback import (
+    build_memory_summary_chain,
     build_weekly_feedback_chain,
     build_weekly_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
+from catcher_llm.db.models import SessionModel, UserMemoryModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     ActionMission,
@@ -39,12 +43,18 @@ from catcher_llm.services.consumption_feedback.daily_feedback import (
     serialize_interpretation_result,
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
+    extract_feedback_reason_summary,
     get_category_direction,
     make_spending_metric,
+    truncate_context_text,
 )
 from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
+from catcher_llm.services.user_data_service import ensure_user_database
+
+_WEEKLY_MEMORY_PERIOD_TYPE = "weekly"
+_DEFAULT_WEEKLY_MEMORY_SESSION_LIMIT = 8
 
 _DEFAULT_WEEKLY_RETRIEVAL_QUERY = "주간 소비 절약 실천 방법"
 
@@ -428,6 +438,135 @@ def make_weekly_feedback_input(
     }
 
 
+def save_weekly_feedback_session(
+    *,
+    member_id: int,
+    week_start: date,
+    weekly_analysis: WeeklySpendingData,
+    feedback: WeeklyFeedbackResult,
+    settings: Settings | None = None,
+) -> None:
+    """최종 주간 피드백 실행 결과를 session 테이블에 주 시작일 기준으로 저장하거나 갱신한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+    feedback_reason = json.dumps(
+        [evidence.model_dump() for evidence in feedback.key_evidences],
+        ensure_ascii=False,
+    )
+
+    with session_scope(config) as session:
+        session_row = session.scalar(
+            select(SessionModel).where(
+                SessionModel.user_id == member_id,
+                SessionModel.analysis_date == str(week_start),
+                SessionModel.period_type == _WEEKLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+        if session_row is None:
+            session_row = SessionModel(
+                user_id=member_id,
+                analysis_date=str(week_start),
+                period_type=_WEEKLY_MEMORY_PERIOD_TYPE,
+            )
+            session.add(session_row)
+
+        session_row.analysis_result = weekly_analysis.model_dump_json()
+        session_row.feedback_message = feedback.feedback_message
+        session_row.feedback_reason = feedback_reason
+        session_row.todo_tomorrow = feedback.next_week_mission
+
+
+def _extract_weekly_total_summary(analysis_result: str | None) -> str:
+    """저장된 주간 분석 JSON에서 이번 주 총 지출액을 짧은 문자열로 추출한다."""
+    if analysis_result is None:
+        return "-"
+    try:
+        raw_analysis = json.loads(analysis_result)
+    except json.JSONDecodeError:
+        return "-"
+
+    if not isinstance(raw_analysis, dict):
+        return "-"
+    weekly_summary = raw_analysis.get("weekly_summary")
+    if not isinstance(weekly_summary, dict):
+        return "-"
+    this_week_total = weekly_summary.get("this_week_total")
+    if not isinstance(this_week_total, int | float):
+        return "-"
+    return f"{this_week_total:,.0f}원"
+
+
+def _build_weekly_session_list_text(sessions: Sequence[SessionModel]) -> str:
+    """주간 세션 목록을 LLM 요약 체인에 넣을 텍스트 목록으로 직렬화한다."""
+    lines = []
+    for session_row in sessions:
+        weekly_total = _extract_weekly_total_summary(session_row.analysis_result)
+        reason_summary = extract_feedback_reason_summary(session_row.feedback_reason)
+        next_mission = truncate_context_text(session_row.todo_tomorrow)
+        lines.append(
+            f"- {session_row.analysis_date}: "
+            f"주간지출 {weekly_total}; "
+            f"핵심근거 {reason_summary}; "
+            f"다음미션 {next_mission}"
+        )
+    return "\n".join(lines)
+
+
+def build_weekly_memory_summary_from_sessions(
+    sessions: Sequence[SessionModel],
+    settings: Settings | None = None,
+) -> str:
+    """최근 주간 피드백 세션 목록을 LLM으로 통합 요약한 문자열로 만든다."""
+    if not sessions:
+        return "아직 누적된 주간 피드백 세션이 없습니다."
+    session_list = _build_weekly_session_list_text(sessions)
+    chain = build_memory_summary_chain("주간", settings)
+    return chain.invoke({"session_list": session_list})
+
+
+def refresh_weekly_user_memory(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+    recent_session_limit: int = _DEFAULT_WEEKLY_MEMORY_SESSION_LIMIT,
+) -> str:
+    """최근 주간 session 기록을 바탕으로 user_memories의 weekly 요약을 생성하거나 갱신한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        recent_sessions = list(
+            session.scalars(
+                select(SessionModel)
+                .where(
+                    SessionModel.user_id == member_id,
+                    SessionModel.period_type == _WEEKLY_MEMORY_PERIOD_TYPE,
+                )
+                .order_by(SessionModel.analysis_date.desc(), SessionModel.id.desc())
+                .limit(recent_session_limit)
+            )
+        )
+        summary = build_weekly_memory_summary_from_sessions(list(reversed(recent_sessions)), config)
+
+        memory = session.scalar(
+            select(UserMemoryModel).where(
+                UserMemoryModel.user_id == member_id,
+                UserMemoryModel.period_type == _WEEKLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+        if memory is None:
+            memory = UserMemoryModel(
+                user_id=member_id,
+                period_type=_WEEKLY_MEMORY_PERIOD_TYPE,
+                summary=summary,
+            )
+            session.add(memory)
+        else:
+            memory.summary = summary
+
+    return summary
+
+
 def _build_error_result(
     *,
     member_id: int,
@@ -560,6 +699,17 @@ def generate_weekly_feedback(
             feedback
             if isinstance(feedback, WeeklyFeedbackResult)
             else WeeklyFeedbackResult.model_validate(feedback)
+        )
+        save_weekly_feedback_session(
+            member_id=member_id,
+            week_start=start_day,
+            weekly_analysis=weekly_data,
+            feedback=feedback_result,
+            settings=config,
+        )
+        refresh_weekly_user_memory(
+            member_id=member_id,
+            settings=config,
         )
     except Exception as exc:
         return _build_error_result(

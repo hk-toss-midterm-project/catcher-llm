@@ -12,6 +12,7 @@ from catcher_llm.prompts.consumption_feedback import (
     build_consumption_pattern_prompt,
     build_consumption_problem_prompt,
     build_daily_feedback_prompt,
+    build_memory_summary_prompt,
     build_monthly_consumption_action_prompt,
     build_monthly_consumption_cause_prompt,
     build_monthly_consumption_pattern_prompt,
@@ -304,7 +305,9 @@ def build_monthly_feedback_chain(
 ) -> Runnable[dict[str, str], MonthlyFeedbackResult]:
     """월간 소비 분석 JSON, 해석 JSON, RAG 근거로 최종 피드백을 생성하는 체인을 만든다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
-    persona_override = PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
-    return build_monthly_feedback_prompt(persona_override=persona_override) | chat_model.with_structured_output(
-        MonthlyFeedbackResult
-    )  # type: ignore[return-value]
+    persona_override = (
+        PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None
+    )
+    return build_monthly_feedback_prompt(
+        persona_override=persona_override
+    ) | chat_model.with_structured_output(MonthlyFeedbackResult)  # type: ignore[return-value]
