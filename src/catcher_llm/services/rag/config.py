@@ -16,6 +16,7 @@ class DocumentKind(StrEnum):
     SAVING_TIPS = "saving_tips"
     SELF_REPORT = "self_report"
     WELFARE = "welfare"
+    USER_REPORT = "user_report"
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ _DOCUMENT_KIND_DIRS: dict[DocumentKind, Path] = {
     DocumentKind.SAVING_TIPS: Path("pdf") / "saving_tips",
     DocumentKind.SELF_REPORT: Path("pdf") / "self_report",
     DocumentKind.WELFARE: Path("pdf") / "welfare",
+    DocumentKind.USER_REPORT: Path("markdown") / "users_report",
 }
 
 _DOCUMENT_KIND_SYSTEM_INSTRUCTIONS: dict[DocumentKind, str] = {
@@ -49,6 +51,11 @@ _DOCUMENT_KIND_SYSTEM_INSTRUCTIONS: dict[DocumentKind, str] = {
     DocumentKind.WELFARE: (
         "검색된 문맥 중 복지 정책 내용만 근거로 답하세요. "
         "지원 대상, 혜택, 신청 조건은 문맥에 명시된 경우에만 언급하세요."
+    ),
+    DocumentKind.USER_REPORT: (
+        "검색된 문맥 중 사용자 소비 동향 보고서 내용만 근거로 답하세요. "
+        "월별 소비 총액, 카테고리 구성, 결제 행태 등 수치 기반 사실을 우선 언급하세요. "
+        "문맥에 없는 수치나 해석을 지어내지 마세요."
     ),
 }
 

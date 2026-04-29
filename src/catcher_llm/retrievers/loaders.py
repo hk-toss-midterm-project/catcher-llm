@@ -5,9 +5,35 @@ from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 SUPPORTED_EXTENSIONS = {".md", ".pdf", ".txt"}
+
+_MARKDOWN_HEADERS = [
+    ("#", "header1"),
+    ("##", "header2"),
+    ("###", "header3"),
+    ("####", "header4"),
+]
+
+
+def load_markdown_file(path: Path) -> list[Document]:
+    """마크다운 파일을 헤더 계층 구조 기준으로 분할해 Document 목록으로 변환한다.
+
+    각 섹션은 상위 헤더 정보를 metadata에 포함하므로 RAG 검색 시
+    어느 절에서 나온 청크인지 추적할 수 있다.
+    """
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=_MARKDOWN_HEADERS,
+        strip_headers=False,
+    )
+    docs = splitter.split_text(text)
+    source = str(path)
+    for doc in docs:
+        doc.metadata.setdefault("source", source)
+        doc.metadata["source"] = source
+    return docs
 
 
 def iter_source_files(raw_dir: Path) -> list[Path]:
@@ -25,7 +51,9 @@ def iter_source_files(raw_dir: Path) -> list[Path]:
 def load_source_documents(path: Path) -> list[Document]:
     """단일 원본 파일을 LangChain Document 목록으로 변환한다."""
     suffix = path.suffix.lower()
-    if suffix in {".md", ".txt"}:
+    if suffix == ".md":
+        return load_markdown_file(path)
+    if suffix == ".txt":
         return [
             Document(
                 page_content=path.read_text(encoding="utf-8", errors="ignore"),

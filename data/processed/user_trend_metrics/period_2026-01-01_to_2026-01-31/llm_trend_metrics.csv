@@ -1,0 +1,10 @@
+﻿period_type,period,metric_name,metric_value,metric_unit,compare_period,change_rate_percent,trend_label,context
+month,2026-01,monthly_total_amount,288556600.0,KRW,,,비교불가,월간 승인 소비 총액
+month,2026-01,average_amount_per_active_user,2885566.0,KRW,,,참고,활성 사용자 1인당 월간 소비
+month,2026-01,active_user_count,100.0,users,,,참고,해당 월 소비가 있는 사용자 수
+month,2026-01,approved_transaction_count,7361.0,transactions,,,참고,승인 거래 건수
+month,2026-01,online_ratio_percent,46.4332,percent,,,참고,온라인 결제 금액 비중
+month,2026-01,installment_ratio_percent,18.4566,percent,,,참고,할부 결제 금액 비중
+month,2026-01,late_night_ratio_percent,9.9414,percent,,,참고,22시 이후 야간 소비 금액 비중
+month,2026-01,budget_usage_rate_percent,154.722,percent,,,참고,활성 사용자 목표 지출 한도 대비 사용률
+month,2026-01,top_category_amount,86491200.0,KRW,,,참고,월간 최대 소비 카테고리: 납부
