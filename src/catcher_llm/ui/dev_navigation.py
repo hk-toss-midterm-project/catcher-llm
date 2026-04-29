@@ -19,6 +19,7 @@ _DEV_PAGE_METADATA: dict[str, tuple[str, str]] = {
     "13_daily_report_rim": ("일간 보고서", "📝"),
     "14_weekly_report_rim": ("주간 보고서", "🗓️"),
     "15_monthly_report_rim": ("월간 보고서", "📈"),
+    "16_user_trend_report": ("사용자 동향 보고서 생성", "📑"),
 }
 
 

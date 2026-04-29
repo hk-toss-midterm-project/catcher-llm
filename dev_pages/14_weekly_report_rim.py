@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
-
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from catcher_llm.ui.components import render_readonly_control
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_week_range,
+)
 
 st.set_page_config(page_title="이번 주 소비 습관 리포트", page_icon="🔁", layout="wide")
 
@@ -242,9 +247,7 @@ def make_repeat_merchant_chart(weekly_analysis):
     )
 
     if df.empty:
-        df = pd.DataFrame(
-            {"merchant": ["반복 가맹점 없음"], "visit_count": [0], "amount": [0]}
-        )
+        df = pd.DataFrame({"merchant": ["반복 가맹점 없음"], "visit_count": [0], "amount": [0]})
 
     df = df.sort_values("visit_count", ascending=True).tail(7)
 
@@ -357,18 +360,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+render_date_picker_styles()
 c1, c2, c3 = st.columns(3)
-
-default_start_date = date(2026, 3, 23)
 
 with c1:
     member_id = st.text_input("Member ID", value="1")
 
 with c2:
-    start_date = st.date_input("분석 시작일", value=default_start_date)
+    start_date, end_date = select_week_range(
+        "분석 주",
+        default_start=DEFAULT_CALENDAR_DATE,
+        key="weekly_report_week",
+    )
 
 with c3:
-    end_date = st.date_input("분석 종료일", value=default_start_date + timedelta(days=6))
+    render_readonly_control("분석 종료일", end_date)
 
 if st.button("소비 습관 리포트 생성", use_container_width=True):
     st.session_state.weekly_report_generated = True

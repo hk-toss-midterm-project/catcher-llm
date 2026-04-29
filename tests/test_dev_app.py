@@ -131,6 +131,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "13_daily_report_rim.py",
         "14_weekly_report_rim.py",
         "15_monthly_report_rim.py",
+        "16_user_trend_report.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -148,6 +149,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "일간 보고서",
         "주간 보고서",
         "월간 보고서",
+        "사용자 동향 보고서 생성",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -165,6 +167,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "📝",
         "🗓️",
         "📈",
+        "📑",
     ]
     assert [spec.default for spec in specs] == [
         True,
@@ -182,8 +185,22 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         False,
         False,
         False,
+        False,
     ]
     assert all(spec.path.is_file() for spec in specs)
+
+
+def test_user_trend_report_dev_page_wires_metric_and_report_scripts() -> None:
+    """사용자 동향 보고서 개발 페이지가 지표·보고서 생성 스크립트를 호출하는지 검증한다."""
+    page_source = Path("dev_pages/16_user_trend_report.py").read_text(encoding="utf-8")
+
+    assert "build_and_save_trend_metrics" in page_source
+    assert "generate_latest_user_trend_report" in page_source
+    assert "resolve_metrics_dir" in page_source
+    assert "지표 생성" in page_source
+    assert "보고서 생성" in page_source
+    assert "start_date" in page_source
+    assert "end_date" in page_source
 
 
 def test_dev_app_renders_default_page_without_exception() -> None:
