@@ -26,6 +26,7 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_week_range,
 )
+from catcher_llm.ui.feedback_reaction import render_feedback_reaction_controls
 
 _WEEKLY_PERSONA_KEY = "weekly_persona"
 _WEEKLY_REGEN_KEY = "weekly_force_regen"
@@ -131,6 +132,16 @@ def _render_cached_weekly_session(session_row: SessionModel) -> None:
             _render_evidence_table(evidences)
         except Exception:
             pass
+
+    render_feedback_reaction_controls(
+        member_id=session_row.user_id,
+        analysis_date=session_row.analysis_date,
+        period_type="weekly",
+        settings=settings,
+        key_prefix=f"weekly_feedback_{session_row.user_id}_{session_row.analysis_date}",
+        current_reaction=session_row.feedback_reaction,
+        current_reason=session_row.feedback_reaction_reason,
+    )
 
 
 with st.sidebar:
@@ -267,3 +278,11 @@ else:
 
         with st.expander("최종 피드백 JSON"):
             st.json(feedback.model_dump())
+
+        render_feedback_reaction_controls(
+            member_id=int(member_id),
+            analysis_date=result.week_start,
+            period_type="weekly",
+            settings=settings,
+            key_prefix=f"weekly_feedback_{member_id}_{result.week_start}",
+        )

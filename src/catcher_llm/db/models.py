@@ -124,6 +124,8 @@ class SessionModel(Base):
         Text
     )  # 자연어 피드백 본문 (scolding_message / feedback_message)
     feedback_reason: Mapped[str | None] = mapped_column(Text)
+    feedback_reaction: Mapped[str | None] = mapped_column(String(20))
+    feedback_reaction_reason: Mapped[str | None] = mapped_column(Text)
     todo_tomorrow: Mapped[str | None] = mapped_column(Text)
 
     @property

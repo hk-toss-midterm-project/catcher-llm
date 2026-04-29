@@ -19,6 +19,9 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklyFeedbackServiceResult,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import DailyFeedbackTimingRecord
+from catcher_llm.services.consumption_feedback.feedback_reaction import (
+    FeedbackReactionSaveResult,
+)
 from catcher_llm.ui.dev_navigation import get_dev_page_specs, get_repo_root
 
 
@@ -797,6 +800,69 @@ def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
     assert call_kwargs["analysis_date"].isoformat() == "2026-01-02"
     assert any(subheader.value == "재생성된 피드백" for subheader in app.subheader)
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
+
+
+def test_feedback_dev_pages_render_feedback_reaction_controls() -> None:
+    """일·주·월 피드백 개발 페이지가 피드백 반응 저장 UI를 호출하는지 검증한다."""
+    page_period_snippets = {
+        "dev_pages/06_daily_feedback.py": 'period_type="daily"',
+        "dev_pages/09_weekly_feedback.py": 'period_type="weekly"',
+        "dev_pages/12_monthly_feedback.py": 'period_type="monthly"',
+    }
+
+    for page_path, period_snippet in page_period_snippets.items():
+        page_source = Path(page_path).read_text(encoding="utf-8")
+        assert "render_feedback_reaction_controls" in page_source
+        assert period_snippet in page_source
+
+
+def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() -> None:
+    """일일 피드백 반응 버튼을 누르면 반응 저장 후 사유 입력 UI가 열리는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-01-02",
+        period_type="daily",
+        feedback_message="기존 저장 피드백입니다.",
+        feedback_reason="[]",
+        todo_tomorrow="기존 미션입니다.",
+    )
+    reaction_calls: list[dict[str, object]] = []
+
+    def fake_save_session_feedback_reaction(
+        *args: object, **kwargs: object
+    ) -> FeedbackReactionSaveResult:
+        """피드백 반응 저장 호출 인자를 기록하고 저장 결과를 반환한다."""
+        reaction_calls.append(kwargs)
+        return FeedbackReactionSaveResult(
+            member_id=1,
+            analysis_date="2026-01-02",
+            period_type="daily",
+            reaction="like",
+            reason=None,
+        )
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_daily_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_all_daily_sessions",
+            return_value=[cached_session],
+        ),
+        patch(
+            "catcher_llm.ui.feedback_reaction.save_session_feedback_reaction",
+            side_effect=fake_save_session_feedback_reaction,
+        ),
+    ):
+        app = AppTest.from_file("dev_pages/06_daily_feedback.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "좋아요")
+
+    assert len(app.exception) == 0
+    assert reaction_calls[0]["reaction"] == "like"
+    assert reaction_calls[0]["reason"] == ""
+    assert any(text_area.label == "반응 이유" for text_area in app.text_area)
 
 
 def test_daily_feedback_timing_dev_page_renders_step_records() -> None:

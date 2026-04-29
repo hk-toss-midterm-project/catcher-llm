@@ -15,6 +15,7 @@ from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import (
     TRANSACTION_CSV_COLUMN_TO_DB_COLUMN,
     USER_CSV_COLUMN_TO_DB_COLUMN,
+    SessionModel,
     TransactionModel,
     UserMemoryModel,
     UserModel,
@@ -28,6 +29,10 @@ from catcher_llm.db.session import (
 
 _SEED_METADATA_SUFFIX = ".seed-meta.json"
 _SQLITE_SEED_SCHEMA_VERSION = 4
+_SESSION_FEEDBACK_REACTION_COLUMN_NAMES = (
+    "feedback_reaction",
+    "feedback_reaction_reason",
+)
 type SeedCellValue = int | str | datetime | None
 
 _USER_SEED_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
@@ -231,7 +236,7 @@ def _ensure_dynamic_sqlite_columns(
     table_name: str,
     column_names: Sequence[str],
 ) -> None:
-    """SQLite 테이블에 아직 없는 CSV 추가 컬럼을 TEXT 컬럼으로 생성한다."""
+    """SQLite 테이블에 아직 없는 동적 TEXT 컬럼을 생성한다."""
     if not column_names:
         return
 
@@ -252,6 +257,15 @@ def _ensure_dynamic_sqlite_columns(
             connection.exec_driver_sql(
                 f'ALTER TABLE "{escaped_table_name}" ADD COLUMN "{escaped_column_name}" TEXT'
             )
+
+
+def _ensure_session_feedback_reaction_columns(config: Settings) -> None:
+    """기존 세션 테이블에 피드백 반응 저장 컬럼을 보강한다."""
+    _ensure_dynamic_sqlite_columns(
+        config,
+        table_name=SessionModel.__tablename__,
+        column_names=_SESSION_FEEDBACK_REACTION_COLUMN_NAMES,
+    )
 
 
 def _reflect_sqlite_table(config: Settings, *, table_name: str) -> Table:
@@ -436,6 +450,7 @@ def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult
         _reset_sqlite_database(config)
 
     create_database_tables(config)
+    _ensure_session_feedback_reaction_columns(config)
     _seed_users_if_empty(config)
     _seed_transactions_if_empty(config)
     _write_seed_metadata(config, csv_signature)

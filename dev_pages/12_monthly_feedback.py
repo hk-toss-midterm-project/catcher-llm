@@ -26,6 +26,7 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_month,
 )
+from catcher_llm.ui.feedback_reaction import render_feedback_reaction_controls
 
 _MONTHLY_PERSONA_KEY = "monthly_persona"
 _MONTHLY_REGEN_KEY = "monthly_force_regen"
@@ -98,6 +99,7 @@ def _render_profile_context(user_profile: UserProfileContext | None) -> None:
 
 
 def _render_cached_monthly_session(session_row: SessionModel) -> None:
+    """DB에 저장된 monthly 세션 데이터를 화면에 표시한다."""
     if session_row.feedback_message:
         st.write(session_row.feedback_message)
     if session_row.todo_tomorrow:
@@ -120,6 +122,16 @@ def _render_cached_monthly_session(session_row: SessionModel) -> None:
             _render_evidence_table(evidences)
         except Exception:
             pass
+
+    render_feedback_reaction_controls(
+        member_id=session_row.user_id,
+        analysis_date=session_row.analysis_date,
+        period_type="monthly",
+        settings=settings,
+        key_prefix=f"monthly_feedback_{session_row.user_id}_{session_row.analysis_date}",
+        current_reaction=session_row.feedback_reaction,
+        current_reason=session_row.feedback_reaction_reason,
+    )
 
 
 with st.sidebar:
@@ -255,3 +267,11 @@ else:
 
         with st.expander("최종 피드백 JSON"):
             st.json(feedback.model_dump())
+
+        render_feedback_reaction_controls(
+            member_id=int(member_id),
+            analysis_date=result.analysis_month,
+            period_type="monthly",
+            settings=settings,
+            key_prefix=f"monthly_feedback_{member_id}_{result.analysis_month}",
+        )

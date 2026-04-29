@@ -32,6 +32,7 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_daily_date,
 )
+from catcher_llm.ui.feedback_reaction import render_feedback_reaction_controls
 
 _DAILY_PERSONA_KEY = "daily_persona"
 _DAILY_REGEN_KEY = "daily_force_regen"
@@ -125,6 +126,16 @@ def _render_cached_daily_session(session_row: SessionModel) -> None:
             _render_evidence_table(evidences)
         except Exception:
             pass
+
+    render_feedback_reaction_controls(
+        member_id=session_row.user_id,
+        analysis_date=session_row.analysis_date,
+        period_type="daily",
+        settings=settings,
+        key_prefix=f"daily_feedback_{session_row.user_id}_{session_row.analysis_date}",
+        current_reaction=session_row.feedback_reaction,
+        current_reason=session_row.feedback_reaction_reason,
+    )
 
 
 def _render_profile_and_memory_context(
@@ -222,6 +233,14 @@ def _render_daily_feedback_result(
 
     with st.expander("최종 피드백 JSON"):
         st.json(feedback.model_dump())
+
+    render_feedback_reaction_controls(
+        member_id=member_id,
+        analysis_date=result.analysis_date,
+        period_type="daily",
+        settings=settings,
+        key_prefix=f"daily_feedback_{member_id}_{result.analysis_date}",
+    )
 
     st.markdown("---")
     st.subheader("📋 저장된 일일 세션 기록")

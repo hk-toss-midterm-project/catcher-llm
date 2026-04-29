@@ -7,6 +7,8 @@ from datetime import date
 from pathlib import Path
 
 from catcher_llm.config.settings import Settings
+from catcher_llm.db.models import SessionModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
 from catcher_llm.services.user_data_service import (
     authenticate_user,
@@ -112,6 +114,67 @@ def test_ensure_user_database_seeds_sqlite_from_csv(tmp_path: Path) -> None:
     assert result.user_count == 2
     assert result.transaction_count == 3
     assert result.memory_count == 0
+
+
+def test_ensure_user_database_adds_feedback_reaction_columns_to_session_table(
+    tmp_path: Path,
+) -> None:
+    """세션 테이블에 피드백 반응과 반응 사유를 저장할 컬럼이 준비되는지 검증한다."""
+    settings = _make_settings(tmp_path)
+
+    ensure_user_database(settings=settings)
+
+    session_columns = _fetch_sqlite_table_columns(settings.sqlite_db_path, "session")
+    assert "feedback_reaction" in session_columns
+    assert "feedback_reaction_reason" in session_columns
+
+
+def test_save_session_feedback_reaction_persists_reaction_and_reason(
+    tmp_path: Path,
+) -> None:
+    """피드백 좋아요/싫어요 반응과 사용자가 입력한 사유가 세션 행에 저장되는지 검증한다."""
+    from catcher_llm.services.consumption_feedback.feedback_reaction import (
+        save_session_feedback_reaction,
+    )
+
+    settings = _make_settings(tmp_path)
+    ensure_user_database(settings=settings)
+    with session_scope(settings) as db_session:
+        db_session.add(
+            SessionModel(
+                user_id=1,
+                analysis_date="2026-04-02",
+                period_type="daily",
+                feedback_message="저장된 피드백입니다.",
+            )
+        )
+
+    save_session_feedback_reaction(
+        member_id=1,
+        analysis_date=date(2026, 4, 2),
+        period_type="daily",
+        reaction="like",
+        reason=None,
+        settings=settings,
+    )
+    save_session_feedback_reaction(
+        member_id=1,
+        analysis_date=date(2026, 4, 2),
+        period_type="daily",
+        reaction="like",
+        reason="근거가 명확해서 도움이 됐습니다.",
+        settings=settings,
+    )
+
+    with session_scope(settings) as db_session:
+        saved_session = (
+            db_session.query(SessionModel)
+            .filter_by(user_id=1, analysis_date="2026-04-02", period_type="daily")
+            .one()
+        )
+
+    assert saved_session.feedback_reaction == "like"
+    assert saved_session.feedback_reaction_reason == "근거가 명확해서 도움이 됐습니다."
 
 
 def test_default_daily_report_selection_uses_member_day_with_history(tmp_path: Path) -> None:
