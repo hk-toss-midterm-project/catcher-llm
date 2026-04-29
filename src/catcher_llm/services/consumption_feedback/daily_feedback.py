@@ -262,6 +262,26 @@ def load_all_daily_sessions(
         )
 
 
+def load_daily_session_for_date(
+    *,
+    member_id: int,
+    analysis_date: date,
+    settings: Settings | None = None,
+) -> SessionModel | None:
+    """session 테이블에서 특정 날짜의 daily 세션을 조회한다. 없으면 None을 반환한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        return session.scalar(
+            select(SessionModel).where(
+                SessionModel.user_id == member_id,
+                SessionModel.analysis_date == str(analysis_date),
+                SessionModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
+            )
+        )
+
+
 def _build_session_list_text(sessions: Sequence[SessionModel]) -> str:
     """세션 목록을 LLM 요약 체인에 넣을 수 있는 텍스트 목록으로 직렬화한다."""
     lines = []

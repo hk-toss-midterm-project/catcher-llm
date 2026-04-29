@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 
 import pandas as pd
@@ -7,6 +8,7 @@ import streamlit as st
 from pydantic import BaseModel
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.db.models import SessionModel
 from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.schemas.consumption_feedback import (
     RetrievedAdviceContext,
@@ -15,7 +17,10 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklyFeedbackEvidence,
     WeeklySpendingData,
 )
-from catcher_llm.services.consumption_feedback.weekly_feedback import generate_weekly_feedback
+from catcher_llm.services.consumption_feedback.weekly_feedback import (
+    generate_weekly_feedback,
+    load_weekly_session_for_date,
+)
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -23,6 +28,7 @@ from catcher_llm.ui.date_picker import (
 )
 
 _WEEKLY_PERSONA_KEY = "weekly_persona"
+_WEEKLY_REGEN_KEY = "weekly_force_regen"
 
 settings = get_settings()
 
@@ -99,6 +105,34 @@ def _render_profile_context(user_profile: UserProfileContext | None) -> None:
         st.json(user_profile.model_dump() if user_profile is not None else {})
 
 
+def _render_cached_weekly_session(session_row: SessionModel) -> None:
+    """DB에 저장된 weekly 세션 데이터를 화면에 표시한다."""
+    if session_row.feedback_message:
+        st.write(session_row.feedback_message)
+    if session_row.todo_tomorrow:
+        st.info(session_row.todo_tomorrow)
+
+    if session_row.analysis_result:
+        try:
+            weekly_analysis = WeeklySpendingData.model_validate_json(session_row.analysis_result)
+            _render_weekly_analysis_summary(weekly_analysis)
+            with st.expander("주간 분석 JSON"):
+                st.json(weekly_analysis.model_dump())
+        except Exception:
+            pass
+
+    if session_row.feedback_reason:
+        try:
+            evidences = [
+                WeeklyFeedbackEvidence.model_validate(e)
+                for e in json.loads(session_row.feedback_reason)
+            ]
+            st.subheader("피드백 근거")
+            _render_evidence_table(evidences)
+        except Exception:
+            pass
+
+
 with st.sidebar:
     st.title("🧪 Catcher Dev")
     st.caption("주간 분석, 해석, RAG 조회, 최종 주간 소비 피드백을 한 번에 실행합니다.")
@@ -151,67 +185,91 @@ with st.expander(_weekly_expander_title, expanded=False):
     if _weekly_selected is not None:
         st.session_state[_WEEKLY_PERSONA_KEY] = _weekly_persona_label_to_key[_weekly_selected]
 
-if st.button("주간 피드백 생성", width="stretch"):
-    with st.spinner("주간 피드백 생성 중..."):
-        result = generate_weekly_feedback(
-            member_id=int(member_id),
-            week_start=week_start,
-            week_end=week_end,
-            settings=settings,
-            chunk_size=int(chunk_size),
-            chunk_overlap=int(chunk_overlap),
-            top_k=int(top_k),
-            max_queries=int(max_queries),
-            persona_key=st.session_state.get(_WEEKLY_PERSONA_KEY),
-        )
+# ── 캐시 확인 → 있으면 불러오기, 없으면 생성 ──────────────────────────────────
+_regen_date_key = f"{_WEEKLY_REGEN_KEY}_{member_id}_{week_start}"
+_force_regen = st.session_state.get(_regen_date_key, False)
 
-    if result.error:
-        st.error(f"주간 피드백 생성 실패: {result.error}")
-        if result.retrieval_queries:
-            st.subheader("생성된 RAG 검색 질의")
-            st.write(result.retrieval_queries)
+cached_session = load_weekly_session_for_date(
+    member_id=int(member_id),
+    week_start=week_start,
+    settings=settings,
+)
+_has_cache = cached_session is not None and cached_session.feedback_message
+
+if _has_cache and not _force_regen:
+    col_badge, col_btn = st.columns([3, 1])
+    col_badge.success(f"💾 {week_start} 저장된 피드백을 불러왔습니다.")
+    if col_btn.button("🔄 새로 생성", key="weekly_regen_btn"):
+        st.session_state[_regen_date_key] = True
+        st.rerun()
+
+    _render_cached_weekly_session(cached_session)
+
+else:
+    if _force_regen:
+        st.session_state.pop(_regen_date_key, None)
+
+    if st.button("주간 피드백 생성", width="stretch"):
+        with st.spinner("주간 피드백 생성 중..."):
+            result = generate_weekly_feedback(
+                member_id=int(member_id),
+                week_start=week_start,
+                week_end=week_end,
+                settings=settings,
+                chunk_size=int(chunk_size),
+                chunk_overlap=int(chunk_overlap),
+                top_k=int(top_k),
+                max_queries=int(max_queries),
+                persona_key=st.session_state.get(_WEEKLY_PERSONA_KEY),
+            )
+
+        if result.error:
+            st.error(f"주간 피드백 생성 실패: {result.error}")
+            if result.retrieval_queries:
+                st.subheader("생성된 RAG 검색 질의")
+                st.write(result.retrieval_queries)
+            _render_weekly_analysis_summary(result.weekly_analysis)
+            if result.weekly_analysis is not None:
+                with st.expander("주간 분석 JSON"):
+                    st.json(result.weekly_analysis.model_dump())
+            if result.interpretation_result:
+                with st.expander("소비 해석 JSON"):
+                    st.json(result.interpretation_result)
+            _render_profile_context(result.user_profile)
+            st.stop()
+
+        if result.feedback is None:
+            st.warning("피드백 결과가 비어 있습니다.")
+            st.stop()
+
+        feedback = result.feedback
+
+        st.subheader(feedback.summary_title)
+        st.write(feedback.feedback_message)
+        st.info(feedback.next_week_mission)
+
         _render_weekly_analysis_summary(result.weekly_analysis)
-        if result.weekly_analysis is not None:
-            with st.expander("주간 분석 JSON"):
-                st.json(result.weekly_analysis.model_dump())
-        if result.interpretation_result:
-            with st.expander("소비 해석 JSON"):
-                st.json(result.interpretation_result)
+
+        st.subheader("피드백 근거")
+        _render_evidence_table(feedback.key_evidences)
+
+        st.subheader("다음 주 할 일")
+        _render_action_table(feedback.action_items)
+
+        st.subheader("RAG 검색 질의")
+        st.write(result.retrieval_queries)
+
+        st.subheader("검색된 문서 근거")
+        _render_contexts(result.retrieved_contexts)
+
         _render_profile_context(result.user_profile)
-        st.stop()
 
-    if result.feedback is None:
-        st.warning("피드백 결과가 비어 있습니다.")
-        st.stop()
+        with st.expander("주간 분석 JSON"):
+            if result.weekly_analysis is not None:
+                st.json(result.weekly_analysis.model_dump())
 
-    feedback = result.feedback
+        with st.expander("소비 해석 JSON"):
+            st.json(result.interpretation_result or {})
 
-    st.subheader(feedback.summary_title)
-    st.write(feedback.feedback_message)
-    st.info(feedback.next_week_mission)
-
-    _render_weekly_analysis_summary(result.weekly_analysis)
-
-    st.subheader("피드백 근거")
-    _render_evidence_table(feedback.key_evidences)
-
-    st.subheader("다음 주 할 일")
-    _render_action_table(feedback.action_items)
-
-    st.subheader("RAG 검색 질의")
-    st.write(result.retrieval_queries)
-
-    st.subheader("검색된 문서 근거")
-    _render_contexts(result.retrieved_contexts)
-
-    _render_profile_context(result.user_profile)
-
-    with st.expander("주간 분석 JSON"):
-        if result.weekly_analysis is not None:
-            st.json(result.weekly_analysis.model_dump())
-
-    with st.expander("소비 해석 JSON"):
-        st.json(result.interpretation_result or {})
-
-    with st.expander("최종 피드백 JSON"):
-        st.json(feedback.model_dump())
+        with st.expander("최종 피드백 JSON"):
+            st.json(feedback.model_dump())

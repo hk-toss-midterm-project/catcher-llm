@@ -514,6 +514,26 @@ def save_monthly_feedback_session(
         session_row.todo_tomorrow = feedback.next_month_mission
 
 
+def load_monthly_session_for_date(
+    *,
+    member_id: int,
+    analysis_month: str,
+    settings: Settings | None = None,
+) -> SessionModel | None:
+    """session 테이블에서 특정 월의 monthly 세션을 조회한다. 없으면 None을 반환한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        return session.scalar(
+            select(SessionModel).where(
+                SessionModel.user_id == member_id,
+                SessionModel.analysis_date == analysis_month,
+                SessionModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+
+
 def _extract_monthly_total_summary(analysis_result: str | None) -> str:
     """저장된 월간 분석 JSON에서 해당 월 총 지출액을 짧은 문자열로 추출한다."""
     if analysis_result is None:

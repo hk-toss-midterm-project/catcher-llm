@@ -476,6 +476,26 @@ def save_weekly_feedback_session(
         session_row.todo_tomorrow = feedback.next_week_mission
 
 
+def load_weekly_session_for_date(
+    *,
+    member_id: int,
+    week_start: date,
+    settings: Settings | None = None,
+) -> SessionModel | None:
+    """session 테이블에서 특정 주 시작일의 weekly 세션을 조회한다. 없으면 None을 반환한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        return session.scalar(
+            select(SessionModel).where(
+                SessionModel.user_id == member_id,
+                SessionModel.analysis_date == str(week_start),
+                SessionModel.period_type == _WEEKLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+
+
 def _extract_weekly_total_summary(analysis_result: str | None) -> str:
     """저장된 주간 분석 JSON에서 이번 주 총 지출액을 짧은 문자열로 추출한다."""
     if analysis_result is None:
