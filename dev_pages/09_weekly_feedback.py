@@ -125,31 +125,25 @@ chunk_overlap = retrieval_controls[1].number_input("Chunk overlap", min_value=0,
 top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=3, step=1)
 max_queries = retrieval_controls[3].number_input("Max queries", min_value=1, value=4, step=1)
 
-if _WEEKLY_PERSONA_KEY not in st.session_state:
-    st.session_state[_WEEKLY_PERSONA_KEY] = None
-
+_WEEKLY_RADIO_KEY = f"{_WEEKLY_PERSONA_KEY}_radio"
 _weekly_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
 _weekly_persona_labels = list(_weekly_persona_label_to_key.keys())
-_weekly_current_key = st.session_state[_WEEKLY_PERSONA_KEY]
+
+# 라디오 위젯 자체의 session_state를 읽어야 타이밍 없이 즉시 제목에 반영된다
+_weekly_selected_label = st.session_state.get(_WEEKLY_RADIO_KEY)
+_weekly_selected_key = _weekly_persona_label_to_key.get(_weekly_selected_label) if _weekly_selected_label else None
 _weekly_expander_title = (
     "🎭 페르소나"
-    if _weekly_current_key is None
-    else f"🎭 페르소나 — {PERSONAS[_weekly_current_key]['label']}"
-)
-_weekly_current_index = (
-    None
-    if _weekly_current_key is None
-    else _weekly_persona_labels.index(PERSONAS[_weekly_current_key]["label"])
+    if _weekly_selected_key is None
+    else f"🎭 페르소나 — {_weekly_selected_label}"
 )
 with st.expander(_weekly_expander_title, expanded=False):
-    _weekly_selected = st.radio(
+    st.radio(
         "피드백을 전달할 페르소나를 선택하세요",
         options=_weekly_persona_labels,
-        index=_weekly_current_index,
-        key=f"{_WEEKLY_PERSONA_KEY}_radio",
+        index=None,
+        key=_WEEKLY_RADIO_KEY,
     )
-    if _weekly_selected is not None:
-        st.session_state[_WEEKLY_PERSONA_KEY] = _weekly_persona_label_to_key[_weekly_selected]
 
 if st.button("주간 피드백 생성", width="stretch"):
     with st.spinner("주간 피드백 생성 중..."):
@@ -162,7 +156,7 @@ if st.button("주간 피드백 생성", width="stretch"):
             chunk_overlap=int(chunk_overlap),
             top_k=int(top_k),
             max_queries=int(max_queries),
-            persona_key=st.session_state.get(_WEEKLY_PERSONA_KEY),
+            persona_key=_weekly_selected_key,
         )
 
     if result.error:

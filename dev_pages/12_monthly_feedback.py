@@ -124,31 +124,25 @@ chunk_overlap = retrieval_controls[1].number_input("Chunk overlap", min_value=0,
 top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=3, step=1)
 max_queries = retrieval_controls[3].number_input("Max queries", min_value=1, value=4, step=1)
 
-if _MONTHLY_PERSONA_KEY not in st.session_state:
-    st.session_state[_MONTHLY_PERSONA_KEY] = None
-
+_MONTHLY_RADIO_KEY = f"{_MONTHLY_PERSONA_KEY}_radio"
 _monthly_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
 _monthly_persona_labels = list(_monthly_persona_label_to_key.keys())
-_monthly_current_key = st.session_state[_MONTHLY_PERSONA_KEY]
+
+# 라디오 위젯 자체의 session_state를 읽어야 타이밍 없이 즉시 제목에 반영된다
+_monthly_selected_label = st.session_state.get(_MONTHLY_RADIO_KEY)
+_monthly_selected_key = _monthly_persona_label_to_key.get(_monthly_selected_label) if _monthly_selected_label else None
 _monthly_expander_title = (
     "🎭 페르소나"
-    if _monthly_current_key is None
-    else f"🎭 페르소나 — {PERSONAS[_monthly_current_key]['label']}"
-)
-_monthly_current_index = (
-    None
-    if _monthly_current_key is None
-    else _monthly_persona_labels.index(PERSONAS[_monthly_current_key]["label"])
+    if _monthly_selected_key is None
+    else f"🎭 페르소나 — {_monthly_selected_label}"
 )
 with st.expander(_monthly_expander_title, expanded=False):
-    _monthly_selected = st.radio(
+    st.radio(
         "피드백을 전달할 페르소나를 선택하세요",
         options=_monthly_persona_labels,
-        index=_monthly_current_index,
-        key=f"{_MONTHLY_PERSONA_KEY}_radio",
+        index=None,
+        key=_MONTHLY_RADIO_KEY,
     )
-    if _monthly_selected is not None:
-        st.session_state[_MONTHLY_PERSONA_KEY] = _monthly_persona_label_to_key[_monthly_selected]
 
 if st.button("월간 피드백 생성", width="stretch"):
     with st.spinner("월간 피드백 생성 중..."):
@@ -160,7 +154,7 @@ if st.button("월간 피드백 생성", width="stretch"):
             chunk_overlap=int(chunk_overlap),
             top_k=int(top_k),
             max_queries=int(max_queries),
-            persona_key=st.session_state.get(_MONTHLY_PERSONA_KEY),
+            persona_key=_monthly_selected_key,
         )
 
     if result.error:

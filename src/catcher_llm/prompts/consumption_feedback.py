@@ -167,6 +167,9 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
         tone_instruction = (
             "- 조언 메시지(scolding_message)는 채택된 페르소나의 말투와 어조로 작성한다. "
             "캐릭터 고유의 탄식·과장·의성어·반말·사자성어 등을 적극 활용하라.\n"
+            "- tomorrow_mission은 페르소나 말투를 절대 사용하지 않는다. "
+            "어떤 페르소나를 선택하든 항상 중립적이고 명확한 한국어 한 문장으로, "
+            "'내일은 ~해보세요' 형식으로 작성한다.\n"
         )
     else:
         system_msg = _base_system
@@ -344,6 +347,9 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
         tone_instruction = (
             "- feedback_message는 채택된 페르소나의 말투와 어조로 작성한다. "
             "캐릭터 고유의 탄식·과장·의성어·반말·사자성어 등을 적극 활용하라.\n"
+            "- next_week_mission은 페르소나 말투를 절대 사용하지 않는다. "
+            "어떤 페르소나를 선택하든 항상 중립적이고 명확한 한국어 한 문장으로, "
+            "'다음 주에는 ~해보세요' 형식으로 작성한다.\n"
         )
     else:
         system_msg = _base_system
@@ -521,6 +527,9 @@ def build_monthly_feedback_prompt(persona_override: str | None = None) -> ChatPr
         tone_instruction = (
             "- feedback_message는 채택된 페르소나의 말투와 어조로 작성한다. "
             "캐릭터 고유의 탄식·과장·의성어·반말·사자성어 등을 적극 활용하라.\n"
+            "- next_month_mission은 페르소나 말투를 절대 사용하지 않는다. "
+            "어떤 페르소나를 선택하든 항상 중립적이고 명확한 한국어 한 문장으로, "
+            "'다음 달에는 ~해보세요' 형식으로 작성한다.\n"
         )
     else:
         system_msg = _base_system
