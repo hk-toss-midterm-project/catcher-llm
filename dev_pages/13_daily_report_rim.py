@@ -5,8 +5,47 @@ from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
+import sqlite3
+
+def add_user_point(member_id: int, point: int = 50):
+    conn = sqlite3.connect(
+        r"C:\Users\user\catcher\catcher-llm\data\sqlite\app.sqlite3"
+    )
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET "개인 점수" = CAST(COALESCE(NULLIF("개인 점수", ''), '0') AS INTEGER) + ?
+        WHERE id = ?
+        """,
+        (point, member_id),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_user_point(member_id: int) -> int:
+    conn = sqlite3.connect(
+        r"C:\Users\user\catcher\catcher-llm\data\sqlite\app.sqlite3"
+    )
+    cursor = conn.cursor()
+
+    cursor.execute(
+        'SELECT COALESCE(NULLIF("개인 점수", ""), "0") FROM users WHERE id = ?',
+        (member_id,),
+    )
+
+    row = cursor.fetchone()
+    conn.close()
+
+    return int(row[0]) if row else 0
+
+if "point_earned" not in st.session_state:
+    st.session_state.point_earned = False
 
 st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
@@ -171,6 +210,15 @@ def inject_css():
             color: #0c4a6e;
             font-size: 18px;
             font-weight: 900;
+        }
+
+        .feedback-box {
+            padding: 24px;
+            border-radius: 22px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 8px 22px rgba(15,23,42,0.06);
+            margin-top: 12px;
         }
 
         div[data-testid="stExpander"] {
@@ -385,6 +433,68 @@ def get_action_text(feedback):
     return "내일은 배달 음식 주문하지 않기", "식비 비중을 낮추기 위해 하루만 배달을 쉬어보세요."
 
 
+def render_report_feedback():
+    if "daily_report_feedback" not in st.session_state:
+        st.session_state.daily_report_feedback = None
+
+    if "daily_report_rewarded" not in st.session_state:
+        st.session_state.daily_report_rewarded = False
+
+    st.markdown('<div class="section">보고서 피드백</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="feedback-box">
+            <div style="font-weight:900; font-size:18px; color:#0f172a; margin-bottom:6px;">
+                오늘의 보고서가 도움이 되었나요?
+            </div>
+            <div style="color:#64748b; font-size:14px; margin-bottom:16px;">
+                피드백은 한 번만 포인트가 적립됩니다.
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, _ = st.columns([1, 1, 4])
+
+    like_selected = st.session_state.daily_report_feedback == "like"
+    dislike_selected = st.session_state.daily_report_feedback == "dislike"
+
+    def reward_once():
+        if not st.session_state.daily_report_rewarded:
+            add_user_point(int(st.session_state.member_id), 50)
+            st.session_state.daily_report_rewarded = True
+            st.session_state.point_earned = True   # 🔥 추가
+
+    with c1:
+        if st.button(
+            "👍 좋아요",
+            type="primary" if like_selected else "secondary",
+            use_container_width=True,
+            key="daily_report_like",
+        ):
+            st.session_state.daily_report_feedback = "like"
+            reward_once()
+            st.rerun()
+
+    with c2:
+        if st.button(
+            "👎 싫어요",
+            type="primary" if dislike_selected else "secondary",
+            use_container_width=True,
+            key="daily_report_dislike",
+        ):
+            st.session_state.daily_report_feedback = "dislike"
+            reward_once()
+            st.rerun()
+
+    if st.session_state.daily_report_feedback == "like":
+        st.success("좋아요가 저장되었습니다. +50P")
+    elif st.session_state.daily_report_feedback == "dislike":
+        st.warning("싫어요가 저장되었습니다. +50P")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 inject_css()
 
 st.markdown('<div class="title">🚨 오늘의 소비 알림장</div>', unsafe_allow_html=True)
@@ -406,6 +516,9 @@ with col3:
 
 run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
+st.session_state.member_id = member_id
+
+# 1) 생성 버튼을 눌렀을 때는 결과만 저장
 if run:
     from catcher_llm.config.settings import get_settings
     from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
@@ -424,193 +537,256 @@ if run:
             max_queries=4,
         )
 
-    if result.error:
-        st.error(f"일간 피드백 생성 실패: {result.error}")
-        st.stop()
+    st.session_state.daily_report_result = result
+    st.session_state.daily_report_feedback = None
+    st.session_state.daily_report_rewarded = False
 
-    if result.feedback is None:
-        st.warning("피드백 결과가 비어 있습니다.")
-        st.stop()
 
-    feedback = result.feedback
-    daily_analysis = result.daily_analysis
+# 2) 저장된 결과를 기준으로 화면을 계속 그림
+result = st.session_state.get("daily_report_result")
 
-    if daily_analysis is None:
-        st.warning("일일 분석 데이터가 비어 있어 리포트를 만들 수 없습니다.")
-        st.stop()
-
-    today_amount = daily_analysis.stable_metrics.today_total
-    past_average = daily_analysis.stable_metrics.past_daily_stable_average
-    change_rate = daily_analysis.previous_day_comparison.amount_diff_rate_percent
-    previous_amount = today_amount - daily_analysis.previous_day_comparison.amount_diff
-    peak_time = daily_analysis.time_slot_analysis.peak_slot or "-"
-    main_category, main_ratio = get_main_category(daily_analysis)
-
-    user_profile = getattr(result, "user_profile", None)
-    saving_goal_text = getattr(user_profile, "saving_goal_text", None)
-    monthly_goal = extract_monthly_goal(saving_goal_text)
-    daily_saving_goal = round(monthly_goal / 30) if monthly_goal else 0
-    daily_budget = max(round(past_average - daily_saving_goal), 0)
-    budget_gap = daily_budget - today_amount if daily_budget else 0
-
-    action_title, action_detail = get_action_text(feedback)
-
-    # 변화율에 따라 색상 동적 결정
-    if change_rate < 0:
-        hero_gradient = "linear-gradient(135deg, #0052CC 0%, #0066FF 45%, #3B82F6 100%)"
-        hero_shadow = "rgba(3, 102, 255, 0.24)"
-        amount_color = "#c7f0d8"
-    else:
-        hero_gradient = "linear-gradient(135deg, #DC2626 0%, #EF4444 45%, #F87171 100%)"
-        hero_shadow = "rgba(239, 68, 68, 0.24)"
-        amount_color = "#FED7AA"
-
-    st.markdown(
-        f"""
-        <div style="
-            padding: 34px;
-            border-radius: 28px;
-            background: {hero_gradient};
-            color: white;
-            margin: 28px 0 30px 0;
-            box-shadow: 0 20px 42px {hero_shadow};
-        ">
-            <div class="hero-label">오늘의 소비 경고</div>
-            <div class="hero-main">
-                오늘은 <span style="color: {amount_color}; font-size: 48px;">{money(today_amount)}</span>을 썼고,<br>
-                가장 많이 새는 곳은 <span style="color: #ffffff; font-size: 40px;">{main_category}</span>입니다.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="section">오늘 핵심만 보기</div>', unsafe_allow_html=True)
-
-    m1, m2, m3, m4 = st.columns(4)
-
-    with m1:
-        metric_card("오늘 소비", money(today_amount))
-    with m2:
-        metric_card("전일 대비", f"{change_rate:.2f}%")
-    with m3:
-        metric_card("피크 시간대", peak_time)
-    with m4:
-        metric_card(f"{main_category} 비중", pct(main_ratio))
-
-    # ==================== 3개 그래프 한 줄 배치 ====================
-    st.markdown('<div class="section">오늘 돈이 샌 위치</div>', unsafe_allow_html=True)
-
-    g1, g2, g3 = st.columns(3)
-
-    with g1:
-        st.markdown("### 어디에 썼나")
-        st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
-
-    with g2:
-        st.markdown("### 언제 썼나")
-        st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
-
-    with g3:
-        st.markdown("### 소비 한도")
-        if daily_budget:
-            st.plotly_chart(
-                make_budget_gauge(today_amount, daily_budget),
-                use_container_width=True,
-            )
-            remaining_label = "남은 금액" if budget_gap >= 0 else "초과 금액"
-            st.markdown(
-                f"""
-                <div style="
-                    padding:16px 20px;
-                    border-radius:18px;
-                    background:#f8fafc;
-                    border:1px solid #e5e7eb;
-                    font-weight:800;
-                    color:#0f172a;
-                    text-align:center;
-                    font-size:14px;
-                ">
-                    권장 한도: {money(daily_budget)}<br>
-                    <span style="color:#64748b; font-weight:600;">{remaining_label}: {money(abs(budget_gap))}</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.info("절약 목표 없음")
-
-    st.markdown('<div class="section">오늘의 판단</div>', unsafe_allow_html=True)
-
-    p1, p2 = st.columns([1.05, 0.95])
-
-    with p1:
-        st.markdown(
-            f"""
-            <div class="problem-box">
-                <div class="problem-title">오늘의 문제 소비: {main_category}</div>
-                <div class="problem-text">
-                    오늘 소비의 {main_ratio:.1f}%가 {main_category}에 집중되어 있습니다.<br>
-                    총액보다 중요한 건 "소비가 한 곳에 몰렸는지"입니다.
-                    내일은 이 카테고리 하나만 줄여도 효과가 큽니다.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with p2:
-        st.markdown(
-            f"""
-            <div class="mission-box">
-                <div class="mission-title">내일의 미션</div>
-                <div class="mission-text">
-                    {action_title}<br>
-                    <span style="font-size:14px; color:#047857;">{action_detail}</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div class="section">내일 할 일 1개</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        f"""
-        <div class="action-card">
-            <span class="num">01</span>
-            <b>{action_title}</b><br>
-            <span style="margin-left:54px; color:#64748b;">
-            {action_detail}
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="section">기대 효과</div>', unsafe_allow_html=True)
-
-    saving_amount = max(previous_amount - today_amount, daily_saving_goal, 0)
-
-    st.markdown(
-        f"""
-        <div class="effect">
-            내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.
-            <span style="float:right;">하루 절약 목표 약 {money(saving_amount)}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.expander("상세 분석 & 데이터"):
-        st.subheader("일일 분석 JSON")
-        st.json(daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis)
-
-        st.subheader("최종 피드백 JSON")
-        st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
-
-        st.subheader("RAG 검색 질의")
-        st.write(getattr(result, "retrieval_queries", []))
-
-else:
+if result is None:
     st.info("Member ID와 날짜를 선택한 뒤, 오늘의 소비 알림장 생성을 눌러주세요.")
+    st.stop()
+
+if result.error:
+    st.error(f"일간 피드백 생성 실패: {result.error}")
+    st.stop()
+
+if result.feedback is None:
+    st.warning("피드백 결과가 비어 있습니다.")
+    st.stop()
+
+feedback = result.feedback
+daily_analysis = result.daily_analysis
+
+if daily_analysis is None:
+    st.warning("일일 분석 데이터가 비어 있어 리포트를 만들 수 없습니다.")
+    st.stop()
+
+today_amount = daily_analysis.stable_metrics.today_total
+past_average = daily_analysis.stable_metrics.past_daily_stable_average
+change_rate = daily_analysis.previous_day_comparison.amount_diff_rate_percent or 0
+previous_amount = today_amount - daily_analysis.previous_day_comparison.amount_diff
+peak_time = daily_analysis.time_slot_analysis.peak_slot or "-"
+main_category, main_ratio = get_main_category(daily_analysis)
+
+user_profile = getattr(result, "user_profile", None)
+saving_goal_text = getattr(user_profile, "saving_goal_text", None)
+monthly_goal = extract_monthly_goal(saving_goal_text)
+daily_saving_goal = round(monthly_goal / 30) if monthly_goal else 0
+daily_budget = max(round(past_average - daily_saving_goal), 0)
+budget_gap = daily_budget - today_amount if daily_budget else 0
+
+action_title, action_detail = get_action_text(feedback)
+
+if change_rate < 0:
+    hero_gradient = "linear-gradient(135deg, #0052CC 0%, #0066FF 45%, #3B82F6 100%)"
+    hero_shadow = "rgba(3, 102, 255, 0.24)"
+    amount_color = "#c7f0d8"
+else:
+    hero_gradient = "linear-gradient(135deg, #DC2626 0%, #EF4444 45%, #F87171 100%)"
+    hero_shadow = "rgba(239, 68, 68, 0.24)"
+    amount_color = "#FED7AA"
+
+st.markdown(
+    f"""
+    <div style="
+        padding: 34px;
+        border-radius: 28px;
+        background: {hero_gradient};
+        color: white;
+        margin: 28px 0 30px 0;
+        box-shadow: 0 20px 42px {hero_shadow};
+    ">
+        <div class="hero-label">오늘의 소비 경고</div>
+        <div class="hero-main">
+            오늘은 <span style="color: {amount_color}; font-size: 48px;">{money(today_amount)}</span>을 썼고,<br>
+            가장 많이 새는 곳은 <span style="color: #ffffff; font-size: 40px;">{main_category}</span>입니다.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="section">오늘 핵심만 보기</div>', unsafe_allow_html=True)
+
+m1, m2, m3, m4 = st.columns(4)
+
+with m1:
+    metric_card("오늘 소비", money(today_amount))
+with m2:
+    metric_card("전일 대비", f"{change_rate:.2f}%")
+with m3:
+    metric_card("피크 시간대", peak_time)
+with m4:
+    metric_card(f"{main_category} 비중", pct(main_ratio))
+
+# 🔽 여기 추가
+user_point = get_user_point(int(member_id))
+
+# ✅ 포인트 카드
+st.markdown(
+    f"""
+    <div style="
+        margin-top:10px;
+        padding:12px 16px;
+        border-radius:14px;
+        background:#f0f9ff;
+        border:1px solid #bae6fd;
+        font-weight:800;
+        color:#0c4a6e;
+        display:inline-block;
+    ">
+        💰 현재 포인트: {user_point}P
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ✅ +50 애니메이션 (별도)
+if st.session_state.point_earned:
+    st.markdown(
+        """
+        <div style="
+            margin-top:12px;
+            padding:14px 22px;
+            border-radius:18px;
+            background:linear-gradient(135deg,#22c55e,#16a34a);
+            color:white;
+            font-weight:900;
+            font-size:22px;
+            display:inline-block;
+            animation:fadeUp 0.8s ease;
+            box-shadow:0 10px 25px rgba(34,197,94,0.3);
+        ">
+            +50P 🎉
+        </div>
+
+        <style>
+        @keyframes fadeUp {
+            0% {opacity:0; transform:translateY(12px);}
+            100% {opacity:1; transform:translateY(0);}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 한 번만 보여주고 OFF
+    st.session_state.point_earned = False
+
+st.markdown('<div class="section">오늘 돈이 샌 위치</div>', unsafe_allow_html=True)
+
+g1, g2, g3 = st.columns(3)
+
+with g1:
+    st.markdown("### 어디에 썼나")
+    st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
+
+with g2:
+    st.markdown("### 언제 썼나")
+    st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
+
+with g3:
+    st.markdown("### 소비 한도")
+    if daily_budget:
+        st.plotly_chart(
+            make_budget_gauge(today_amount, daily_budget),
+            use_container_width=True,
+        )
+        remaining_label = "남은 금액" if budget_gap >= 0 else "초과 금액"
+        st.markdown(
+            f"""
+            <div style="
+                padding:16px 20px;
+                border-radius:18px;
+                background:#f8fafc;
+                border:1px solid #e5e7eb;
+                font-weight:800;
+                color:#0f172a;
+                text-align:center;
+                font-size:14px;
+            ">
+                권장 한도: {money(daily_budget)}<br>
+                <span style="color:#64748b; font-weight:600;">{remaining_label}: {money(abs(budget_gap))}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("절약 목표 없음")
+
+st.markdown('<div class="section">오늘의 판단</div>', unsafe_allow_html=True)
+
+p1, p2 = st.columns([1.05, 0.95])
+
+with p1:
+    st.markdown(
+        f"""
+        <div class="problem-box">
+            <div class="problem-title">오늘의 문제 소비: {main_category}</div>
+            <div class="problem-text">
+                오늘 소비의 {main_ratio:.1f}%가 {main_category}에 집중되어 있습니다.<br>
+                총액보다 중요한 건 "소비가 한 곳에 몰렸는지"입니다.
+                내일은 이 카테고리 하나만 줄여도 효과가 큽니다.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with p2:
+    st.markdown(
+        f"""
+        <div class="mission-box">
+            <div class="mission-title">내일의 미션</div>
+            <div class="mission-text">
+                {action_title}<br>
+                <span style="font-size:14px; color:#047857;">{action_detail}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown('<div class="section">내일 할 일 1개</div>', unsafe_allow_html=True)
+
+st.markdown(
+    f"""
+    <div class="action-card">
+        <span class="num">01</span>
+        <b>{action_title}</b><br>
+        <span style="margin-left:54px; color:#64748b;">
+        {action_detail}
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="section">기대 효과</div>', unsafe_allow_html=True)
+
+saving_amount = max(previous_amount - today_amount, daily_saving_goal, 0)
+
+st.markdown(
+    f"""
+    <div class="effect">
+        내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.
+        <span style="float:right;">하루 절약 목표 약 {money(saving_amount)}</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+render_report_feedback()
+
+with st.expander("상세 분석 & 데이터"):
+    st.subheader("일일 분석 JSON")
+    st.json(daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis)
+
+    st.subheader("최종 피드백 JSON")
+    st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
+
+    st.subheader("RAG 검색 질의")
+    st.write(getattr(result, "retrieval_queries", []))
