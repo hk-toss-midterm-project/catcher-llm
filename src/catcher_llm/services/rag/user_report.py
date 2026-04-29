@@ -75,7 +75,9 @@ def _normalize_user_report_answer(question: str, rag_response: RAGResponse) -> s
         if rate_match:
             return f"목표 사용률은 매월 {rate_match.group(1)}로 목표를 꾸준히 초과한다."
 
-        rate_range_match = re.search(r"([0-9.]+%)[~\-]([0-9.]+%)\s*로\s*목표를?\s*꾸준히\s*초과", context_text)
+        rate_range_match = re.search(
+            r"([0-9.]+%)[~\-]([0-9.]+%)\s*로\s*목표를?\s*꾸준히\s*초과", context_text
+        )
         if rate_range_match:
             return f"목표 사용률은 매월 {rate_range_match.group(1)}~{rate_range_match.group(2)}로 목표를 꾸준히 초과한다."
 
@@ -86,9 +88,7 @@ def _normalize_user_report_answer(question: str, rag_response: RAGResponse) -> s
             context_text,
         )
         if installment_match:
-            return (
-                f"할부 비중은 {installment_match.group(1)}에서 {installment_match.group(2)}로 상승했다."
-            )
+            return f"할부 비중은 {installment_match.group(1)}에서 {installment_match.group(2)}로 상승했다."
 
     # ── 온라인 결제 비중 ─────────────────────────────────────────────────────
     if "온라인" in question and ("비중" in question or "결제" in question):
@@ -97,9 +97,7 @@ def _normalize_user_report_answer(question: str, rag_response: RAGResponse) -> s
             context_text,
         )
         if online_match:
-            return (
-                f"온라인 결제 비중은 {online_match.group(1)}에서 {online_match.group(2)}로 하락했다."
-            )
+            return f"온라인 결제 비중은 {online_match.group(1)}에서 {online_match.group(2)}로 하락했다."
 
     # ── 세그먼트 질문 (연령대·성별) ──────────────────────────────────────────
     segment_keywords = {

@@ -23,6 +23,7 @@ from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import (
+    DailyFeedbackTimingRecord,
     build_feedback_retrieval_queries,
     generate_daily_feedback,
     make_daily_feedback_input,
@@ -218,6 +219,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         interpretation_chain.invoke.return_value = interpretation_result
         feedback_chain = MagicMock()
         feedback_chain.invoke.return_value = feedback_result
+        timing_records: list[DailyFeedbackTimingRecord] = []
 
         with TemporaryDirectory() as tmp_dir:
             settings = _make_feedback_settings(Path(tmp_dir))
@@ -274,6 +276,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
                     analysis_date=date(2024, 4, 1),
                     previous_date=date(2024, 3, 31),
                     settings=settings,
+                    timing_callback=timing_records.append,
                 )
 
             with session_scope(settings) as db_session:
@@ -322,6 +325,96 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("2024-04-01", refreshed_memory.summary)
         self.assertIn("간식 결제를 줄인다", refreshed_memory.summary)
         self.assertIn("내일 오전 고정비 결제 알림을 확인합니다.", refreshed_memory.summary)
+        self.assertEqual(
+            [record.step_key for record in timing_records],
+            [
+                "daily_analysis",
+                "parse_daily_analysis",
+                "user_profile",
+                "interpretation_chain",
+                "retrieval_queries",
+                "rag_retrieval",
+                "memory_context",
+                "feedback_chain",
+                "save_session",
+                "refresh_memory",
+            ],
+        )
+        self.assertTrue(all(record.elapsed_seconds >= 0 for record in timing_records))
+        self.assertTrue(all(record.status == "success" for record in timing_records))
+
+    def test_generate_daily_feedback_selects_interpretation_mode_builder(self) -> None:
+        """일일 피드백 생성 서비스가 요청한 해석 모드에 맞는 체인 빌더를 사용하는지 검증한다."""
+        interpretation_result = {"action_result": ActionAnalysisResult()}
+        advice_context = RetrievedAdviceContext(
+            query="생활 소비 절약 방법",
+            source="saving.pdf",
+            content="구독과 고정비를 점검한다.",
+            page_number=None,
+        )
+        feedback_result = DailyFeedbackResult(
+            summary_title="오늘은 고정비부터 확인하세요",
+            scolding_message="고정비가 오늘 소비를 크게 키웠습니다.",
+            key_evidences=[],
+            action_items=[],
+            tomorrow_mission="내일 오전 고정비 결제 알림을 확인합니다.",
+        )
+        interpretation_chain = MagicMock()
+        interpretation_chain.invoke.return_value = interpretation_result
+        feedback_chain = MagicMock()
+        feedback_chain.invoke.return_value = feedback_result
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+            daily_json = build_daily_consumption_analysis_json(
+                member_id=1,
+                analysis_date="2024-04-01",
+                previous_date="2024-03-31",
+                settings=settings,
+            )
+
+            with (
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "build_daily_consumption_analysis_json",
+                    return_value=daily_json,
+                ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "build_spending_analysis_chain",
+                ) as split_builder,
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "build_balanced_spending_analysis_chain",
+                    return_value=interpretation_chain,
+                ) as balanced_builder,
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "build_unified_spending_analysis_chain",
+                ) as unified_builder,
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "retrieve_feedback_contexts",
+                    return_value=[advice_context],
+                ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "build_daily_feedback_chain",
+                    return_value=feedback_chain,
+                ),
+            ):
+                result = generate_daily_feedback(
+                    member_id=1,
+                    analysis_date=date(2024, 4, 1),
+                    previous_date=date(2024, 3, 31),
+                    settings=settings,
+                    interpretation_mode="balanced",
+                )
+
+        self.assertIsNone(result.error)
+        balanced_builder.assert_called_once()
+        split_builder.assert_not_called()
+        unified_builder.assert_not_called()
 
 
 if __name__ == "__main__":

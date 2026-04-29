@@ -1,9 +1,11 @@
 from catcher_llm.prompts.chat_prompt import build_chat_prompt
 from catcher_llm.prompts.consumption_feedback import (
     build_consumption_action_prompt,
+    build_consumption_cause_action_prompt,
     build_consumption_cause_prompt,
     build_consumption_pattern_prompt,
     build_consumption_problem_prompt,
+    build_consumption_unified_analysis_prompt,
     build_daily_feedback_prompt,
     build_monthly_feedback_prompt,
     build_weekly_feedback_prompt,
@@ -17,9 +19,11 @@ __all__ = [
     "build_monthly_feedback_prompt",
     "build_weekly_feedback_prompt",
     "build_consumption_action_prompt",
+    "build_consumption_cause_action_prompt",
     "build_consumption_cause_prompt",
     "build_consumption_pattern_prompt",
     "build_consumption_problem_prompt",
+    "build_consumption_unified_analysis_prompt",
     "build_rag_prompt",
     "build_summary_prompt",
 ]

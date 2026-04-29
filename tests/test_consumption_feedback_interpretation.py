@@ -8,9 +8,11 @@ import pandas as pd
 from catcher_llm.analysis.user_daily_analysis import build_daily_consumption_analysis_from_frames
 from catcher_llm.prompts.consumption_feedback import (
     build_consumption_action_prompt,
+    build_consumption_cause_action_prompt,
     build_consumption_cause_prompt,
     build_consumption_pattern_prompt,
     build_consumption_problem_prompt,
+    build_consumption_unified_analysis_prompt,
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
     extract_spending_indicators,
@@ -72,6 +74,8 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
         problem_prompt = build_consumption_problem_prompt()
         cause_prompt = build_consumption_cause_prompt()
         action_prompt = build_consumption_action_prompt()
+        cause_action_prompt = build_consumption_cause_action_prompt()
+        unified_prompt = build_consumption_unified_analysis_prompt()
 
         self.assertEqual(
             set(pattern_prompt.input_variables),
@@ -102,6 +106,20 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
                 "cause_text",
             },
         )
+        self.assertEqual(
+            set(cause_action_prompt.input_variables),
+            {
+                "raw_json",
+                "indicator_json",
+                "user_profile_json",
+                "pattern_text",
+                "problem_text",
+            },
+        )
+        self.assertEqual(
+            set(unified_prompt.input_variables),
+            {"raw_json", "indicator_json", "user_profile_json"},
+        )
 
         rendered_pattern = pattern_prompt.invoke(analysis_input)
         rendered_pattern_content = str(rendered_pattern.messages[-1].content)
@@ -124,6 +142,11 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
         self.assertIn("sample pattern", rendered_cause_content)
         self.assertIn("sample problem", rendered_cause_content)
         self.assertIn("추출 지표 JSON", rendered_cause_content)
+
+        rendered_unified = unified_prompt.invoke(analysis_input)
+        rendered_unified_content = str(rendered_unified.messages[-1].content)
+        self.assertIn("패턴, 문제 소비, 원인, 행동 개선 포인트", rendered_unified_content)
+        self.assertIn("stable_metrics.today_total", rendered_unified_content)
 
     def test_parse_user_spending_data_accepts_daily_analysis_json_shape(self) -> None:
         """일일 분석 서비스 JSON을 추가 변환 없이 해석 입력 모델로 읽을 수 있는지 검증한다."""

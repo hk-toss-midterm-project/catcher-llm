@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import cast
+from time import perf_counter
+from typing import Literal, cast
 
+from langchain_core.runnables import Runnable
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from catcher_llm.chains.consumption_feedback import (
+    build_balanced_spending_analysis_chain,
     build_daily_feedback_chain,
     build_memory_summary_chain,
     build_spending_analysis_chain,
+    build_unified_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import SessionModel, UserMemoryModel, UserModel
@@ -48,6 +53,101 @@ _DEFAULT_RETRIEVAL_QUERY = "일일 소비 절약 실천 방법"
 _DAILY_MEMORY_PERIOD_TYPE = "daily"
 _DEFAULT_RECENT_SESSION_LIMIT = 7
 _DEFAULT_MEMORY_SESSION_LIMIT = 14
+type DailyFeedbackInterpretationMode = Literal["split", "balanced", "unified"]
+
+
+@dataclass(frozen=True)
+class DailyFeedbackTimingRecord:
+    """일일 피드백 생성 단계별 실행 시간과 상태를 담는 개발용 기록이다."""
+
+    step_key: str
+    step_name: str
+    elapsed_seconds: float
+    status: Literal["success", "error"] = "success"
+    detail: str | None = None
+    error: str | None = None
+
+
+DailyFeedbackTimingCallback = Callable[[DailyFeedbackTimingRecord], None]
+
+
+def _emit_daily_feedback_timing(
+    callback: DailyFeedbackTimingCallback | None,
+    record: DailyFeedbackTimingRecord,
+) -> None:
+    """타이밍 수집 콜백을 호출하되 콜백 오류가 피드백 생성을 막지 않게 한다."""
+    if callback is None:
+        return
+    try:
+        callback(record)
+    except Exception:
+        return
+
+
+def _run_timed_daily_feedback_step[T](
+    *,
+    step_key: str,
+    step_name: str,
+    operation: Callable[[], T],
+    timing_callback: DailyFeedbackTimingCallback | None = None,
+    detail: str | None = None,
+) -> T:
+    """일일 피드백 생성의 한 단계를 실행하고 성공/실패 소요 시간을 기록한다."""
+    start = perf_counter()
+    try:
+        result = operation()
+    except Exception as exc:
+        _emit_daily_feedback_timing(
+            timing_callback,
+            DailyFeedbackTimingRecord(
+                step_key=step_key,
+                step_name=step_name,
+                elapsed_seconds=perf_counter() - start,
+                status="error",
+                detail=detail,
+                error=str(exc),
+            ),
+        )
+        raise
+
+    _emit_daily_feedback_timing(
+        timing_callback,
+        DailyFeedbackTimingRecord(
+            step_key=step_key,
+            step_name=step_name,
+            elapsed_seconds=perf_counter() - start,
+            status="success",
+            detail=detail,
+        ),
+    )
+    return result
+
+
+def _build_daily_interpretation_chain(
+    *,
+    mode: DailyFeedbackInterpretationMode,
+    settings: Settings,
+    temperature: float,
+) -> Runnable[dict[str, str], dict[str, object]]:
+    """요청한 해석 모드에 맞는 일일 소비 해석 체인을 생성한다."""
+    if mode == "split":
+        return build_spending_analysis_chain(
+            settings=settings,
+            temperature=temperature,
+        )
+    if mode == "balanced":
+        return build_balanced_spending_analysis_chain(
+            settings=settings,
+            temperature=temperature,
+        )
+    if mode == "unified":
+        return build_unified_spending_analysis_chain(
+            settings=settings,
+            temperature=temperature,
+        )
+
+    msg = f"지원하지 않는 일일 소비 해석 모드입니다: {mode}"
+    raise ValueError(msg)
 
 
 def _parse_analysis_date(value: str | date) -> date:
@@ -549,6 +649,8 @@ def generate_daily_feedback(
     interpretation_temperature: float = 0.0,
     feedback_temperature: float = 0.0,
     persona_key: str | None = None,
+    interpretation_mode: DailyFeedbackInterpretationMode = "split",
+    timing_callback: DailyFeedbackTimingCallback | None = None,
 ) -> DailyFeedbackServiceResult:
     """일일 소비 분석, 해석, RAG 검색, 최종 잔소리 피드백 생성을 한 번에 실행한다."""
     config = settings or get_settings()
@@ -574,41 +676,86 @@ def generate_daily_feedback(
     user_profile: UserProfileContext | None = None
     memory_context: DailyFeedbackMemoryContext | None = None
     try:
-        daily_payload = build_daily_consumption_analysis_json(
-            member_id=member_id,
-            analysis_date=analysis_day,
-            previous_date=previous_day,
-            settings=config,
+        daily_payload = _run_timed_daily_feedback_step(
+            step_key="daily_analysis",
+            step_name="일일 소비 분석 JSON 생성",
+            detail="SQLite transactions 조회와 pandas 지표 계산",
+            timing_callback=timing_callback,
+            operation=lambda: build_daily_consumption_analysis_json(
+                member_id=member_id,
+                analysis_date=analysis_day,
+                previous_date=previous_day,
+                settings=config,
+            ),
         )
-        user_data = parse_user_spending_data(daily_payload)
-        user_profile = load_user_profile_context(
-            member_id=member_id,
-            settings=config,
+        user_data = _run_timed_daily_feedback_step(
+            step_key="parse_daily_analysis",
+            step_name="일일 분석 모델 검증",
+            detail="분석 JSON을 UserSpendingData Pydantic 모델로 변환",
+            timing_callback=timing_callback,
+            operation=lambda: parse_user_spending_data(daily_payload),
         )
-        interpretation_chain = build_spending_analysis_chain(
+        user_profile = _run_timed_daily_feedback_step(
+            step_key="user_profile",
+            step_name="사용자 프로필 조회",
+            detail="SQLite users 테이블 조회",
+            timing_callback=timing_callback,
+            operation=lambda: load_user_profile_context(
+                member_id=member_id,
+                settings=config,
+            ),
+        )
+        interpretation_chain = _build_daily_interpretation_chain(
+            mode=interpretation_mode,
             settings=config,
             temperature=interpretation_temperature,
         )
-        interpretation_result = interpretation_chain.invoke(
-            make_spending_analysis_input(
-                user_data,
-                user_profile=user_profile,
-            )
-        )
-        retrieval_queries = build_feedback_retrieval_queries(
+        interpretation_input = make_spending_analysis_input(
             user_data,
-            interpretation_result=interpretation_result,
             user_profile=user_profile,
-            max_queries=max_queries,
         )
-        advice_contexts = retrieve_feedback_contexts(
-            retrieval_queries,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            top_k=top_k,
-            raw_data_dir=raw_data_dir,
-            source_files=source_files,
-            settings=config,
+        interpretation_result = cast(
+            dict[str, object],
+            _run_timed_daily_feedback_step(
+                step_key="interpretation_chain",
+                step_name=f"소비 해석 체인 실행 ({interpretation_mode})",
+                detail=(
+                    "split=기존 4회 호출, balanced=패턴/문제 분리+원인/행동 통합, "
+                    "unified=전체 통합 1회 호출"
+                ),
+                timing_callback=timing_callback,
+                operation=lambda: interpretation_chain.invoke(interpretation_input),
+            ),
+        )
+        retrieval_queries = _run_timed_daily_feedback_step(
+            step_key="retrieval_queries",
+            step_name="RAG 검색 질의 생성",
+            detail=f"max_queries={max_queries}",
+            timing_callback=timing_callback,
+            operation=lambda: build_feedback_retrieval_queries(
+                user_data,
+                interpretation_result=interpretation_result,
+                user_profile=user_profile,
+                max_queries=max_queries,
+            ),
+        )
+        advice_contexts = _run_timed_daily_feedback_step(
+            step_key="rag_retrieval",
+            step_name="RAG 문서 검색",
+            detail=(
+                f"queries={len(retrieval_queries)}, top_k={top_k}, "
+                f"chunk_size={chunk_size}, chunk_overlap={chunk_overlap}"
+            ),
+            timing_callback=timing_callback,
+            operation=lambda: retrieve_feedback_contexts(
+                retrieval_queries,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                top_k=top_k,
+                raw_data_dir=raw_data_dir,
+                source_files=source_files,
+                settings=config,
+            ),
         )
         if not advice_contexts:
             return _build_error_result(
@@ -620,40 +767,63 @@ def generate_daily_feedback(
                 retrieval_queries=retrieval_queries,
             )
 
-        memory_context = load_daily_feedback_memory_context(
-            member_id=member_id,
-            analysis_date=analysis_day,
-            settings=config,
+        memory_context = _run_timed_daily_feedback_step(
+            step_key="memory_context",
+            step_name="피드백 메모리 조회",
+            detail="SQLite user_memories와 최근 daily session 조회",
+            timing_callback=timing_callback,
+            operation=lambda: load_daily_feedback_memory_context(
+                member_id=member_id,
+                analysis_date=analysis_day,
+                settings=config,
+            ),
         )
         feedback_chain = build_daily_feedback_chain(
             settings=config,
             temperature=feedback_temperature,
             persona_key=persona_key,
         )
-        feedback = feedback_chain.invoke(
-            make_daily_feedback_input(
-                user_data=user_data,
-                interpretation_result=interpretation_result,
-                advice_contexts=advice_contexts,
-                user_profile=user_profile,
-                memory_context=memory_context,
-            )
+        feedback_input = make_daily_feedback_input(
+            user_data=user_data,
+            interpretation_result=interpretation_result,
+            advice_contexts=advice_contexts,
+            user_profile=user_profile,
+            memory_context=memory_context,
+        )
+        feedback = _run_timed_daily_feedback_step(
+            step_key="feedback_chain",
+            step_name="최종 피드백 체인 실행",
+            detail="분석/해석/RAG/프로필/메모리 기반 구조화 LLM 호출",
+            timing_callback=timing_callback,
+            operation=lambda: feedback_chain.invoke(feedback_input),
         )
         feedback_result = (
             feedback
             if isinstance(feedback, DailyFeedbackResult)
             else DailyFeedbackResult.model_validate(feedback)
         )
-        save_daily_feedback_session(
-            member_id=member_id,
-            analysis_date=analysis_day,
-            daily_analysis=user_data,
-            feedback=feedback_result,
-            settings=config,
+        _run_timed_daily_feedback_step(
+            step_key="save_session",
+            step_name="피드백 세션 저장",
+            detail="SQLite session 테이블 저장 또는 갱신",
+            timing_callback=timing_callback,
+            operation=lambda: save_daily_feedback_session(
+                member_id=member_id,
+                analysis_date=analysis_day,
+                daily_analysis=user_data,
+                feedback=feedback_result,
+                settings=config,
+            ),
         )
-        _refresh_daily_user_memory_if_possible(
-            member_id=member_id,
-            settings=config,
+        _run_timed_daily_feedback_step(
+            step_key="refresh_memory",
+            step_name="장기 메모리 요약 갱신",
+            detail=f"최근 최대 {_DEFAULT_MEMORY_SESSION_LIMIT}개 세션을 LLM으로 요약",
+            timing_callback=timing_callback,
+            operation=lambda: _refresh_daily_user_memory_if_possible(
+                member_id=member_id,
+                settings=config,
+            ),
         )
     except Exception as exc:
         return _build_error_result(

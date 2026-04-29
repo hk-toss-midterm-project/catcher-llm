@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
+from catcher_llm.db.models import SessionModel
 from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackMemoryContext,
     DailyFeedbackResult,
@@ -17,6 +18,7 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklyFeedbackResult,
     WeeklyFeedbackServiceResult,
 )
+from catcher_llm.services.consumption_feedback.daily_feedback import DailyFeedbackTimingRecord
 from catcher_llm.ui.dev_navigation import get_dev_page_specs, get_repo_root
 
 
@@ -132,6 +134,9 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "14_weekly_report_rim.py",
         "15_monthly_report_rim.py",
         "16_user_trend_report.py",
+        "17_daily_feedback_timing.py",
+        "18_daily_interpretation_compare.py",
+        "19_daily_feedback_unified.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -150,6 +155,9 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "주간 보고서",
         "월간 보고서",
         "사용자 동향 보고서 생성",
+        "일일 피드백 소요 시간",
+        "일일 해석 방식 비교",
+        "일일 통합 피드백",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -168,9 +176,15 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "🗓️",
         "📈",
         "📑",
+        "⏱️",
+        "🧪",
+        "📣",
     ]
     assert [spec.default for spec in specs] == [
         True,
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -233,14 +247,17 @@ def test_daily_report_page_uses_configured_sqlite_for_points() -> None:
     assert '"개인 점수"' not in page_source
 
 
-def test_consumption_dev_pages_use_2026_january_calendar_defaults() -> None:
-    """소비 개발 페이지의 달력 기본 월이 v3 데이터 시작 월인 2026년 1월인지 검증한다."""
+def test_consumption_dev_pages_use_2026_january_daily_defaults() -> None:
+    """소비 개발 페이지의 일일 기본 날짜가 2026-01-02이고 전일 기본값이 전날인지 검증한다."""
     from datetime import date
 
     from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_DATE, DEFAULT_CALENDAR_MONTH
 
-    assert DEFAULT_CALENDAR_DATE == date(2026, 1, 1)
+    assert DEFAULT_CALENDAR_DATE == date(2026, 1, 2)
     assert DEFAULT_CALENDAR_MONTH == "2026-01"
+
+    daily_analysis_source = Path("dev_pages/04_daily_analysis.py").read_text(encoding="utf-8")
+    assert "default=analysis_day - timedelta(days=1)" in daily_analysis_source
 
     daily_or_weekly_pages = [
         Path("dev_pages/04_daily_analysis.py"),
@@ -598,9 +615,15 @@ def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:
         daily_analysis=UserSpendingData.model_validate(_make_daily_analysis_result()),
     )
 
-    with patch(
-        "catcher_llm.services.consumption_feedback.daily_feedback.generate_daily_feedback",
-        return_value=fake_result,
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_daily_session_for_date",
+            return_value=None,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.generate_daily_feedback",
+            return_value=fake_result,
+        ),
     ):
         app = AppTest.from_file("dev_pages/06_daily_feedback.py")
         app.run(timeout=10)
@@ -610,6 +633,221 @@ def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:
     assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
     assert any(expander.label == "사용자 프로필 JSON" for expander in app.expander)
     assert any(expander.label == "메모리/세션 컨텍스트 JSON" for expander in app.expander)
+
+
+def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
+    """저장된 일일 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-01-02",
+        period_type="daily",
+        feedback_message="기존 저장 피드백입니다.",
+        feedback_reason="[]",
+        todo_tomorrow="기존 미션입니다.",
+    )
+    fake_result = DailyFeedbackServiceResult(
+        member_id=1,
+        analysis_date="2026-01-02",
+        feedback=DailyFeedbackResult(
+            summary_title="재생성된 피드백",
+            scolding_message="새로 생성한 피드백입니다.",
+            key_evidences=[],
+            action_items=[],
+            tomorrow_mission="새 미션입니다.",
+        ),
+        user_profile=UserProfileContext(user_id=1, name="김토스"),
+        memory_context=DailyFeedbackMemoryContext(user_id=1),
+        retrieval_queries=["재생성 테스트 질의"],
+        daily_analysis=UserSpendingData.model_validate(_make_daily_analysis_result()),
+    )
+    call_kwargs: dict[str, object] = {}
+
+    def fake_generate_daily_feedback(*args: object, **kwargs: object) -> DailyFeedbackServiceResult:
+        """재생성 버튼 클릭 시 전달된 피드백 생성 인자를 저장하고 가짜 결과를 반환한다."""
+        call_kwargs.update(kwargs)
+        return fake_result
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_daily_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_all_daily_sessions",
+            return_value=[cached_session],
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.generate_daily_feedback",
+            side_effect=fake_generate_daily_feedback,
+        ),
+    ):
+        app = AppTest.from_file("dev_pages/06_daily_feedback.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "일일 피드백 재생성")
+
+    assert len(app.exception) == 0
+    assert call_kwargs["analysis_date"].isoformat() == "2026-01-02"
+    assert any(subheader.value == "재생성된 피드백" for subheader in app.subheader)
+    assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
+
+
+def test_daily_feedback_timing_dev_page_renders_step_records() -> None:
+    """일일 피드백 소요 시간 페이지가 타이밍 콜백 기록을 화면에 표시하는지 검증한다."""
+    fake_result = DailyFeedbackServiceResult(
+        member_id=1,
+        analysis_date="2024-04-01",
+        feedback=DailyFeedbackResult(
+            summary_title="오늘은 생활비를 확인하세요",
+            scolding_message="생활 카테고리 소비가 커졌습니다.",
+            key_evidences=[],
+            action_items=[],
+            tomorrow_mission="내일 오전 장보기 목록을 확인합니다.",
+        ),
+    )
+
+    def fake_generate_daily_feedback(*args: object, **kwargs: object) -> DailyFeedbackServiceResult:
+        """테스트용 타이밍 기록을 콜백으로 전달하고 가짜 피드백 결과를 반환한다."""
+        timing_callback = kwargs.get("timing_callback")
+        if callable(timing_callback):
+            timing_callback(
+                DailyFeedbackTimingRecord(
+                    step_key="daily_analysis",
+                    step_name="일일 소비 분석 JSON 생성",
+                    elapsed_seconds=0.12,
+                    detail="SQLite transactions 조회와 pandas 지표 계산",
+                )
+            )
+            timing_callback(
+                DailyFeedbackTimingRecord(
+                    step_key="feedback_chain",
+                    step_name="최종 피드백 체인 실행",
+                    elapsed_seconds=1.34,
+                    detail="분석/해석/RAG/프로필/메모리 기반 구조화 LLM 호출",
+                )
+            )
+        return fake_result
+
+    with patch(
+        "catcher_llm.services.consumption_feedback.daily_feedback.generate_daily_feedback",
+        side_effect=fake_generate_daily_feedback,
+    ):
+        app = AppTest.from_file("dev_pages/17_daily_feedback_timing.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "타이밍 측정 실행")
+
+    assert len(app.exception) == 0
+    assert any(subheader.value == "단계별 소요 시간" for subheader in app.subheader)
+    assert any(metric.label == "총 소요 시간" for metric in app.metric)
+    assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
+
+
+def test_daily_interpretation_compare_dev_page_renders_mode_results() -> None:
+    """일일 해석 방식 비교 페이지가 세 모드의 실행 결과를 표시하는지 검증한다."""
+    fake_user_data = UserSpendingData.model_validate(_make_daily_analysis_result())
+    fake_profile = UserProfileContext(
+        user_id=1,
+        name="김토스",
+        saving_goal_text="비상금 300만원 만들기",
+    )
+
+    class FakeInterpretationChain:
+        """테스트용 해석 체인 결과를 고정 dict로 반환한다."""
+
+        def __init__(self, mode: str) -> None:
+            """해석 모드 이름을 결과에 포함할 수 있게 저장한다."""
+            self.mode = mode
+
+        def invoke(self, payload: dict[str, str]) -> dict[str, object]:
+            """해석 입력을 받아 모드 식별 가능한 결과 dict를 반환한다."""
+            return {
+                "pattern_result": {"mode": self.mode, "payload_keys": sorted(payload)},
+                "problem_result": {"mode": self.mode},
+                "cause_result": {"mode": self.mode},
+                "action_result": {"mode": self.mode},
+            }
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_analysis."
+            "build_daily_consumption_analysis_json",
+            return_value=_make_daily_analysis_result(),
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.interpretation.parse_user_spending_data",
+            return_value=fake_user_data,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_user_profile_context",
+            return_value=fake_profile,
+        ),
+        patch(
+            "catcher_llm.chains.consumption_feedback.build_spending_analysis_chain",
+            return_value=FakeInterpretationChain("split"),
+        ),
+        patch(
+            "catcher_llm.chains.consumption_feedback.build_balanced_spending_analysis_chain",
+            return_value=FakeInterpretationChain("balanced"),
+        ),
+        patch(
+            "catcher_llm.chains.consumption_feedback.build_unified_spending_analysis_chain",
+            return_value=FakeInterpretationChain("unified"),
+        ),
+    ):
+        app = AppTest.from_file("dev_pages/18_daily_interpretation_compare.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "해석 방식 비교 실행")
+
+    assert len(app.exception) == 0
+    assert any(subheader.value == "모드별 실행 시간" for subheader in app.subheader)
+    assert any(expander.label == "기존 방식 결과 JSON" for expander in app.expander)
+    assert any(expander.label == "균형 방식 결과 JSON" for expander in app.expander)
+    assert any(expander.label == "통합 방식 결과 JSON" for expander in app.expander)
+
+
+def test_daily_feedback_unified_dev_page_uses_unified_interpretation_mode() -> None:
+    """일일 통합 피드백 페이지가 최종 피드백 생성 시 통합 해석 모드를 사용하는지 검증한다."""
+    fake_result = DailyFeedbackServiceResult(
+        member_id=1,
+        analysis_date="2026-01-02",
+        feedback=DailyFeedbackResult(
+            summary_title="통합 해석 피드백",
+            scolding_message="통합 해석 체인으로 만든 피드백입니다.",
+            key_evidences=[],
+            action_items=[],
+            tomorrow_mission="내일 오전 소비 계획을 확인합니다.",
+        ),
+        daily_analysis=UserSpendingData.model_validate(_make_daily_analysis_result()),
+        retrieval_queries=["생활 소비 절약 방법"],
+    )
+    call_kwargs: dict[str, object] = {}
+
+    def fake_generate_daily_feedback(*args: object, **kwargs: object) -> DailyFeedbackServiceResult:
+        """통합 모드 호출 인자를 저장하고 가짜 피드백 결과를 반환한다."""
+        call_kwargs.update(kwargs)
+        timing_callback = kwargs.get("timing_callback")
+        if callable(timing_callback):
+            timing_callback(
+                DailyFeedbackTimingRecord(
+                    step_key="interpretation_chain",
+                    step_name="소비 해석 체인 실행 (unified)",
+                    elapsed_seconds=0.42,
+                    detail="통합 해석 체인 테스트",
+                )
+            )
+        return fake_result
+
+    with patch(
+        "catcher_llm.services.consumption_feedback.daily_feedback.generate_daily_feedback",
+        side_effect=fake_generate_daily_feedback,
+    ):
+        app = AppTest.from_file("dev_pages/19_daily_feedback_unified.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "통합 방식 일일 피드백 생성")
+
+    assert len(app.exception) == 0
+    assert call_kwargs["interpretation_mode"] == "unified"
+    assert any(subheader.value == "통합 방식 피드백 결과" for subheader in app.subheader)
+    assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
 
 def test_weekly_interpretation_dev_page_renders_weekly_indicators() -> None:
@@ -645,9 +883,15 @@ def test_weekly_feedback_dev_page_renders_feedback_and_contexts() -> None:
         retrieval_queries=["배달 소비 절약 방법"],
     )
 
-    with patch(
-        "catcher_llm.services.consumption_feedback.weekly_feedback.generate_weekly_feedback",
-        return_value=fake_result,
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.weekly_feedback.load_weekly_session_for_date",
+            return_value=None,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.weekly_feedback.generate_weekly_feedback",
+            return_value=fake_result,
+        ),
     ):
         app = AppTest.from_file("dev_pages/09_weekly_feedback.py")
         app.run(timeout=10)
@@ -690,9 +934,15 @@ def test_monthly_feedback_dev_page_renders_feedback_and_contexts() -> None:
         retrieval_queries=["고정비 절약 방법"],
     )
 
-    with patch(
-        "catcher_llm.services.consumption_feedback.monthly_feedback.generate_monthly_feedback",
-        return_value=fake_result,
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.monthly_feedback.load_monthly_session_for_date",
+            return_value=None,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.monthly_feedback.generate_monthly_feedback",
+            return_value=fake_result,
+        ),
     ):
         app = AppTest.from_file("dev_pages/12_monthly_feedback.py")
         app.run(timeout=10)

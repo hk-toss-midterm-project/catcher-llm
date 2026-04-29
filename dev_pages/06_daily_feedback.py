@@ -15,6 +15,7 @@ from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackAction,
     DailyFeedbackEvidence,
     DailyFeedbackMemoryContext,
+    DailyFeedbackServiceResult,
     RetrievedAdviceContext,
     UserProfileContext,
     UserSpendingData,
@@ -73,7 +74,9 @@ def _render_contexts(contexts: Sequence[RetrievedAdviceContext]) -> None:
         return
     for index, context in enumerate(contexts, start=1):
         page_label = f" | p.{context.page_number}" if context.page_number is not None else ""
-        with st.expander(f"{index}. {context.query} | {context.source}{page_label}", expanded=index == 1):
+        with st.expander(
+            f"{index}. {context.query} | {context.source}{page_label}", expanded=index == 1
+        ):
             st.write(context.content)
 
 
@@ -88,7 +91,9 @@ def _render_daily_analysis_summary(daily_analysis: UserSpendingData | None) -> N
     cols[1].metric("마찰력 없는 지출액", _format_amount(frictionless_spending.total_amount))
     cols[2].metric("마찰력 없는 결제 건수", f"{frictionless_spending.transaction_count}건")
     cols[3].metric("오늘 결제 횟수", f"{transaction_density.transaction_count}건")
-    cols[4].metric("건당 평균 금액", _format_amount(transaction_density.average_amount_per_transaction))
+    cols[4].metric(
+        "건당 평균 금액", _format_amount(transaction_density.average_amount_per_transaction)
+    )
 
 
 def _render_cached_daily_session(session_row: SessionModel) -> None:
@@ -140,14 +145,87 @@ def _render_session_history(member_id: int) -> None:
         return
     rows = []
     for s in sessions:
-        rows.append({
-            "날짜": s.analysis_date,
-            "오늘 지출": _extract_daily_total_summary(s.analysis_result),
-            "피드백 메시지": (s.feedback_message or "-"),
-            "피드백 핵심 근거": extract_feedback_reason_summary(s.feedback_reason),
-            "다음 미션": s.todo_tomorrow or "-",
-        })
+        rows.append(
+            {
+                "날짜": s.analysis_date,
+                "오늘 지출": _extract_daily_total_summary(s.analysis_result),
+                "피드백 메시지": (s.feedback_message or "-"),
+                "피드백 핵심 근거": extract_feedback_reason_summary(s.feedback_reason),
+                "다음 미션": s.todo_tomorrow or "-",
+            }
+        )
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_daily_feedback_result(
+    *,
+    result: DailyFeedbackServiceResult,
+    member_id: int,
+) -> None:
+    """새로 생성한 일일 피드백 결과와 관련 컨텍스트를 화면에 표시한다."""
+    if result.error:
+        st.error(f"일일 피드백 생성 실패: {result.error}")
+        if result.retrieval_queries:
+            st.subheader("생성된 RAG 검색 질의")
+            st.write(result.retrieval_queries)
+        if result.daily_analysis is not None:
+            _render_daily_analysis_summary(result.daily_analysis)
+            with st.expander("일일 분석 JSON"):
+                st.json(result.daily_analysis.model_dump())
+        if result.interpretation_result:
+            with st.expander("소비 해석 JSON"):
+                st.json(result.interpretation_result)
+        _render_profile_and_memory_context(
+            user_profile=result.user_profile,
+            memory_context=result.memory_context,
+        )
+        st.markdown("---")
+        st.subheader("📋 저장된 일일 세션 기록")
+        _render_session_history(member_id)
+        st.stop()
+
+    if result.feedback is None:
+        st.warning("피드백 결과가 비어 있습니다.")
+        st.stop()
+
+    feedback = result.feedback
+
+    st.subheader(feedback.summary_title)
+    st.write(feedback.scolding_message)
+    st.info(feedback.tomorrow_mission)
+
+    _render_daily_analysis_summary(result.daily_analysis)
+
+    st.subheader("피드백 근거")
+    _render_evidence_table(feedback.key_evidences)
+
+    st.subheader("오늘 할 일")
+    _render_action_table(feedback.action_items)
+
+    st.subheader("RAG 검색 질의")
+    st.write(result.retrieval_queries)
+
+    st.subheader("검색된 문서 근거")
+    _render_contexts(result.retrieved_contexts)
+
+    _render_profile_and_memory_context(
+        user_profile=result.user_profile,
+        memory_context=result.memory_context,
+    )
+
+    with st.expander("일일 분석 JSON"):
+        if result.daily_analysis is not None:
+            st.json(result.daily_analysis.model_dump())
+
+    with st.expander("소비 해석 JSON"):
+        st.json(result.interpretation_result or {})
+
+    with st.expander("최종 피드백 JSON"):
+        st.json(feedback.model_dump())
+
+    st.markdown("---")
+    st.subheader("📋 저장된 일일 세션 기록")
+    _render_session_history(member_id)
 
 
 # ── 사이드바 ──────────────────────────────────────────────────────────────────
@@ -220,17 +298,23 @@ _has_cache = cached_session is not None and cached_session.feedback_message
 if _has_cache and not _force_regen:
     _render_cached_daily_session(cached_session)
 
+    if st.button("일일 피드백 재생성", width="stretch"):
+        st.session_state[_regen_date_key] = True
+        st.rerun()
+
     st.markdown("---")
     st.subheader("📋 저장된 일일 세션 기록")
     _render_session_history(int(member_id))
 
 else:
     # 강제 재생성 플래그 초기화
+    should_generate = bool(_force_regen)
     if _force_regen:
         st.session_state.pop(_regen_date_key, None)
 
-    if st.button("일일 피드백 생성", width="stretch"):
-        with st.spinner("일일 피드백 생성 중..."):
+    if st.button("일일 피드백 생성", width="stretch") or should_generate:
+        spinner_label = "일일 피드백 재생성 중..." if should_generate else "일일 피드백 생성 중..."
+        with st.spinner(spinner_label):
             result = generate_daily_feedback(
                 member_id=int(member_id),
                 analysis_date=analysis_day,
@@ -242,67 +326,4 @@ else:
                 max_queries=int(max_queries),
                 persona_key=st.session_state.get(_DAILY_PERSONA_KEY),
             )
-
-        if result.error:
-            st.error(f"일일 피드백 생성 실패: {result.error}")
-            if result.retrieval_queries:
-                st.subheader("생성된 RAG 검색 질의")
-                st.write(result.retrieval_queries)
-            if result.daily_analysis is not None:
-                _render_daily_analysis_summary(result.daily_analysis)
-                with st.expander("일일 분석 JSON"):
-                    st.json(result.daily_analysis.model_dump())
-            if result.interpretation_result:
-                with st.expander("소비 해석 JSON"):
-                    st.json(result.interpretation_result)
-            _render_profile_and_memory_context(
-                user_profile=result.user_profile,
-                memory_context=result.memory_context,
-            )
-            st.markdown("---")
-            st.subheader("📋 저장된 일일 세션 기록")
-            _render_session_history(int(member_id))
-            st.stop()
-
-        if result.feedback is None:
-            st.warning("피드백 결과가 비어 있습니다.")
-            st.stop()
-
-        feedback = result.feedback
-
-        st.subheader(feedback.summary_title)
-        st.write(feedback.scolding_message)
-        st.info(feedback.tomorrow_mission)
-
-        _render_daily_analysis_summary(result.daily_analysis)
-
-        st.subheader("피드백 근거")
-        _render_evidence_table(feedback.key_evidences)
-
-        st.subheader("오늘 할 일")
-        _render_action_table(feedback.action_items)
-
-        st.subheader("RAG 검색 질의")
-        st.write(result.retrieval_queries)
-
-        st.subheader("검색된 문서 근거")
-        _render_contexts(result.retrieved_contexts)
-
-        _render_profile_and_memory_context(
-            user_profile=result.user_profile,
-            memory_context=result.memory_context,
-        )
-
-        with st.expander("일일 분석 JSON"):
-            if result.daily_analysis is not None:
-                st.json(result.daily_analysis.model_dump())
-
-        with st.expander("소비 해석 JSON"):
-            st.json(result.interpretation_result or {})
-
-        with st.expander("최종 피드백 JSON"):
-            st.json(feedback.model_dump())
-
-        st.markdown("---")
-        st.subheader("📋 저장된 일일 세션 기록")
-        _render_session_history(int(member_id))
+        _render_daily_feedback_result(result=result, member_id=int(member_id))

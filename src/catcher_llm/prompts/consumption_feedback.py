@@ -96,6 +96,59 @@ def build_consumption_action_prompt() -> ChatPromptTemplate:
     )
 
 
+def build_consumption_cause_action_prompt() -> ChatPromptTemplate:
+    """원인 해석과 행동 개선 포인트를 한 번에 도출하는 프롬프트를 생성한다."""
+    return ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "당신은 소비 원인 해석과 실행 액션을 함께 설계하는 금융 코치다. "
+                "패턴 탐지 결과와 문제 소비 결과를 우선 근거로 삼고, 원인과 행동 항목이 서로 직접 연결되게 작성하라. "
+                "원본 JSON과 추출 지표 JSON의 실제 수치와 경로를 사용하고, target_json_path에는 연결되는 JSON 경로를 적어라.",
+            ),
+            (
+                "human",
+                "아래 JSON 데이터와 선행 분석 결과를 바탕으로 소비 원인과 행동 개선 포인트를 함께 도출하라.\n"
+                "원인은 습관성, 보상성, 스트레스성, 편의성 기반, 소액 누적형 소비를 구분하고, "
+                "행동은 즉시 줄일 수 있는 소비, 대체 가능한 소비, 예산 통제 영역, 다음 주 행동 미션, "
+                "그룹 경쟁 지표를 구체적으로 제안하라.\n\n"
+                "사용자 프로필 JSON:\n{user_profile_json}\n\n"
+                "원본 JSON:\n{raw_json}\n\n"
+                "추출 지표 JSON:\n{indicator_json}\n\n"
+                "패턴 탐지 결과:\n{pattern_text}\n\n"
+                "문제 소비 결과:\n{problem_text}",
+            ),
+        ]
+    )
+
+
+def build_consumption_unified_analysis_prompt() -> ChatPromptTemplate:
+    """패턴, 문제, 원인, 행동 개선 포인트를 한 번에 도출하는 통합 프롬프트를 생성한다."""
+    return ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "당신은 카드 소비 JSON 데이터를 종합 해석하는 금융 코치다. 제공된 원본 JSON과 추출 지표 JSON만 사용해 "
+                "패턴, 문제 소비, 원인, 행동 개선 포인트를 한 번에 도출하라. 사용자 프로필 JSON은 맥락화와 "
+                "우선순위 판단에만 사용하고, 프로필만으로 소비 이유를 단정하지 마라. 모든 응답은 한국어로 작성하라.",
+            ),
+            (
+                "human",
+                "아래 JSON 데이터를 바탕으로 패턴, 문제 소비, 원인, 행동 개선 포인트를 모두 도출하라.\n"
+                "패턴은 반복 소비, 과소비 구간, 충동소비 의심 패턴, 시간대/상황별 소비 패턴을 포함하라.\n"
+                "문제 소비는 새는 돈 포인트, 절약 방해 요소, 고정비 문제, 변동비 문제, 단기 문제 소비, "
+                "장기 문제 소비를 포함하라.\n"
+                "원인은 습관성, 보상성, 스트레스성, 편의성 기반, 소액 누적형 소비를 구분하라.\n"
+                "행동은 즉시 줄일 수 있는 소비, 대체 가능한 소비, 예산 통제 영역, 다음 주 행동 미션, "
+                "그룹 경쟁 지표를 구체적으로 제안하라.\n\n"
+                "사용자 프로필 JSON:\n{user_profile_json}\n\n"
+                "원본 JSON:\n{raw_json}\n\n"
+                "추출 지표 JSON:\n{indicator_json}",
+            ),
+        ]
+    )
+
+
 _PERSONA_SUFFIX = (
     "\n\n━━━ [최우선 지시 — 페르소나 모드 활성화] ━━━\n"
     "위의 시스템 지시 중 어조·말투·표현 방식에 관한 다음 항목들을 모두 무효로 한다:\n"

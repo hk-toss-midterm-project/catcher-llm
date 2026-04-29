@@ -287,6 +287,22 @@ class ActionAnalysisResult(BaseModel):
     group_competition_metrics: list[GroupCompetitionMetric] = Field(default_factory=list)
 
 
+class CauseActionAnalysisResult(BaseModel):
+    """원인 해석과 행동 개선 포인트를 한 번의 구조화 출력으로 묶는다."""
+
+    cause_result: CauseAnalysisResult = Field(default_factory=CauseAnalysisResult)
+    action_result: ActionAnalysisResult = Field(default_factory=ActionAnalysisResult)
+
+
+class SpendingAnalysisResult(BaseModel):
+    """일일 소비 해석의 패턴, 문제, 원인, 행동 결과 전체를 구조화한다."""
+
+    pattern_result: PatternAnalysisResult = Field(default_factory=PatternAnalysisResult)
+    problem_result: ProblemAnalysisResult = Field(default_factory=ProblemAnalysisResult)
+    cause_result: CauseAnalysisResult = Field(default_factory=CauseAnalysisResult)
+    action_result: ActionAnalysisResult = Field(default_factory=ActionAnalysisResult)
+
+
 class RetrievedAdviceContext(BaseModel):
     """일일 피드백 생성을 위해 RAG에서 찾은 조언 문서 청크를 표현한다."""
 
