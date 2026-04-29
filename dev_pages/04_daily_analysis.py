@@ -71,7 +71,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     analysis_day = select_daily_date(
         "분석 기준일",
-        default=date(2024, 3, 31),
+        default=date(2026, 3, 1),
         key="daily_analysis_day",
     )
 with controls[2]:

@@ -7,6 +7,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from catcher_llm.config.raw_data_files import (
+    get_raw_transactions_csv_filename,
+    get_raw_users_csv_filename,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data"
 
@@ -181,12 +186,12 @@ class Settings:
     @property
     def members_csv_path(self) -> Path:
         """로컬 사용자 시드 CSV 경로를 반환한다."""
-        return self.raw_data_dir / "csv" / "users_v1.csv"
+        return self.raw_data_dir / "csv" / get_raw_users_csv_filename()
 
     @property
     def consumption_csv_path(self) -> Path:
         """로컬 소비내역 시드 CSV 경로를 반환한다."""
-        return self.raw_data_dir / "csv" / "transactions_v1.csv"
+        return self.raw_data_dir / "csv" / get_raw_transactions_csv_filename()
 
     @property
     def session_sqlite_db_path(self) -> Path:

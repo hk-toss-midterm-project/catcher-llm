@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import MetaData, Table, func, inspect, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import (
@@ -27,7 +28,7 @@ from catcher_llm.db.session import (
 )
 
 _SEED_METADATA_SUFFIX = ".seed-meta.json"
-_SQLITE_SEED_SCHEMA_VERSION = 2
+_SQLITE_SEED_SCHEMA_VERSION = 3
 type SeedCellValue = int | str | datetime | None
 
 
@@ -58,6 +59,17 @@ def _hash_file(path: Path) -> str | None:
     return digest.hexdigest()
 
 
+def _count_csv_rows(path: Path) -> int | None:
+    """파일이 존재하면 헤더를 제외한 CSV 데이터 행 수를 계산한다."""
+    if not path.exists():
+        return None
+
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return sum(1 for _ in reader)
+
+
 def _build_csv_signature(config: Settings) -> dict[str, Any]:
     """회원 CSV와 소비 CSV의 경로 및 해시를 묶은 시드 시그니처를 만든다."""
     return {
@@ -65,10 +77,12 @@ def _build_csv_signature(config: Settings) -> dict[str, Any]:
         "members_csv": {
             "path": str(config.members_csv_path.resolve()),
             "sha256": _hash_file(config.members_csv_path),
+            "row_count": _count_csv_rows(config.members_csv_path),
         },
         "consumption_csv": {
             "path": str(config.consumption_csv_path.resolve()),
             "sha256": _hash_file(config.consumption_csv_path),
+            "row_count": _count_csv_rows(config.consumption_csv_path),
         },
     }
 
@@ -102,13 +116,53 @@ def _reset_sqlite_database(config: Settings) -> None:
     _get_seed_metadata_path(config).unlink(missing_ok=True)
 
 
+def _get_signature_row_count(signature: dict[str, Any], section_name: str) -> int | None:
+    """시드 시그니처의 특정 CSV 섹션에서 기대 데이터 행 수를 읽는다."""
+    section = signature.get(section_name)
+    if not isinstance(section, dict):
+        return None
+
+    row_count = section.get("row_count")
+    if isinstance(row_count, int):
+        return row_count
+    return None
+
+
+def _database_seed_counts_match_signature(config: Settings, signature: dict[str, Any]) -> bool:
+    """SQLite의 실제 시드 행 수가 CSV 시그니처의 행 수와 일치하는지 확인한다."""
+    expected_user_count = _get_signature_row_count(signature, "members_csv")
+    expected_transaction_count = _get_signature_row_count(signature, "consumption_csv")
+    if expected_user_count is None or expected_transaction_count is None:
+        return True
+
+    try:
+        engine = get_engine(config)
+        inspector = inspect(engine)
+        if not inspector.has_table(UserModel.__tablename__) or not inspector.has_table(
+            TransactionModel.__tablename__
+        ):
+            return False
+
+        with session_scope(config) as session:
+            user_count = session.scalar(select(func.count()).select_from(UserModel)) or 0
+            transaction_count = (
+                session.scalar(select(func.count()).select_from(TransactionModel)) or 0
+            )
+    except SQLAlchemyError:
+        return False
+
+    return user_count == expected_user_count and transaction_count == expected_transaction_count
+
+
 def _should_rebuild_sqlite_database(config: Settings, signature: dict[str, Any]) -> bool:
     """현재 CSV 시그니처가 저장된 이력과 다르면 DB를 다시 만들어야 하는지 판단한다."""
     if not config.sqlite_db_path.exists():
         return True
 
     saved_signature = _load_seed_metadata(_get_seed_metadata_path(config))
-    return saved_signature != signature
+    if saved_signature != signature:
+        return True
+    return not _database_seed_counts_match_signature(config, signature)
 
 
 def _iter_csv_rows(path: Path) -> list[dict[str, str | None]]:
@@ -150,6 +204,15 @@ def _parse_text(value: str | None) -> str | None:
     if stripped == "":
         return None
     return stripped
+
+
+def _get_first_row_value(row: dict[str, str | None], *column_names: str) -> str | None:
+    """여러 CSV 컬럼 별칭 중 처음 존재하고 비어 있지 않은 값을 반환한다."""
+    for column_name in column_names:
+        value = row.get(column_name)
+        if value is not None and value.strip() != "":
+            return value
+    return None
 
 
 def _quote_sqlite_identifier(identifier: str) -> str:
@@ -232,12 +295,12 @@ def _build_user_seed_rows(rows: Sequence[dict[str, str | None]]) -> list[dict[st
             "id": int(row.get("id") or 0),
             "name": (row.get("name") or "").strip(),
             "age": _parse_int(row.get("age")),
-            "job": _parse_text(row.get("직업")),
-            "gender": _parse_text(row.get("성별")),
-            "income": _parse_text(row.get("연봉")),
-            "region": _parse_text(row.get("지역")),
+            "job": _parse_text(_get_first_row_value(row, "직업", "occupation")),
+            "gender": _parse_text(_get_first_row_value(row, "성별", "gender")),
+            "income": _parse_text(_get_first_row_value(row, "연봉", "annual_income")),
+            "region": _parse_text(_get_first_row_value(row, "지역", "region")),
             "card_grade": _parse_text(row.get("최상위 카드등급")),
-            "persona": _parse_text(row.get("페르소나")),
+            "persona": _parse_text(_get_first_row_value(row, "페르소나", "persona")),
             "saving_goal_text": _parse_text(row.get("saving_goal_text")),
         }
         for column_name, value in row.items():
@@ -256,18 +319,30 @@ def _build_transaction_seed_rows(
     for row in rows:
         seed_row: dict[str, SeedCellValue] = {
             "id": int(row.get("id") or 0),
-            "user_id": int(row.get("멤버 id") or 0),
-            "amount": _parse_int(row.get("사용 금액")),
-            "used_at": _parse_datetime(row.get("사용 시간")),
-            "description": _parse_text(row.get("결제 내역")),
+            "user_id": int(_get_first_row_value(row, "멤버 id", "user_id") or 0),
+            "amount": _parse_int(_get_first_row_value(row, "사용 금액", "amount")),
+            "used_at": _parse_datetime(
+                _get_first_row_value(row, "사용 시간", "transaction_time", "used_at")
+            ),
+            "description": _parse_text(_get_first_row_value(row, "결제 내역", "description")),
             "merchant_status": _parse_text(row.get("결제 장소 (가맹점 여부)")),
-            "installment_flag": _parse_text(row.get("할부 여부")),
-            "installment_months": _parse_int(row.get("할부 개월")),
-            "installment_interest_type": _parse_text(row.get("할부 무/유이자 여부")),
-            "transaction_status": _parse_text(row.get("거래 상태 (승인 / 취소)")),
-            "is_overseas": _parse_text(row.get("해외 결제")),
-            "category": _parse_text(row.get("업종 카테고리")),
-            "payment_channel": _parse_text(row.get("결제 방식 (온/오프라인)")),
+            "installment_flag": _parse_text(
+                _get_first_row_value(row, "할부 여부", "is_installment")
+            ),
+            "installment_months": _parse_int(
+                _get_first_row_value(row, "할부 개월", "installment_months")
+            ),
+            "installment_interest_type": _parse_text(
+                _get_first_row_value(row, "할부 무/유이자 여부", "is_interest_free")
+            ),
+            "transaction_status": _parse_text(
+                _get_first_row_value(row, "거래 상태 (승인 / 취소)", "status")
+            ),
+            "is_overseas": _parse_text(_get_first_row_value(row, "해외 결제", "is_overseas")),
+            "category": _parse_text(_get_first_row_value(row, "업종 카테고리", "category")),
+            "payment_channel": _parse_text(
+                _get_first_row_value(row, "결제 방식 (온/오프라인)", "payment_channel")
+            ),
         }
         for column_name, value in row.items():
             if column_name in TRANSACTION_CSV_COLUMN_TO_DB_COLUMN or column_name == "":

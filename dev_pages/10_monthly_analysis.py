@@ -136,7 +136,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     analysis_month = select_month(
         "분석 월",
-        default_month="2024-04",
+        default_month="2026-03",
         key="monthly_analysis_month",
     )
 
