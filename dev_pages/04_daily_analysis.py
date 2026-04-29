@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import cast
 
 import pandas as pd
@@ -11,7 +11,11 @@ from catcher_llm.schemas.consumption_feedback import JsonObject
 from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
 )
-from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_daily_date,
+)
 
 settings = get_settings()
 
@@ -71,7 +75,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     analysis_day = select_daily_date(
         "분석 기준일",
-        default=date(2024, 3, 31),
+        default=DEFAULT_CALENDAR_DATE,
         key="daily_analysis_day",
     )
 with controls[2]:

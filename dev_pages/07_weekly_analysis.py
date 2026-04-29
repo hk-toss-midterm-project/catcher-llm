@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import cast
 
 import pandas as pd
@@ -12,7 +11,11 @@ from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
 from catcher_llm.ui.components import render_readonly_control
-from catcher_llm.ui.date_picker import render_date_picker_styles, select_week_range
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_week_range,
+)
 
 settings = get_settings()
 
@@ -143,7 +146,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     week_start, week_end = select_week_range(
         "분석 주",
-        default_start=date(2024, 4, 1),
+        default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_analysis_week",
     )
 with controls[2]:

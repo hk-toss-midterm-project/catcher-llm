@@ -287,7 +287,10 @@ def build_daily_memory_summary_from_sessions(
         return "아직 누적된 일일 피드백 세션이 없습니다."
     session_list = _build_session_list_text(sessions)
     chain = build_memory_summary_chain("일일", settings)
-    return chain.invoke({"session_list": session_list})
+    try:
+        return chain.invoke({"session_list": session_list})
+    except Exception:
+        return session_list
 
 
 def refresh_daily_user_memory(
@@ -331,6 +334,18 @@ def refresh_daily_user_memory(
             memory.summary = summary
 
     return summary
+
+
+def _refresh_daily_user_memory_if_possible(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+) -> None:
+    """피드백 생성 성공 이후 일일 메모리 요약을 가능할 때만 갱신한다."""
+    try:
+        refresh_daily_user_memory(member_id=member_id, settings=settings)
+    except Exception:
+        return
 
 
 def _append_unique_query(queries: list[str], query: str) -> None:
@@ -616,7 +631,7 @@ def generate_daily_feedback(
             feedback=feedback_result,
             settings=config,
         )
-        refresh_daily_user_memory(
+        _refresh_daily_user_memory_if_possible(
             member_id=member_id,
             settings=config,
         )

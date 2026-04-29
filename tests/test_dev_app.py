@@ -128,6 +128,9 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "10_monthly_analysis.py",
         "11_monthly_interpretation.py",
         "12_monthly_feedback.py",
+        "13_daily_report_rim.py",
+        "14_weekly_report_rim.py",
+        "15_monthly_report_rim.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -142,6 +145,9 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "월간 소비 분석",
         "월간 소비 해석 체인",
         "월간 피드백",
+        "일간 보고서",
+        "주간 보고서",
+        "월간 보고서",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -156,9 +162,15 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "📈",
         "🧭",
         "🧾",
+        "📝",
+        "🗓️",
+        "📈",
     ]
     assert [spec.default for spec in specs] == [
         True,
+        False,
+        False,
+        False,
         False,
         False,
         False,
@@ -181,6 +193,63 @@ def test_dev_app_renders_default_page_without_exception() -> None:
     app.run(timeout=10)
 
     assert len(app.exception) == 0
+
+
+def test_daily_report_page_uses_sqlite_backed_default_selection() -> None:
+    """일간 보고서 페이지가 하드코딩 날짜 대신 SQLite 거래 기반 기본값을 쓰는지 검증한다."""
+    page_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+
+    assert "get_default_daily_report_selection" in page_source
+    assert 'value="1"' not in page_source
+    assert "date(2024, 3, 31)" not in page_source
+    assert "st.number_input(" in page_source
+    assert '"Member ID"' in page_source
+
+
+def test_daily_report_page_uses_configured_sqlite_for_points() -> None:
+    """일간 보고서 포인트 조회와 갱신이 설정 SQLite 경로와 v3 점수 컬럼을 쓰는지 검증한다."""
+    page_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+
+    assert "get_settings().sqlite_db_path" in page_source
+    assert "personal_score" in page_source
+    assert r"C:\Users\user\catcher" not in page_source
+    assert '"개인 점수"' not in page_source
+
+
+def test_consumption_dev_pages_use_2026_january_calendar_defaults() -> None:
+    """소비 개발 페이지의 달력 기본 월이 v3 데이터 시작 월인 2026년 1월인지 검증한다."""
+    from datetime import date
+
+    from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_DATE, DEFAULT_CALENDAR_MONTH
+
+    assert DEFAULT_CALENDAR_DATE == date(2026, 1, 1)
+    assert DEFAULT_CALENDAR_MONTH == "2026-01"
+
+    daily_or_weekly_pages = [
+        Path("dev_pages/04_daily_analysis.py"),
+        Path("dev_pages/05_daily_interpretation.py"),
+        Path("dev_pages/06_daily_feedback.py"),
+        Path("dev_pages/07_weekly_analysis.py"),
+        Path("dev_pages/08_weekly_interpretation.py"),
+        Path("dev_pages/09_weekly_feedback.py"),
+        Path("dev_pages/14_weekly_report_rim.py"),
+    ]
+    for page_path in daily_or_weekly_pages:
+        page_source = page_path.read_text(encoding="utf-8")
+        assert "DEFAULT_CALENDAR_DATE" in page_source
+        assert "date(2024" not in page_source
+
+    monthly_pages = [
+        Path("dev_pages/10_monthly_analysis.py"),
+        Path("dev_pages/11_monthly_interpretation.py"),
+        Path("dev_pages/12_monthly_feedback.py"),
+        Path("dev_pages/15_monthly_report_rim.py"),
+    ]
+    for page_path in monthly_pages:
+        page_source = page_path.read_text(encoding="utf-8")
+        assert "DEFAULT_CALENDAR_MONTH" in page_source
+        assert '"2024-04"' not in page_source
+        assert '"2024-03"' not in page_source
 
 
 def test_consumption_dev_pages_use_popover_date_picker_helper() -> None:

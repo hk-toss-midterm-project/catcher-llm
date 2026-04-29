@@ -8,6 +8,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_MONTH
+
 st.set_page_config(page_title="월간 소비 성적표", page_icon="🏆", layout="wide")
 
 
@@ -502,7 +504,10 @@ def get_action_text(feedback):
         )
         return title, detail
 
-    return "다음 달 고정비와 반복 소비 먼저 줄이기", "정기 결제와 반복 방문 가맹점부터 점검해보세요."
+    return (
+        "다음 달 고정비와 반복 소비 먼저 줄이기",
+        "정기 결제와 반복 방문 가맹점부터 점검해보세요.",
+    )
 
 
 inject_css()
@@ -519,7 +524,7 @@ with c1:
     member_id = st.text_input("Member ID", value="1")
 
 with c2:
-    month = st.text_input("분석 월", value="2024-03")
+    month = st.text_input("분석 월", value=DEFAULT_CALENDAR_MONTH)
 
 run = st.button("월간 소비 성적표 생성", use_container_width=True)
 
@@ -631,7 +636,7 @@ if run:
                 ">
                     월 소비 한도: {money(monthly_budget)}
                     <span style="float:right;">
-                        {'남은 한도' if budget_gap >= 0 else '초과 금액'}: {money(abs(budget_gap))}
+                        {"남은 한도" if budget_gap >= 0 else "초과 금액"}: {money(abs(budget_gap))}
                     </span>
                 </div>
                 """,

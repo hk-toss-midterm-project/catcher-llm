@@ -7,6 +7,7 @@ from unittest.mock import patch
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from catcher_llm.chains.chat_chain import build_chat_chain
+from catcher_llm.chains.consumption_feedback import build_memory_summary_chain
 from catcher_llm.chains.rag_chain import build_rag_chain
 from catcher_llm.chains.router_chain import route_request
 from catcher_llm.chains.summary_chain import build_summary_chain
@@ -76,6 +77,17 @@ class ChainTests(unittest.TestCase):
 
         self.assertEqual(chain.invoke({"text": "긴 글"}), "summary")
         factory.assert_called_once_with(settings, temperature=0.2)
+
+    def test_build_memory_summary_chain_uses_period_prompt_and_string_output(self) -> None:
+        """메모리 요약 체인이 기간 라벨 프롬프트와 문자열 출력을 연결하는지 검증한다."""
+        chain = build_memory_summary_chain(
+            "일일",
+            llm=FakeListChatModel(responses=["최근 식비 반복과 개선 흐름이 보입니다."]),
+        )
+
+        result = chain.invoke({"session_list": "- 2024-04-01: 핵심근거 식비"})
+
+        self.assertEqual(result, "최근 식비 반복과 개선 흐름이 보입니다.")
 
     def test_build_rag_chain_passes_temperature_to_model_factory(self) -> None:
         """RAG 체인이 호출 옵션 temperature를 모델 팩토리에 전달하는지 검증한다."""

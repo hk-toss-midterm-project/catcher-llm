@@ -1,48 +1,79 @@
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+import sqlite3
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-import sqlite3
 
-def add_user_point(member_id: int, point: int = 50):
-    conn = sqlite3.connect(
-        r"C:\Users\user\catcher\catcher-llm\data\sqlite\app.sqlite3"
-    )
-    cursor = conn.cursor()
+from catcher_llm.config.settings import get_settings
+from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
 
-    cursor.execute(
-        """
-        UPDATE users
-        SET "개인 점수" = CAST(COALESCE(NULLIF("개인 점수", ''), '0') AS INTEGER) + ?
-        WHERE id = ?
-        """,
-        (point, member_id),
-    )
+_USER_SCORE_COLUMN = "personal_score"
 
-    conn.commit()
-    conn.close()
+
+def _quote_sqlite_identifier(identifier: str) -> str:
+    """SQLite 식별자에 들어갈 큰따옴표를 이스케이프한다."""
+    return identifier.replace('"', '""')
+
+
+def _get_daily_report_sqlite_db_path() -> str:
+    """현재 앱 설정에서 일간 보고서 포인트를 읽고 쓸 SQLite 경로를 반환한다."""
+    return str(get_settings().sqlite_db_path)
+
+
+def _get_user_score_column(connection: sqlite3.Connection) -> str | None:
+    """사용자 테이블에서 v3 개인 점수 컬럼이 존재하는지 확인해 반환한다."""
+    rows = connection.execute('PRAGMA table_info("users")').fetchall()
+    column_names = {str(row[1]) for row in rows}
+    if _USER_SCORE_COLUMN in column_names:
+        return _USER_SCORE_COLUMN
+    return None
+
+
+def add_user_point(member_id: int, point: int = 50) -> None:
+    """일간 보고서 피드백 보상 포인트를 현재 SQLite 사용자 점수에 더한다."""
+    with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
+        score_column = _get_user_score_column(connection)
+        if score_column is None:
+            return
+
+        escaped_score_column = _quote_sqlite_identifier(score_column)
+        connection.execute(
+            f"""
+            UPDATE users
+            SET "{escaped_score_column}" =
+                CAST(COALESCE(NULLIF("{escaped_score_column}", ''), '0') AS INTEGER) + ?
+            WHERE id = ?
+            """,
+            (point, member_id),
+        )
+        connection.commit()
 
 
 def get_user_point(member_id: int) -> int:
-    conn = sqlite3.connect(
-        r"C:\Users\user\catcher\catcher-llm\data\sqlite\app.sqlite3"
-    )
-    cursor = conn.cursor()
+    """현재 SQLite 사용자 점수 컬럼에서 일간 보고서 포인트 값을 읽는다."""
+    with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
+        score_column = _get_user_score_column(connection)
+        if score_column is None:
+            return 0
 
-    cursor.execute(
-        'SELECT COALESCE(NULLIF("개인 점수", ""), "0") FROM users WHERE id = ?',
-        (member_id,),
-    )
+        escaped_score_column = _quote_sqlite_identifier(score_column)
+        row = connection.execute(
+            f'SELECT COALESCE(NULLIF("{escaped_score_column}", ""), "0") FROM users WHERE id = ?',
+            (member_id,),
+        ).fetchone()
 
-    row = cursor.fetchone()
-    conn.close()
+    if row is None:
+        return 0
 
-    return int(row[0]) if row else 0
+    try:
+        return int(row[0])
+    except (TypeError, ValueError):
+        return 0
+
 
 if "point_earned" not in st.session_state:
     st.session_state.point_earned = False
@@ -463,7 +494,7 @@ def render_report_feedback():
         if not st.session_state.daily_report_rewarded:
             add_user_point(int(st.session_state.member_id), 50)
             st.session_state.daily_report_rewarded = True
-            st.session_state.point_earned = True   # 🔥 추가
+            st.session_state.point_earned = True  # 🔥 추가
 
     with c1:
         if st.button(
@@ -503,24 +534,29 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+default_selection = get_default_daily_report_selection()
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    member_id = st.text_input("Member ID", value="1")
+    member_id = st.number_input(
+        "Member ID",
+        min_value=1,
+        value=default_selection.member_id,
+        step=1,
+    )
 
 with col2:
-    analysis_date = st.date_input("분석 기준일", value=date(2024, 3, 31))
+    analysis_date = st.date_input("분석 기준일", value=default_selection.analysis_date)
 
 with col3:
-    previous_date = st.date_input("전일 기준일", value=analysis_date - timedelta(days=1))
+    previous_date = st.date_input("전일 기준일", value=default_selection.previous_date)
 
 run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
-st.session_state.member_id = member_id
+st.session_state.member_id = int(member_id)
 
 # 1) 생성 버튼을 눌렀을 때는 결과만 저장
 if run:
-    from catcher_llm.config.settings import get_settings
     from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
 
     settings = get_settings()
@@ -783,7 +819,9 @@ render_report_feedback()
 
 with st.expander("상세 분석 & 데이터"):
     st.subheader("일일 분석 JSON")
-    st.json(daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis)
+    st.json(
+        daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis
+    )
 
     st.subheader("최종 피드백 JSON")
     st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)

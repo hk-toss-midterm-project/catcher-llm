@@ -27,7 +27,11 @@ from catcher_llm.services.consumption_feedback.interpretation import (
     make_spending_analysis_input,
     parse_user_spending_data,
 )
-from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_daily_date,
+)
 
 settings = get_settings()
 SAMPLE_JSON_PATH = PROJECT_ROOT / "notebook/team02/02_Layer4/user_data.json"
@@ -226,7 +230,7 @@ if source_option == "SQLite 일일 분석 JSON":
     with controls[1]:
         analysis_day = select_daily_date(
             "분석 기준일",
-            default=date(2024, 3, 31),
+            default=DEFAULT_CALENDAR_DATE,
             key="daily_interpretation_day",
         )
     with controls[2]:

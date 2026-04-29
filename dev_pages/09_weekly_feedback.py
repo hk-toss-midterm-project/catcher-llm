@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -18,7 +17,11 @@ from catcher_llm.schemas.consumption_feedback import (
 )
 from catcher_llm.services.consumption_feedback.weekly_feedback import generate_weekly_feedback
 from catcher_llm.ui.components import render_readonly_control
-from catcher_llm.ui.date_picker import render_date_picker_styles, select_week_range
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_week_range,
+)
 
 _WEEKLY_PERSONA_KEY = "weekly_persona"
 
@@ -113,7 +116,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     week_start, week_end = select_week_range(
         "분석 주",
-        default_start=date(2024, 4, 1),
+        default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_feedback_week",
     )
 with controls[2]:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import timedelta
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_DATE
 
 st.set_page_config(page_title="이번 주 소비 습관 리포트", page_icon="🔁", layout="wide")
 
@@ -246,11 +248,7 @@ def get_top_repeat_merchant(weekly_data):
 
     top = max(
         rows,
-        key=lambda x: (
-            x.get("visit_count")
-            or x.get("count")
-            or 0
-        ),
+        key=lambda x: x.get("visit_count") or x.get("count") or 0,
     )
 
     return (
@@ -292,7 +290,10 @@ def get_action_text(feedback):
         )
         return title, detail
 
-    return "반복 가맹점 방문 횟수 줄이기", "가장 자주 방문한 가맹점의 이용 횟수를 다음 주에 1회 줄여보세요."
+    return (
+        "반복 가맹점 방문 횟수 줄이기",
+        "가장 자주 방문한 가맹점의 이용 횟수를 다음 주에 1회 줄여보세요.",
+    )
 
 
 inject_css()
@@ -309,10 +310,10 @@ with c1:
     member_id = st.text_input("Member ID", value="1")
 
 with c2:
-    start_date = st.date_input("분석 시작일", value=date(2024, 3, 25))
+    start_date = st.date_input("분석 시작일", value=DEFAULT_CALENDAR_DATE)
 
 with c3:
-    end_date = st.date_input("분석 종료일", value=date(2024, 3, 31))
+    end_date = st.date_input("분석 종료일", value=DEFAULT_CALENDAR_DATE + timedelta(days=6))
 
 run = st.button("소비 습관 리포트 생성", use_container_width=True)
 
@@ -384,7 +385,11 @@ if run:
     with m1:
         metric_card("이번 주 총 소비", money(total_amount), f"전주 대비 {prev_rate:.2f}%")
     with m2:
-        metric_card("습관 소비 TOP 1", str(top_merchant), f"{top_visit_count}회 · {money(top_merchant_amount)}")
+        metric_card(
+            "습관 소비 TOP 1",
+            str(top_merchant),
+            f"{top_visit_count}회 · {money(top_merchant_amount)}",
+        )
     with m3:
         metric_card("가장 위험한 요일", str(peak_weekday), f"{money(peak_weekday_amount)} 사용")
     with m4:

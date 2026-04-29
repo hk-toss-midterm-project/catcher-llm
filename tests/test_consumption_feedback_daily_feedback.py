@@ -35,9 +35,9 @@ from catcher_llm.services.user_data_service import ensure_user_database
 
 
 def _write_feedback_seed_csvs(csv_dir: Path) -> None:
-    """일일 피드백 컨텍스트 테스트에 사용할 사용자와 거래 CSV를 작성한다."""
+    """일일 피드백 컨텍스트 테스트에 사용할 v3 사용자와 거래 CSV를 작성한다."""
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "users_v1.csv").write_text(
+    (csv_dir / "users_v3.csv").write_text(
         "\n".join(
             [
                 "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text",
@@ -46,7 +46,7 @@ def _write_feedback_seed_csvs(csv_dir: Path) -> None:
         ),
         encoding="utf-8-sig",
     )
-    (csv_dir / "transactions_v1.csv").write_text(
+    (csv_dir / "transactions_v3.csv").write_text(
         "\n".join(
             [
                 "멤버 id,id,사용 금액,사용 시간,결제 내역,결제 장소 (가맹점 여부),할부 여부,할부 개월,할부 무/유이자 여부,거래 상태 (승인 / 취소),해외 결제,업종 카테고리,결제 방식 (온/오프라인)",

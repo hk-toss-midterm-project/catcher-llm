@@ -28,7 +28,11 @@ from catcher_llm.services.consumption_feedback.monthly_feedback import (
     make_monthly_spending_analysis_input,
     parse_monthly_spending_data,
 )
-from catcher_llm.ui.date_picker import render_date_picker_styles, select_month
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_MONTH,
+    render_date_picker_styles,
+    select_month,
+)
 
 settings = get_settings()
 
@@ -232,7 +236,7 @@ member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     analysis_month = select_month(
         "분석 월",
-        default_month="2024-04",
+        default_month=DEFAULT_CALENDAR_MONTH,
         key="monthly_interpretation_month",
     )
 

@@ -4,6 +4,7 @@ session 테이블에 feedback_message 컬럼을 추가하는 마이그레이션 
 실행 방법:
     python migrate_add_feedback_message.py
 """
+
 from __future__ import annotations
 
 import sqlite3

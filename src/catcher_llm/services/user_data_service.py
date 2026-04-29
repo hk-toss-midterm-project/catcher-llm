@@ -27,8 +27,36 @@ from catcher_llm.db.session import (
 )
 
 _SEED_METADATA_SUFFIX = ".seed-meta.json"
-_SQLITE_SEED_SCHEMA_VERSION = 3
+_SQLITE_SEED_SCHEMA_VERSION = 4
 type SeedCellValue = int | str | datetime | None
+
+_USER_SEED_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "id": ("id",),
+    "name": ("name",),
+    "age": ("age",),
+    "job": ("직업", "occupation", "job"),
+    "gender": ("성별", "gender"),
+    "income": ("연봉", "annual_income", "income"),
+    "region": ("지역", "region"),
+    "card_grade": ("최상위 카드등급", "card_grade"),
+    "persona": ("페르소나", "persona"),
+    "saving_goal_text": ("saving_goal_text",),
+}
+_TRANSACTION_SEED_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "id": ("id",),
+    "user_id": ("멤버 id", "user_id"),
+    "amount": ("사용 금액", "amount"),
+    "used_at": ("사용 시간", "transaction_time", "used_at"),
+    "description": ("결제 내역", "description"),
+    "merchant_status": ("결제 장소 (가맹점 여부)",),
+    "installment_flag": ("할부 여부", "is_installment"),
+    "installment_months": ("할부 개월", "installment_months"),
+    "installment_interest_type": ("할부 무/유이자 여부", "is_interest_free"),
+    "transaction_status": ("거래 상태 (승인 / 취소)", "status"),
+    "is_overseas": ("해외 결제", "is_overseas"),
+    "category": ("업종 카테고리", "category"),
+    "payment_channel": ("결제 방식 (온/오프라인)", "payment_channel"),
+}
 
 
 @dataclass(slots=True, frozen=True)
@@ -132,6 +160,29 @@ def _parse_int(value: str | None) -> int | None:
     return int(stripped)
 
 
+def _pick_csv_value(row: dict[str, str | None], aliases: Sequence[str]) -> str | None:
+    """CSV 행에서 v1 한글 헤더와 v3 영문 헤더 alias를 순서대로 찾아 값을 반환한다."""
+    for column_name in aliases:
+        if column_name in row:
+            return row[column_name]
+    return None
+
+
+def _parse_required_int_from_aliases(
+    row: dict[str, str | None],
+    aliases: Sequence[str],
+    *,
+    field_name: str,
+) -> int:
+    """필수 정수 컬럼을 alias 목록에서 찾아 파싱하고 없으면 명확한 오류를 낸다."""
+    value = _pick_csv_value(row, aliases)
+    parsed_value = _parse_int(value)
+    if parsed_value is None:
+        alias_text = ", ".join(aliases)
+        raise ValueError(f"{field_name} 값을 찾을 수 없습니다. CSV 컬럼 후보: {alias_text}")
+    return parsed_value
+
+
 def _parse_datetime(value: str | None) -> datetime | None:
     """비어 있을 수 있는 ISO 형식 문자열을 `datetime` 또는 `None`으로 변환한다."""
     if value is None:
@@ -229,16 +280,24 @@ def _build_user_seed_rows(rows: Sequence[dict[str, str | None]]) -> list[dict[st
     seed_rows: list[dict[str, SeedCellValue]] = []
     for row in rows:
         seed_row: dict[str, SeedCellValue] = {
-            "id": int(row.get("id") or 0),
-            "name": (row.get("name") or "").strip(),
-            "age": _parse_int(row.get("age")),
-            "job": _parse_text(row.get("직업")),
-            "gender": _parse_text(row.get("성별")),
-            "income": _parse_text(row.get("연봉")),
-            "region": _parse_text(row.get("지역")),
-            "card_grade": _parse_text(row.get("최상위 카드등급")),
-            "persona": _parse_text(row.get("페르소나")),
-            "saving_goal_text": _parse_text(row.get("saving_goal_text")),
+            "id": _parse_required_int_from_aliases(
+                row,
+                _USER_SEED_COLUMN_ALIASES["id"],
+                field_name="사용자 ID",
+            ),
+            "name": (_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["name"]) or "").strip(),
+            "age": _parse_int(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["age"])),
+            "job": _parse_text(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["job"])),
+            "gender": _parse_text(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["gender"])),
+            "income": _parse_text(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["income"])),
+            "region": _parse_text(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["region"])),
+            "card_grade": _parse_text(
+                _pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["card_grade"])
+            ),
+            "persona": _parse_text(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["persona"])),
+            "saving_goal_text": _parse_text(
+                _pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["saving_goal_text"])
+            ),
         }
         for column_name, value in row.items():
             if column_name in USER_CSV_COLUMN_TO_DB_COLUMN or column_name == "":
@@ -255,19 +314,50 @@ def _build_transaction_seed_rows(
     seed_rows: list[dict[str, SeedCellValue]] = []
     for row in rows:
         seed_row: dict[str, SeedCellValue] = {
-            "id": int(row.get("id") or 0),
-            "user_id": int(row.get("멤버 id") or 0),
-            "amount": _parse_int(row.get("사용 금액")),
-            "used_at": _parse_datetime(row.get("사용 시간")),
-            "description": _parse_text(row.get("결제 내역")),
-            "merchant_status": _parse_text(row.get("결제 장소 (가맹점 여부)")),
-            "installment_flag": _parse_text(row.get("할부 여부")),
-            "installment_months": _parse_int(row.get("할부 개월")),
-            "installment_interest_type": _parse_text(row.get("할부 무/유이자 여부")),
-            "transaction_status": _parse_text(row.get("거래 상태 (승인 / 취소)")),
-            "is_overseas": _parse_text(row.get("해외 결제")),
-            "category": _parse_text(row.get("업종 카테고리")),
-            "payment_channel": _parse_text(row.get("결제 방식 (온/오프라인)")),
+            "id": _parse_required_int_from_aliases(
+                row,
+                _TRANSACTION_SEED_COLUMN_ALIASES["id"],
+                field_name="거래 ID",
+            ),
+            "user_id": _parse_required_int_from_aliases(
+                row,
+                _TRANSACTION_SEED_COLUMN_ALIASES["user_id"],
+                field_name="거래 사용자 ID",
+            ),
+            "amount": _parse_int(_pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["amount"])),
+            "used_at": _parse_datetime(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["used_at"])
+            ),
+            "description": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["description"])
+            ),
+            "merchant_status": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["merchant_status"])
+            ),
+            "installment_flag": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["installment_flag"])
+            ),
+            "installment_months": _parse_int(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["installment_months"])
+            ),
+            "installment_interest_type": _parse_text(
+                _pick_csv_value(
+                    row,
+                    _TRANSACTION_SEED_COLUMN_ALIASES["installment_interest_type"],
+                )
+            ),
+            "transaction_status": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["transaction_status"])
+            ),
+            "is_overseas": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["is_overseas"])
+            ),
+            "category": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["category"])
+            ),
+            "payment_channel": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["payment_channel"])
+            ),
         }
         for column_name, value in row.items():
             if column_name in TRANSACTION_CSV_COLUMN_TO_DB_COLUMN or column_name == "":
