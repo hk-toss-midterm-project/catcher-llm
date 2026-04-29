@@ -187,6 +187,31 @@ def test_weekly_comparisons_include_recent_average_and_last_month_same_week() ->
     assert same_week_last_month["reference_total"] == 100
 
 
+def test_weekly_same_week_last_month_clamps_when_previous_month_has_no_week_num() -> None:
+    """전월에 동일 주차 시작일이 없어도 마지막 7일 범위로 비교하는지 검증한다."""
+    frame = pd.DataFrame(
+        [
+            _make_row(1, "2026-02-22 10:00:00", 100, "2월말1", "식비"),
+            _make_row(1, "2026-02-28 10:00:00", 200, "2월말2", "식비"),
+            _make_row(1, "2026-03-30 10:00:00", 700, "이번주", "식비"),
+        ]
+    )
+
+    result = build_weekly_consumption_analysis_from_frames(
+        frame,
+        member_id=1,
+        week_start="2026-03-30",
+        week_end="2026-04-05",
+    )
+
+    same_week_last_month = result["weekly_comparisons"]["same_week_last_month"]
+
+    assert same_week_last_month["week_num"] == 5
+    assert same_week_last_month["reference_start_date"] == "2026-02-22"
+    assert same_week_last_month["reference_end_date"] == "2026-02-28"
+    assert same_week_last_month["reference_total"] == 300
+
+
 # ---------------------------------------------------------------------------
 # [1] 주간 총 지출 요약
 # ---------------------------------------------------------------------------

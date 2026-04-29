@@ -233,8 +233,11 @@ def _build_last_month_same_week_comparison(
     week_num = (week_start.day - 1) // 7 + 1
     previous_year, previous_month = _shift_month(week_start.year, week_start.month, -1)
     last_day = calendar.monthrange(previous_year, previous_month)[1]
-    reference_start = date(previous_year, previous_month, (week_num - 1) * 7 + 1)
-    reference_end = date(previous_year, previous_month, min(week_num * 7, last_day))
+    reference_start_day = (week_num - 1) * 7 + 1
+    if reference_start_day > last_day:
+        reference_start_day = max(1, last_day - 6)
+    reference_start = date(previous_year, previous_month, reference_start_day)
+    reference_end = date(previous_year, previous_month, min(reference_start_day + 6, last_day))
 
     return _build_week_period_comparison(
         frame,

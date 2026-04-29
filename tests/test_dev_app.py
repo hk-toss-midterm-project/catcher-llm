@@ -274,11 +274,14 @@ def test_dev_app_renders_default_page_without_exception() -> None:
     assert len(app.exception) == 0
 
 
-def test_daily_report_page_uses_sqlite_backed_default_selection() -> None:
-    """일간 보고서 페이지가 하드코딩 날짜 대신 SQLite 거래 기반 기본값을 쓰는지 검증한다."""
+def test_daily_report_page_uses_global_calendar_default_date() -> None:
+    """일간 보고서 페이지가 SQLite 탐색 날짜가 아니라 공통 달력 기본일을 쓰는지 검증한다."""
     page_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
 
     assert "get_default_daily_report_selection" in page_source
+    assert "DEFAULT_CALENDAR_DATE" in page_source
+    assert "default=DEFAULT_CALENDAR_DATE" in page_source
+    assert "default=default_selection.analysis_date" not in page_source
     assert 'value="1"' not in page_source
     assert "date(2024, 3, 31)" not in page_source
     assert "st.number_input(" in page_source
@@ -309,14 +312,22 @@ def test_report_pages_remove_duplicated_derived_date_controls() -> None:
     assert "분석 종료일" not in weekly_report_source
 
 
-def test_consumption_dev_pages_use_2026_january_daily_defaults() -> None:
-    """소비 개발 페이지의 일일 기본 날짜가 2026-01-02이고 전일 기본값이 전날인지 검증한다."""
+def test_consumption_dev_pages_use_2026_april_calendar_defaults() -> None:
+    """소비 개발 페이지의 일·주·월 기본 달력값이 2026-04-01 기준인지 검증한다."""
     from datetime import date
 
-    from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_DATE, DEFAULT_CALENDAR_MONTH
+    from catcher_llm.ui.date_picker import (
+        DEFAULT_CALENDAR_DATE,
+        DEFAULT_CALENDAR_MONTH,
+        _coerce_week_range,
+    )
 
-    assert DEFAULT_CALENDAR_DATE == date(2026, 1, 2)
-    assert DEFAULT_CALENDAR_MONTH == "2026-01"
+    assert DEFAULT_CALENDAR_DATE == date(2026, 4, 1)
+    assert DEFAULT_CALENDAR_MONTH == "2026-04"
+    assert _coerce_week_range(DEFAULT_CALENDAR_DATE, DEFAULT_CALENDAR_DATE) == (
+        date(2026, 3, 30),
+        date(2026, 4, 5),
+    )
 
     daily_analysis_source = Path("dev_pages/04_daily_analysis.py").read_text(encoding="utf-8")
     assert "previous_day = analysis_day - timedelta(days=1)" in daily_analysis_source
@@ -329,6 +340,7 @@ def test_consumption_dev_pages_use_2026_january_daily_defaults() -> None:
         Path("dev_pages/07_weekly_analysis.py"),
         Path("dev_pages/08_weekly_interpretation.py"),
         Path("dev_pages/09_weekly_feedback.py"),
+        Path("dev_pages/13_daily_report_rim.py"),
         Path("dev_pages/14_weekly_report_rim.py"),
     ]
     for page_path in daily_or_weekly_pages:
@@ -750,7 +762,7 @@ def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
     """저장된 일일 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
     cached_session = SessionModel(
         user_id=1,
-        analysis_date="2026-01-02",
+        analysis_date="2026-04-01",
         period_type="daily",
         feedback_message="기존 저장 피드백입니다.",
         feedback_reason="[]",
@@ -758,7 +770,7 @@ def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
     )
     fake_result = DailyFeedbackServiceResult(
         member_id=1,
-        analysis_date="2026-01-02",
+        analysis_date="2026-04-01",
         feedback=DailyFeedbackResult(
             summary_title="재생성된 피드백",
             scolding_message="새로 생성한 피드백입니다.",
@@ -797,7 +809,7 @@ def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
         _click_button_by_label(app, "일일 피드백 재생성")
 
     assert len(app.exception) == 0
-    assert call_kwargs["analysis_date"].isoformat() == "2026-01-02"
+    assert call_kwargs["analysis_date"].isoformat() == "2026-04-01"
     assert any(subheader.value == "재생성된 피드백" for subheader in app.subheader)
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
@@ -820,7 +832,7 @@ def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() 
     """일일 피드백 반응 버튼을 누르면 반응 저장 후 사유 입력 UI가 열리는지 검증한다."""
     cached_session = SessionModel(
         user_id=1,
-        analysis_date="2026-01-02",
+        analysis_date="2026-04-01",
         period_type="daily",
         feedback_message="기존 저장 피드백입니다.",
         feedback_reason="[]",
@@ -835,7 +847,7 @@ def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() 
         reaction_calls.append(kwargs)
         return FeedbackReactionSaveResult(
             member_id=1,
-            analysis_date="2026-01-02",
+            analysis_date="2026-04-01",
             period_type="daily",
             reaction="like",
             reason=None,
@@ -982,7 +994,7 @@ def test_daily_feedback_unified_dev_page_uses_unified_interpretation_mode() -> N
     """일일 통합 피드백 페이지가 최종 피드백 생성 시 통합 해석 모드를 사용하는지 검증한다."""
     fake_result = DailyFeedbackServiceResult(
         member_id=1,
-        analysis_date="2026-01-02",
+        analysis_date="2026-04-01",
         feedback=DailyFeedbackResult(
             summary_title="통합 해석 피드백",
             scolding_message="통합 해석 체인으로 만든 피드백입니다.",

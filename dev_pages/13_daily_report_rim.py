@@ -11,7 +11,11 @@ import streamlit as st
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
-from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_daily_date,
+)
 
 _USER_SCORE_COLUMN = "personal_score"
 
@@ -551,7 +555,7 @@ with col1:
 with col2:
     analysis_date = select_daily_date(
         "분석 기준일",
-        default=default_selection.analysis_date,
+        default=DEFAULT_CALENDAR_DATE,
         key="daily_report_analysis_date",
     )
 

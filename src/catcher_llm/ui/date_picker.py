@@ -12,8 +12,8 @@ import streamlit_date_picker
 from streamlit_date_picker import PickerType, date_picker
 
 _DATE_PICKER_COMPONENT_HEIGHT = "400px"
-DEFAULT_CALENDAR_DATE = date(2026, 1, 2)
-DEFAULT_CALENDAR_MONTH = "2026-01"
+DEFAULT_CALENDAR_DATE = date(2026, 4, 1)
+DEFAULT_CALENDAR_MONTH = "2026-04"
 _MONTH_PATTERN = re.compile(r"^(?P<year>\d{4})-(?P<month>\d{1,2})$")
 _WEEK_PATTERN = re.compile(r"^(?P<year>\d{4})-(?P<week>\d{1,2})(?!-\d)")
 _DATE_PICKER_TRIGGER_CSS = """
