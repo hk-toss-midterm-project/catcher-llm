@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
-from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_DATE
 
 st.set_page_config(page_title="이번 주 소비 습관 리포트", page_icon="🔁", layout="wide")
 
@@ -118,6 +116,46 @@ def inject_css():
             font-size: 18px;
             font-weight: 900;
         }
+
+        .feedback-box {
+            padding: 22px;
+            border-radius: 22px;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            margin-top: 24px;
+            margin-bottom: 20px;
+        }
+
+        /* =========================
+           👍 / 👎 버튼 상태 스타일
+        ========================= */
+
+        .st-key-weekly_like_btn button {
+            border-radius: 12px;
+            font-weight: 800;
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+
+        .st-key-weekly_dislike_btn button {
+            border-radius: 12px;
+            font-weight: 800;
+            background-color: #e5e7eb;
+            color: #374151;
+        }
+
+        .st-key-weekly_like_btn_active button {
+            background-color: #22c55e !important;
+            color: white !important;
+            border: 1px solid #22c55e !important;
+        }
+
+        .st-key-weekly_dislike_btn_active button {
+            background-color: #ef4444 !important;
+            color: white !important;
+            border: 1px solid #ef4444 !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -204,7 +242,9 @@ def make_repeat_merchant_chart(weekly_analysis):
     )
 
     if df.empty:
-        df = pd.DataFrame({"merchant": ["반복 가맹점 없음"], "visit_count": [0], "amount": [0]})
+        df = pd.DataFrame(
+            {"merchant": ["반복 가맹점 없음"], "visit_count": [0], "amount": [0]}
+        )
 
     df = df.sort_values("visit_count", ascending=True).tail(7)
 
@@ -246,10 +286,7 @@ def get_top_repeat_merchant(weekly_data):
     if not rows:
         return "-", 0, 0
 
-    top = max(
-        rows,
-        key=lambda x: x.get("visit_count") or x.get("count") or 0,
-    )
+    top = max(rows, key=lambda x: x.get("visit_count") or x.get("count") or 0)
 
     return (
         top.get("merchant", "-"),
@@ -261,8 +298,8 @@ def get_top_repeat_merchant(weekly_data):
 def get_peak_weekday(weekly_data):
     pattern = weekly_data.get("weekday_pattern", {})
     peak = pattern.get("peak_weekday")
-
     rows = pattern.get("weekday_breakdown", [])
+
     if peak:
         peak_amount = 0
         for row in rows:
@@ -296,7 +333,23 @@ def get_action_text(feedback):
     )
 
 
+# =========================
+# 화면 시작
+# =========================
+
 inject_css()
+
+if "weekly_report_generated" not in st.session_state:
+    st.session_state.weekly_report_generated = False
+
+if "weekly_result" not in st.session_state:
+    st.session_state.weekly_result = None
+
+if "weekly_report_feedback" not in st.session_state:
+    st.session_state.weekly_report_feedback = None
+
+if "weekly_feedback_reason" not in st.session_state:
+    st.session_state.weekly_feedback_reason = ""
 
 st.markdown('<div class="title">🔁 이번 주 소비 습관 리포트</div>', unsafe_allow_html=True)
 st.markdown(
@@ -306,18 +359,24 @@ st.markdown(
 
 c1, c2, c3 = st.columns(3)
 
+default_start_date = date(2026, 3, 23)
+
 with c1:
     member_id = st.text_input("Member ID", value="1")
 
 with c2:
-    start_date = st.date_input("분석 시작일", value=DEFAULT_CALENDAR_DATE)
+    start_date = st.date_input("분석 시작일", value=default_start_date)
 
 with c3:
-    end_date = st.date_input("분석 종료일", value=DEFAULT_CALENDAR_DATE + timedelta(days=6))
+    end_date = st.date_input("분석 종료일", value=default_start_date + timedelta(days=6))
 
-run = st.button("소비 습관 리포트 생성", use_container_width=True)
+if st.button("소비 습관 리포트 생성", use_container_width=True):
+    st.session_state.weekly_report_generated = True
+    st.session_state.weekly_result = None
+    st.session_state.weekly_report_feedback = None
+    st.session_state.weekly_feedback_reason = ""
 
-if run:
+if st.session_state.weekly_report_generated:
     from catcher_llm.config.settings import get_settings
     from catcher_llm.services.consumption_feedback.weekly_feedback import (
         generate_weekly_feedback,
@@ -325,17 +384,20 @@ if run:
 
     settings = get_settings()
 
-    with st.spinner("이번 주 소비 습관을 분석하고 있어요..."):
-        result = generate_weekly_feedback(
-            member_id=int(member_id),
-            week_start=start_date,
-            week_end=end_date,
-            settings=settings,
-            chunk_size=800,
-            chunk_overlap=120,
-            top_k=3,
-            max_queries=4,
-        )
+    if st.session_state.weekly_result is None:
+        with st.spinner("이번 주 소비 습관을 분석하고 있어요..."):
+            st.session_state.weekly_result = generate_weekly_feedback(
+                member_id=int(member_id),
+                week_start=start_date,
+                week_end=end_date,
+                settings=settings,
+                chunk_size=800,
+                chunk_overlap=120,
+                top_k=3,
+                max_queries=4,
+            )
+
+    result = st.session_state.weekly_result
 
     if result.error:
         st.error(f"주간 피드백 생성 실패: {result.error}")
@@ -359,6 +421,7 @@ if run:
 
     category_rows = weekly_data.get("category_summary", [])
     top_category = "-"
+
     if category_rows:
         top_item = max(category_rows, key=lambda x: x.get("total_amount", 0))
         top_category = top_item.get("category", "-")
@@ -384,14 +447,17 @@ if run:
 
     with m1:
         metric_card("이번 주 총 소비", money(total_amount), f"전주 대비 {prev_rate:.2f}%")
+
     with m2:
         metric_card(
             "습관 소비 TOP 1",
             str(top_merchant),
             f"{top_visit_count}회 · {money(top_merchant_amount)}",
         )
+
     with m3:
         metric_card("가장 위험한 요일", str(peak_weekday), f"{money(peak_weekday_amount)} 사용")
+
     with m4:
         metric_card("총 결제 건수", f"{transaction_count}건", f"최다 카테고리: {top_category}")
 
@@ -457,7 +523,6 @@ if run:
 
     st.markdown('<div class="section">기대 효과</div>', unsafe_allow_html=True)
 
-    # 반복 가맹점 1회 줄이면 아낄 수 있는 금액
     if top_visit_count and top_merchant_amount:
         expected_saving = round(top_merchant_amount / top_visit_count)
     else:
@@ -472,6 +537,52 @@ if run:
         """,
         unsafe_allow_html=True,
     )
+
+    # =========================
+    # 좋아요 / 싫어요
+    # =========================
+    st.markdown(
+        """
+        <div class="feedback-box">
+            <b>이 리포트가 도움이 되었나요?</b>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    like_active = st.session_state.weekly_report_feedback == "like"
+    dislike_active = st.session_state.weekly_report_feedback == "dislike"
+
+    like_key = "weekly_like_btn_active" if like_active else "weekly_like_btn"
+    dislike_key = "weekly_dislike_btn_active" if dislike_active else "weekly_dislike_btn"
+
+    like_col, dislike_col = st.columns(2)
+
+    with like_col:
+        if st.button("👍 좋아요", use_container_width=True, key=like_key):
+            st.session_state.weekly_report_feedback = "like"
+            st.rerun()
+
+    with dislike_col:
+        if st.button("👎 싫어요", use_container_width=True, key=dislike_key):
+            st.session_state.weekly_report_feedback = "dislike"
+            st.rerun()
+
+    if st.session_state.weekly_report_feedback == "like":
+        st.success("좋아요 감사합니다! 다음 리포트도 이 방향으로 개선해볼게요 😊")
+
+    elif st.session_state.weekly_report_feedback == "dislike":
+        st.warning("어떤 점이 아쉬웠나요?")
+
+        st.session_state.weekly_feedback_reason = st.text_area(
+            "아쉬웠던 점",
+            value=st.session_state.weekly_feedback_reason,
+            placeholder="예: 피드백이 너무 뻔해요 / 그래프가 이해하기 어려워요 / 행동 규칙이 더 구체적이면 좋겠어요",
+            key="weekly_feedback_reason_input",
+        )
+
+        if st.button("의견 제출", use_container_width=True, key="weekly_reason_submit_btn"):
+            st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
 
     with st.expander("상세 분석 & 데이터"):
         st.subheader("주간 분석 JSON")
