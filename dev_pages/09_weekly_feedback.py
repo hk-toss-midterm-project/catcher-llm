@@ -197,12 +197,6 @@ cached_session = load_weekly_session_for_date(
 _has_cache = cached_session is not None and cached_session.feedback_message
 
 if _has_cache and not _force_regen:
-    col_badge, col_btn = st.columns([3, 1])
-    col_badge.success(f"💾 {week_start} 저장된 피드백을 불러왔습니다.")
-    if col_btn.button("🔄 새로 생성", key="weekly_regen_btn"):
-        st.session_state[_regen_date_key] = True
-        st.rerun()
-
     _render_cached_weekly_session(cached_session)
 
 else:
