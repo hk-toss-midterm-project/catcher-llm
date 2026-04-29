@@ -8,7 +8,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from catcher_llm.ui.date_picker import DEFAULT_CALENDAR_MONTH
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_MONTH,
+    render_date_picker_styles,
+    select_month,
+)
 
 st.set_page_config(page_title="월간 소비 성적표", page_icon="🏆", layout="wide")
 
@@ -759,6 +763,7 @@ def render_monthly_report(result, member_id: str, month: str):
 
 
 inject_css()
+render_date_picker_styles()
 
 if "monthly_report_result" not in st.session_state:
     st.session_state.monthly_report_result = None
@@ -784,9 +789,10 @@ with c1:
     )
 
 with c2:
-    month = st.text_input(
+    month = select_month(
         "분석 월",
-        value=st.session_state.monthly_report_params["month"],
+        default_month=st.session_state.monthly_report_params["month"],
+        key="monthly_report_month",
     )
 
 run = st.button("월간 소비 성적표 생성", use_container_width=True)

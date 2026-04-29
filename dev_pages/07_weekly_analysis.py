@@ -10,7 +10,6 @@ from catcher_llm.schemas.consumption_feedback import JsonObject
 from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
-from catcher_llm.ui.components import render_readonly_control
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -141,7 +140,7 @@ st.title("🗓️ 주간 소비 분석")
 st.caption("consumption_feedback.weekly_analysis 서비스를 실행해 화면에서 결과를 점검합니다.")
 
 render_date_picker_styles()
-controls = st.columns(3)
+controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     week_start, week_end = select_week_range(
@@ -149,8 +148,6 @@ with controls[1]:
         default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_analysis_week",
     )
-with controls[2]:
-    render_readonly_control("분석 주 종료일", week_end)
 
 if st.button("주간 분석 실행", use_container_width=True):
     with st.spinner("주간 소비 분석 JSON 생성 중..."):

@@ -247,6 +247,20 @@ def test_daily_report_page_uses_configured_sqlite_for_points() -> None:
     assert '"개인 점수"' not in page_source
 
 
+def test_report_pages_remove_duplicated_derived_date_controls() -> None:
+    """리포트 페이지가 기준 날짜 선택에서 계산 가능한 보조 날짜 UI를 표시하지 않는지 검증한다."""
+    daily_report_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+    weekly_report_source = Path("dev_pages/14_weekly_report_rim.py").read_text(encoding="utf-8")
+
+    assert "전일 기준일" not in daily_report_source
+    assert "default_selection.previous_date" not in daily_report_source
+    assert "previous_date = analysis_date - timedelta(days=1)" in daily_report_source
+
+    assert "select_week_range" in weekly_report_source
+    assert "render_readonly_control" not in weekly_report_source
+    assert "분석 종료일" not in weekly_report_source
+
+
 def test_consumption_dev_pages_use_2026_january_daily_defaults() -> None:
     """소비 개발 페이지의 일일 기본 날짜가 2026-01-02이고 전일 기본값이 전날인지 검증한다."""
     from datetime import date
@@ -298,6 +312,9 @@ def test_consumption_dev_pages_use_popover_date_picker_helper() -> None:
         Path("dev_pages/10_monthly_analysis.py"),
         Path("dev_pages/11_monthly_interpretation.py"),
         Path("dev_pages/12_monthly_feedback.py"),
+        Path("dev_pages/13_daily_report_rim.py"),
+        Path("dev_pages/14_weekly_report_rim.py"),
+        Path("dev_pages/15_monthly_report_rim.py"),
     ]
 
     for page_path in page_paths:
@@ -486,8 +503,8 @@ def test_date_picker_horizontal_block_alignment_css_is_scoped() -> None:
     assert "align-self: stretch" in helper_source
 
 
-def test_weekly_controls_use_readonly_box_for_end_date() -> None:
-    """주간 컨트롤 행의 종료일 표시가 metric 대신 공통 읽기 전용 박스를 쓰는지 검증한다."""
+def test_weekly_pages_remove_duplicated_end_date_control() -> None:
+    """주간 페이지가 주 선택 picker 외 별도 종료일 UI를 표시하지 않는지 검증한다."""
     page_paths = [
         Path("dev_pages/07_weekly_analysis.py"),
         Path("dev_pages/08_weekly_interpretation.py"),
@@ -496,8 +513,9 @@ def test_weekly_controls_use_readonly_box_for_end_date() -> None:
 
     for page_path in page_paths:
         page_source = page_path.read_text(encoding="utf-8")
-        assert "render_readonly_control" in page_source
-        assert 'controls[2].metric("분석 주 종료일"' not in page_source
+        assert "select_week_range" in page_source
+        assert "render_readonly_control" not in page_source
+        assert "분석 주 종료일" not in page_source
 
 
 def test_date_picker_bundle_height_patch_source() -> None:

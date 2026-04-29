@@ -28,7 +28,6 @@ from catcher_llm.services.consumption_feedback.weekly_feedback import (
     make_weekly_spending_analysis_input,
     parse_weekly_spending_data,
 )
-from catcher_llm.ui.components import render_readonly_control
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -222,7 +221,7 @@ st.title("🧭 주간 소비 해석 체인")
 st.caption("user_weekly_analysis 결과를 주간 지표로 변환하고 구조화 해석 체인을 실행합니다.")
 
 render_date_picker_styles()
-controls = st.columns(3)
+controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     week_start, week_end = select_week_range(
@@ -230,8 +229,6 @@ with controls[1]:
         default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_interpretation_week",
     )
-with controls[2]:
-    render_readonly_control("분석 주 종료일", week_end)
 
 try:
     weekly_data = _load_sqlite_weekly_data(

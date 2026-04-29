@@ -21,7 +21,6 @@ from catcher_llm.services.consumption_feedback.weekly_feedback import (
     generate_weekly_feedback,
     load_weekly_session_for_date,
 )
-from catcher_llm.ui.components import render_readonly_control
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -145,7 +144,7 @@ st.title("🧾 주간 피드백")
 st.caption("generate_weekly_feedback 서비스를 실행해 최종 주간 소비 피드백 결과를 점검합니다.")
 
 render_date_picker_styles()
-controls = st.columns(3)
+controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     week_start, week_end = select_week_range(
@@ -153,8 +152,6 @@ with controls[1]:
         default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_feedback_week",
     )
-with controls[2]:
-    render_readonly_control("분석 주 종료일", week_end)
 
 retrieval_controls = st.columns(4)
 chunk_size = retrieval_controls[0].number_input("Chunk size", min_value=100, value=800, step=50)

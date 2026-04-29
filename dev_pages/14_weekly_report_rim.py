@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from catcher_llm.ui.components import render_readonly_control
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -361,7 +360,7 @@ st.markdown(
 )
 
 render_date_picker_styles()
-c1, c2, c3 = st.columns(3)
+c1, c2 = st.columns(2)
 
 with c1:
     member_id = st.text_input("Member ID", value="1")
@@ -372,9 +371,6 @@ with c2:
         default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_report_week",
     )
-
-with c3:
-    render_readonly_control("분석 종료일", end_date)
 
 if st.button("소비 습관 리포트 생성", use_container_width=True):
     st.session_state.weekly_report_generated = True

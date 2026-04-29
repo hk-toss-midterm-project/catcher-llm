@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from datetime import timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -10,6 +11,7 @@ import streamlit as st
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
+from catcher_llm.ui.date_picker import render_date_picker_styles, select_daily_date
 
 _USER_SCORE_COLUMN = "personal_score"
 
@@ -527,6 +529,7 @@ def render_report_feedback():
 
 
 inject_css()
+render_date_picker_styles()
 
 st.markdown('<div class="title">🚨 오늘의 소비 알림장</div>', unsafe_allow_html=True)
 st.markdown(
@@ -535,7 +538,7 @@ st.markdown(
 )
 
 default_selection = get_default_daily_report_selection()
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     member_id = st.number_input(
@@ -546,10 +549,13 @@ with col1:
     )
 
 with col2:
-    analysis_date = st.date_input("분석 기준일", value=default_selection.analysis_date)
+    analysis_date = select_daily_date(
+        "분석 기준일",
+        default=default_selection.analysis_date,
+        key="daily_report_analysis_date",
+    )
 
-with col3:
-    previous_date = st.date_input("전일 기준일", value=default_selection.previous_date)
+previous_date = analysis_date - timedelta(days=1)
 
 run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
