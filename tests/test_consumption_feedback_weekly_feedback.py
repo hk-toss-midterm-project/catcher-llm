@@ -95,10 +95,13 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertEqual(weekly_data.week_start, "2024-04-01")
         self.assertIn("weekly_summary.this_week_total", analysis_input["indicator_json"])
         self.assertIn("weekly_metrics", analysis_input["raw_json"])
+        self.assertIn("weekly_comparisons", analysis_input["raw_json"])
         self.assertIn(
             "weekly_metrics.weekend_spending_ratio_percent",
             analysis_input["indicator_json"],
         )
+        self.assertIn("최근 4주 평균 대비 지출 증감률", analysis_input["indicator_json"])
+        self.assertIn("지난달 같은 주차 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("주말 과소비 지수", analysis_input["indicator_json"])
         self.assertIn("waste_detection.high_spending.items", analysis_input["indicator_json"])
         self.assertIn("배달의민족", analysis_input["raw_json"])

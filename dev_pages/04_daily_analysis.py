@@ -5,6 +5,7 @@ from typing import cast
 
 import pandas as pd
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.schemas.consumption_feedback import JsonObject
@@ -60,6 +61,52 @@ def _render_document_daily_metrics(daily_metrics: JsonObject) -> None:
     metric_columns[4].metric("하루 소비 위험도", f"{special_metrics['daily_spending_risk']}x")
 
 
+def _render_daily_comparison_card(
+    column: DeltaGenerator,
+    label: str,
+    comparison: JsonObject,
+) -> None:
+    """일일 비교 결과 하나를 증감액과 기준일 맥락이 있는 카드로 표시한다."""
+    column.metric(
+        label,
+        _format_amount(comparison["amount_diff"]),
+        _format_percent(comparison["amount_diff_rate_percent"]),
+    )
+    column.caption(
+        f"기준 {comparison['reference_date']} · "
+        f"{_format_amount(comparison['reference_total'])} · "
+        f"{comparison['reference_count']}건"
+    )
+
+
+def _render_daily_comparisons(daily_comparisons: JsonObject) -> None:
+    """어제·지난주 같은 요일·최근 4주 같은 요일 평균 비교를 화면에 표시한다."""
+    st.subheader("확장 일일 비교")
+    previous_day = cast(JsonObject, daily_comparisons["previous_day"])
+    same_weekday = cast(JsonObject, daily_comparisons["same_weekday_last_week"])
+    recent_average = cast(JsonObject, daily_comparisons["recent_4week_same_weekday_average"])
+
+    columns = st.columns(3)
+    _render_daily_comparison_card(columns[0], "어제 대비", previous_day)
+    _render_daily_comparison_card(columns[1], "지난주 같은 요일 대비", same_weekday)
+    columns[2].metric(
+        "최근 4주 같은 요일 평균 대비",
+        _format_amount(recent_average["amount_diff"]),
+        _format_percent(recent_average["amount_diff_rate_percent"]),
+    )
+    columns[2].caption(
+        f"기준 {recent_average['reference_day_count']}일 평균 · "
+        f"{_format_amount(recent_average['average_total'])} · "
+        f"{recent_average['average_count']}건"
+    )
+
+    reference_day_frame = _json_rows_to_frame(recent_average["reference_days"])
+    if reference_day_frame.empty:
+        st.info("최근 4주 같은 요일 평균에 사용할 기준일 데이터가 없습니다.")
+    else:
+        st.dataframe(reference_day_frame, use_container_width=True, hide_index=True)
+
+
 with st.sidebar:
     st.title("🧪 Catcher Dev")
     st.caption("SQLite 거래 데이터 기준 일일 소비 분석 JSON을 확인합니다.")
@@ -70,7 +117,7 @@ st.title("📊 일일 소비 분석")
 st.caption("consumption_feedback.daily_analysis 서비스를 실행해 화면에서 결과를 점검합니다.")
 
 render_date_picker_styles()
-controls = st.columns(3)
+controls = st.columns(2)
 member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
 with controls[1]:
     analysis_day = select_daily_date(
@@ -78,12 +125,7 @@ with controls[1]:
         default=DEFAULT_CALENDAR_DATE,
         key="daily_analysis_day",
     )
-with controls[2]:
-    previous_day = select_daily_date(
-        "전일 비교 기준일",
-        default=analysis_day - timedelta(days=1),
-        key="daily_previous_day",
-    )
+previous_day = analysis_day - timedelta(days=1)
 
 if st.button("일일 분석 실행", use_container_width=True):
     with st.spinner("일일 소비 분석 JSON 생성 중..."):
@@ -101,6 +143,7 @@ if st.button("일일 분석 실행", use_container_width=True):
     stable_metrics = cast(JsonObject, result["stable_metrics"])
     anomaly_detection = cast(JsonObject, result["anomaly_detection"])
     previous_day_comparison = cast(JsonObject, result["previous_day_comparison"])
+    daily_comparisons = cast(JsonObject, result["daily_comparisons"])
     time_slot_analysis = cast(JsonObject, result["time_slot_analysis"])
     payment_behavior_analysis = cast(JsonObject, result["payment_behavior_analysis"])
     daily_metrics = cast(JsonObject, result["daily_metrics"])
@@ -126,6 +169,7 @@ if st.button("일일 분석 실행", use_container_width=True):
     metric_columns[3].metric("피크 시간대", str(time_slot_analysis["peak_slot"] or "-"))
 
     _render_document_daily_metrics(daily_metrics)
+    _render_daily_comparisons(daily_comparisons)
 
     st.subheader("지출 마찰력 및 결제 밀도")
     payment_columns = st.columns(5)

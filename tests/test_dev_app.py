@@ -70,6 +70,51 @@ def _make_daily_analysis_result() -> dict[str, object]:
             "yesterday_main_category": "식비",
             "today_main_category": "생활",
         },
+        "daily_comparisons": {
+            "previous_day": {
+                "label": "어제 대비",
+                "reference_date": "2024-03-31",
+                "reference_total": 10000,
+                "today_total": 133044,
+                "amount_diff": 123044,
+                "amount_diff_rate_percent": 1230.44,
+                "reference_count": 2,
+                "today_count": 9,
+                "count_diff": 7,
+                "reference_main_category": "식비",
+                "today_main_category": "생활",
+            },
+            "same_weekday_last_week": {
+                "label": "지난주 같은 요일 대비",
+                "reference_date": "2024-03-25",
+                "reference_total": 30000,
+                "today_total": 133044,
+                "amount_diff": 103044,
+                "amount_diff_rate_percent": 343.48,
+                "reference_count": 3,
+                "today_count": 9,
+                "count_diff": 6,
+                "reference_main_category": "식비",
+                "today_main_category": "생활",
+            },
+            "recent_4week_same_weekday_average": {
+                "label": "최근 4주 같은 요일 평균 대비",
+                "reference_dates": ["2024-03-25", "2024-03-18"],
+                "reference_days": [
+                    {"date": "2024-03-25", "total": 30000, "transaction_count": 3},
+                    {"date": "2024-03-18", "total": 50000, "transaction_count": 4},
+                ],
+                "reference_day_count": 2,
+                "average_total": 40000.0,
+                "today_total": 133044,
+                "amount_diff": 93044.0,
+                "amount_diff_rate_percent": 232.61,
+                "average_count": 3.5,
+                "today_count": 9,
+                "count_diff": 5.5,
+                "today_main_category": "생활",
+            },
+        },
         "time_slot_analysis": {
             "peak_slot": "2.오전(06-11)",
             "time_slots": [],
@@ -271,7 +316,8 @@ def test_consumption_dev_pages_use_2026_january_daily_defaults() -> None:
     assert DEFAULT_CALENDAR_MONTH == "2026-01"
 
     daily_analysis_source = Path("dev_pages/04_daily_analysis.py").read_text(encoding="utf-8")
-    assert "default=analysis_day - timedelta(days=1)" in daily_analysis_source
+    assert "previous_day = analysis_day - timedelta(days=1)" in daily_analysis_source
+    assert "전일 비교 기준일" not in daily_analysis_source
 
     daily_or_weekly_pages = [
         Path("dev_pages/04_daily_analysis.py"),
@@ -591,6 +637,37 @@ def test_consumption_analysis_pages_render_period_document_metrics() -> None:
             assert duplicated_fragment not in page_source
 
 
+def test_consumption_analysis_pages_render_extended_comparisons() -> None:
+    """일일·주간·월간 분석 페이지가 새 기간 비교 블록을 화면에 노출하는지 검증한다."""
+    page_expectations = {
+        Path("dev_pages/04_daily_analysis.py"): [
+            "확장 일일 비교",
+            "daily_comparisons",
+            "지난주 같은 요일 대비",
+            "최근 4주 같은 요일 평균 대비",
+            "reference_days",
+        ],
+        Path("dev_pages/07_weekly_analysis.py"): [
+            "확장 주간 비교",
+            "weekly_comparisons",
+            "최근 4주 평균 대비",
+            "지난달 같은 주차 대비",
+            "reference_periods",
+        ],
+        Path("dev_pages/10_monthly_analysis.py"): [
+            "확장 월간 비교",
+            "monthly_comparisons",
+            "최근 3개월 평균 대비",
+            "reference_month_details",
+        ],
+    }
+
+    for page_path, expected_fragments in page_expectations.items():
+        page_source = page_path.read_text(encoding="utf-8")
+        for expected_fragment in expected_fragments:
+            assert expected_fragment in page_source
+
+
 def test_consumption_interpretation_dev_page_renders_payment_behavior_metrics() -> None:
     """소비 해석 개발 페이지가 추출 지표 요약에 새 결제 행동 지표를 표시하는지 검증한다."""
     app = AppTest.from_file("dev_pages/05_daily_interpretation.py")
@@ -599,6 +676,19 @@ def test_consumption_interpretation_dev_page_renders_payment_behavior_metrics() 
 
     assert len(app.exception) == 0
     assert any(subheader.value == "지출 마찰력 및 결제 밀도" for subheader in app.subheader)
+
+
+def test_daily_interpretation_page_uses_default_sqlite_input_without_sample_selector() -> None:
+    """일일 해석 페이지가 샘플 JSON 선택 없이 기본 SQLite 분석 입력을 사용하는지 검증한다."""
+    page_source = Path("dev_pages/05_daily_interpretation.py").read_text(encoding="utf-8")
+
+    assert "SAMPLE_JSON_PATH" not in page_source
+    assert "load_user_spending_data" not in page_source
+    assert "st.radio(" not in page_source
+    assert "노트북 샘플 JSON" not in page_source
+    assert "입력 데이터" not in page_source
+    assert "전일 비교 기준일" not in page_source
+    assert "previous_day = analysis_day - timedelta(days=1)" in page_source
 
 
 def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:

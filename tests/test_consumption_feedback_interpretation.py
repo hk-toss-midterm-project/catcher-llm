@@ -13,6 +13,10 @@ from catcher_llm.prompts.consumption_feedback import (
     build_consumption_pattern_prompt,
     build_consumption_problem_prompt,
     build_consumption_unified_analysis_prompt,
+    build_monthly_consumption_pattern_prompt,
+    build_monthly_consumption_problem_prompt,
+    build_weekly_consumption_pattern_prompt,
+    build_weekly_consumption_problem_prompt,
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
     extract_spending_indicators,
@@ -148,6 +152,38 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
         self.assertIn("패턴, 문제 소비, 원인, 행동 개선 포인트", rendered_unified_content)
         self.assertIn("stable_metrics.today_total", rendered_unified_content)
 
+    def test_period_analysis_prompts_name_extended_comparison_baselines(self) -> None:
+        """일·주·월 해석 프롬프트가 새 비교 기준을 명시적으로 안내하는지 검증한다."""
+        base_input = {
+            "raw_json": "{}",
+            "indicator_json": "{}",
+            "user_profile_json": "{}",
+        }
+
+        daily_pattern = build_consumption_pattern_prompt().invoke(base_input)
+        daily_problem = build_consumption_problem_prompt().invoke(base_input)
+        weekly_pattern = build_weekly_consumption_pattern_prompt().invoke(base_input)
+        weekly_problem = build_weekly_consumption_problem_prompt().invoke(base_input)
+        monthly_pattern = build_monthly_consumption_pattern_prompt().invoke(base_input)
+        monthly_problem = build_monthly_consumption_problem_prompt().invoke(base_input)
+
+        daily_content = "\n".join(
+            str(message.content) for message in [*daily_pattern.messages, *daily_problem.messages]
+        )
+        weekly_content = "\n".join(
+            str(message.content) for message in [*weekly_pattern.messages, *weekly_problem.messages]
+        )
+        monthly_content = "\n".join(
+            str(message.content)
+            for message in [*monthly_pattern.messages, *monthly_problem.messages]
+        )
+
+        self.assertIn("지난주 같은 요일", daily_content)
+        self.assertIn("최근 4주 같은 요일 평균", daily_content)
+        self.assertIn("최근 4주 평균", weekly_content)
+        self.assertIn("지난달 같은 주차", weekly_content)
+        self.assertIn("최근 3개월 평균", monthly_content)
+
     def test_parse_user_spending_data_accepts_daily_analysis_json_shape(self) -> None:
         """일일 분석 서비스 JSON을 추가 변환 없이 해석 입력 모델로 읽을 수 있는지 검증한다."""
         past_frame = pd.read_csv("data/raw/csv/transactions_v1.csv", encoding="utf-8-sig")
@@ -176,7 +212,10 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
         )
         self.assertIn("anomaly_detection.high_spending_items", analysis_input["indicator_json"])
         self.assertIn("daily_metrics", analysis_input["raw_json"])
+        self.assertIn("daily_comparisons", analysis_input["raw_json"])
         self.assertIn("daily_metrics.late_night_ratio_percent", analysis_input["indicator_json"])
+        self.assertIn("지난주 같은 요일 대비 지출 증감률", analysis_input["indicator_json"])
+        self.assertIn("최근 4주 같은 요일 평균 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("충동소비 점수", analysis_input["indicator_json"])
         self.assertIn("payment_behavior_analysis", analysis_input["raw_json"])
         self.assertIn("마찰력 없는 지출 비중", analysis_input["indicator_json"])

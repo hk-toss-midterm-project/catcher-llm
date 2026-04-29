@@ -133,6 +133,96 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         self.assertEqual(metrics["no_spending_day"], False)
         self.assertAlmostEqual(float(metrics["daily_anomaly_score"]), 1.1111)
 
+    def test_daily_comparisons_include_same_weekday_and_recent_four_week_average(self) -> None:
+        """일일 분석이 어제·지난주 같은 요일·최근 4주 같은 요일 평균 비교를 제공하는지 검증한다."""
+        past_frame = pd.DataFrame(
+            [
+                {
+                    "멤버 id": 1,
+                    "id": 1,
+                    "사용 금액": 10_000,
+                    "사용 시간": "2024-04-28 10:00:00",
+                    "결제 내역": "편의점",
+                    "업종 카테고리": "식비",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 2,
+                    "사용 금액": 20_000,
+                    "사용 시간": "2024-04-22 10:00:00",
+                    "결제 내역": "식당",
+                    "업종 카테고리": "식비",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 3,
+                    "사용 금액": 30_000,
+                    "사용 시간": "2024-04-15 10:00:00",
+                    "결제 내역": "마트",
+                    "업종 카테고리": "생활",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 4,
+                    "사용 금액": 40_000,
+                    "사용 시간": "2024-04-08 10:00:00",
+                    "결제 내역": "쿠팡",
+                    "업종 카테고리": "쇼핑",
+                    "결제 방식 (온/오프라인)": "온라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 5,
+                    "사용 금액": 10_000,
+                    "사용 시간": "2024-04-01 10:00:00",
+                    "결제 내역": "버스",
+                    "업종 카테고리": "교통",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+            ]
+        )
+        today_frame = pd.DataFrame(
+            [
+                {
+                    "멤버 id": 1,
+                    "id": 6,
+                    "사용 금액": 50_000,
+                    "사용 시간": "2024-04-29 10:00:00",
+                    "결제 내역": "백화점",
+                    "업종 카테고리": "쇼핑",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                }
+            ]
+        )
+
+        result = build_daily_consumption_analysis_from_frames(
+            past_frame,
+            today_frame,
+            member_id=1,
+            analysis_date="2024-04-29",
+            previous_date="2024-04-28",
+        )
+
+        comparisons = cast(JsonObject, result["daily_comparisons"])
+        previous_day = cast(JsonObject, comparisons["previous_day"])
+        same_weekday = cast(JsonObject, comparisons["same_weekday_last_week"])
+        recent_average = cast(JsonObject, comparisons["recent_4week_same_weekday_average"])
+
+        self.assertEqual(previous_day["reference_total"], 10_000)
+        self.assertEqual(same_weekday["reference_date"], "2024-04-22")
+        self.assertEqual(same_weekday["reference_total"], 20_000)
+        self.assertEqual(same_weekday["amount_diff"], 30_000)
+        self.assertEqual(
+            recent_average["reference_dates"],
+            ["2024-04-22", "2024-04-15", "2024-04-08", "2024-04-01"],
+        )
+        self.assertEqual(recent_average["reference_day_count"], 4)
+        self.assertAlmostEqual(float(recent_average["average_total"]), 25_000.0)
+        self.assertAlmostEqual(float(recent_average["amount_diff_rate_percent"]), 100.0)
+
     def test_build_daily_consumption_analysis_from_frames_matches_notebook_contract(
         self,
     ) -> None:

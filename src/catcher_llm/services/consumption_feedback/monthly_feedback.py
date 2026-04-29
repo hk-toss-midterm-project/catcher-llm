@@ -134,6 +134,7 @@ def _build_monthly_core_metrics(monthly_data: MonthlySpendingData) -> list[Spend
     repeat_patterns = monthly_data.repeat_patterns
     saving_potential = monthly_data.saving_potential
     monthly_metrics = monthly_data.monthly_metrics
+    recent_average = monthly_data.monthly_comparisons.recent_3month_average
 
     return [
         make_spending_metric(
@@ -156,6 +157,20 @@ def _build_monthly_core_metrics(monthly_data: MonthlySpendingData) -> list[Spend
             "percent",
             "monthly_summary.diff_rate_percent",
             "전월 총 지출 대비 이번 달 지출 증감률",
+        ),
+        make_spending_metric(
+            "최근 3개월 평균 대비 지출 증감액",
+            recent_average.amount_diff,
+            "KRW",
+            "monthly_comparisons.recent_3month_average.amount_diff",
+            "최근 3개월 평균 지출과 분석 월 총 지출의 차이",
+        ),
+        make_spending_metric(
+            "최근 3개월 평균 대비 지출 증감률",
+            recent_average.amount_diff_rate_percent,
+            "percent",
+            "monthly_comparisons.recent_3month_average.amount_diff_rate_percent",
+            "최근 3개월 평균 지출 대비 분석 월 지출 증감률",
         ),
         make_spending_metric(
             "월간 결제 건수",

@@ -152,6 +152,41 @@ def test_weekly_metrics_follow_period_metric_document(base_frame: pd.DataFrame) 
     assert metrics["weekend_overspending_index"] > 0
 
 
+def test_weekly_comparisons_include_recent_average_and_last_month_same_week() -> None:
+    """주간 분석이 전주·최근 4주 평균·지난달 같은 주차 비교를 제공하는지 검증한다."""
+    frame = pd.DataFrame(
+        [
+            _make_row(1, "2024-03-04 10:00:00", 100, "3월1주", "식비"),
+            _make_row(1, "2024-03-11 10:00:00", 100, "4주전", "식비"),
+            _make_row(1, "2024-03-18 10:00:00", 300, "3주전", "식비"),
+            _make_row(1, "2024-03-25 10:00:00", 500, "전주", "식비"),
+            _make_row(1, "2024-04-01 10:00:00", 700, "이번주", "식비"),
+        ]
+    )
+
+    result = build_weekly_consumption_analysis_from_frames(
+        frame,
+        member_id=1,
+        week_start="2024-04-01",
+        week_end="2024-04-07",
+    )
+
+    comparisons = result["weekly_comparisons"]
+    previous_week = comparisons["previous_week"]
+    recent_average = comparisons["recent_4week_average"]
+    same_week_last_month = comparisons["same_week_last_month"]
+
+    assert previous_week["reference_total"] == 500
+    assert recent_average["reference_week_count"] == 4
+    assert recent_average["average_total"] == pytest.approx(250.0, abs=0.001)
+    assert recent_average["amount_diff"] == pytest.approx(450.0, abs=0.001)
+    assert recent_average["amount_diff_rate_percent"] == pytest.approx(180.0, abs=0.001)
+    assert same_week_last_month["week_num"] == 1
+    assert same_week_last_month["reference_start_date"] == "2024-03-01"
+    assert same_week_last_month["reference_end_date"] == "2024-03-07"
+    assert same_week_last_month["reference_total"] == 100
+
+
 # ---------------------------------------------------------------------------
 # [1] 주간 총 지출 요약
 # ---------------------------------------------------------------------------

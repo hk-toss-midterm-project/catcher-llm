@@ -9,7 +9,7 @@ import streamlit as st
 from pydantic import BaseModel
 
 from catcher_llm.chains.consumption_feedback import build_spending_analysis_chain
-from catcher_llm.config.settings import PROJECT_ROOT, get_settings
+from catcher_llm.config.settings import get_settings
 from catcher_llm.schemas.consumption_feedback import (
     CategoryShiftIndicator,
     HighSpendingItem,
@@ -23,7 +23,6 @@ from catcher_llm.services.consumption_feedback.daily_analysis import (
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
     extract_spending_indicators,
-    load_user_spending_data,
     make_spending_analysis_input,
     parse_user_spending_data,
 )
@@ -34,7 +33,6 @@ from catcher_llm.ui.date_picker import (
 )
 
 settings = get_settings()
-SAMPLE_JSON_PATH = PROJECT_ROOT / "notebook/team02/02_Layer4/user_data.json"
 
 
 def _models_to_frame(
@@ -208,44 +206,33 @@ def _render_chain_result(result: dict[str, object]) -> None:
 
 with st.sidebar:
     st.title("🧪 Catcher Dev")
-    st.caption("JSON 소비 지표 추출과 구조화 해석 체인을 점검합니다.")
-    st.write(f"Sample: `{SAMPLE_JSON_PATH.relative_to(PROJECT_ROOT)}`")
+    st.caption("SQLite 일일 소비 분석 JSON 기반 지표 추출과 구조화 해석 체인을 점검합니다.")
+    st.write(f"SQLite: `{settings.sqlite_db_path}`")
 
 
 st.title("🧭 소비 해석 체인")
-st.caption(
-    "data_interpretation_json 노트북에서 승격한 스키마, 지표 추출, 프롬프트, 체인을 실행합니다."
-)
+st.caption("일일 분석 결과를 소비 지표로 변환하고 구조화 해석 체인을 실행합니다.")
 
-source_option = st.radio(
-    "입력 데이터",
-    options=["노트북 샘플 JSON", "SQLite 일일 분석 JSON"],
-    horizontal=True,
-)
+render_date_picker_styles()
+controls = st.columns(2)
+member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
+with controls[1]:
+    analysis_day = select_daily_date(
+        "분석 기준일",
+        default=DEFAULT_CALENDAR_DATE,
+        key="daily_interpretation_day",
+    )
+previous_day = analysis_day - timedelta(days=1)
 
-if source_option == "SQLite 일일 분석 JSON":
-    render_date_picker_styles()
-    controls = st.columns(3)
-    member_id = controls[0].number_input("Member ID", min_value=1, value=1, step=1)
-    with controls[1]:
-        analysis_day = select_daily_date(
-            "분석 기준일",
-            default=DEFAULT_CALENDAR_DATE,
-            key="daily_interpretation_day",
-        )
-    with controls[2]:
-        previous_day = select_daily_date(
-            "전일 비교 기준일",
-            default=analysis_day - timedelta(days=1),
-            key="daily_interpretation_previous_day",
-        )
+try:
     user_data = _load_sqlite_daily_user_data(
         member_id=int(member_id),
         analysis_day=analysis_day,
         previous_day=previous_day,
     )
-else:
-    user_data = load_user_spending_data(SAMPLE_JSON_PATH)
+except ValueError as error:
+    st.error(str(error))
+    st.stop()
 
 indicators = extract_spending_indicators(user_data)
 analysis_input = make_spending_analysis_input(user_data)

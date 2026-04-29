@@ -87,6 +87,59 @@ class PreviousDayComparison(BaseModel):
     today_main_category: str | None
 
 
+class DailySingleDateComparison(BaseModel):
+    """일일 분석에서 기준일 하나와 오늘 소비를 비교한 결과를 표현한다."""
+
+    label: str = ""
+    reference_date: str = ""
+    reference_total: int = 0
+    today_total: int = 0
+    amount_diff: int = 0
+    amount_diff_rate_percent: float = 0.0
+    reference_count: int = 0
+    today_count: int = 0
+    count_diff: int = 0
+    reference_main_category: str | None = None
+    today_main_category: str | None = None
+
+
+class DailyReferenceDay(BaseModel):
+    """최근 같은 요일 평균 계산에 포함된 일자별 소비를 표현한다."""
+
+    date: str
+    total: int
+    transaction_count: int
+
+
+class DailyAverageComparison(BaseModel):
+    """일일 분석에서 여러 기준일 평균과 오늘 소비를 비교한 결과를 표현한다."""
+
+    label: str = ""
+    reference_dates: list[str] = Field(default_factory=list)
+    reference_days: list[DailyReferenceDay] = Field(default_factory=list)
+    reference_day_count: int = 0
+    average_total: float = 0.0
+    today_total: int = 0
+    amount_diff: float = 0.0
+    amount_diff_rate_percent: float = 0.0
+    average_count: float = 0.0
+    today_count: int = 0
+    count_diff: float = 0.0
+    today_main_category: str | None = None
+
+
+class DailyComparisons(BaseModel):
+    """일일 분석의 어제·지난주 같은 요일·최근 4주 같은 요일 평균 비교를 묶는다."""
+
+    previous_day: DailySingleDateComparison = Field(default_factory=DailySingleDateComparison)
+    same_weekday_last_week: DailySingleDateComparison = Field(
+        default_factory=DailySingleDateComparison
+    )
+    recent_4week_same_weekday_average: DailyAverageComparison = Field(
+        default_factory=DailyAverageComparison
+    )
+
+
 class TimeSlotComparison(BaseModel):
     """시간대별 당일 소비와 평소 소비 차이를 표현한다."""
 
@@ -159,6 +212,7 @@ class UserSpendingData(BaseModel):
     stable_metrics: StableMetrics
     anomaly_detection: AnomalyDetection
     previous_day_comparison: PreviousDayComparison
+    daily_comparisons: DailyComparisons = Field(default_factory=DailyComparisons)
     time_slot_analysis: TimeSlotAnalysis
     payment_behavior_analysis: PaymentBehaviorAnalysis = Field(
         default_factory=PaymentBehaviorAnalysis
@@ -429,6 +483,56 @@ class WeeklyCategorySummary(BaseModel):
     diff_rate_percent: float
 
 
+class WeeklyPeriodComparison(BaseModel):
+    """주간 분석에서 하나의 기준 주간과 분석 주간을 비교한 결과를 표현한다."""
+
+    label: str = ""
+    reference_start_date: str = ""
+    reference_end_date: str = ""
+    current_start_date: str = ""
+    current_end_date: str = ""
+    reference_total: int = 0
+    current_total: int = 0
+    amount_diff: int = 0
+    amount_diff_rate_percent: float = 0.0
+    reference_count: int = 0
+    current_count: int = 0
+    count_diff: int = 0
+    week_num: int | None = None
+
+
+class WeeklyReferencePeriod(BaseModel):
+    """최근 주간 평균 계산에 포함된 기준 주간의 소비를 표현한다."""
+
+    start_date: str
+    end_date: str
+    total: int
+    transaction_count: int
+
+
+class WeeklyAverageComparison(BaseModel):
+    """주간 분석에서 여러 기준 주간 평균과 분석 주간을 비교한 결과를 표현한다."""
+
+    label: str = ""
+    reference_periods: list[WeeklyReferencePeriod] = Field(default_factory=list)
+    reference_week_count: int = 0
+    average_total: float = 0.0
+    current_total: int = 0
+    amount_diff: float = 0.0
+    amount_diff_rate_percent: float = 0.0
+    average_count: float = 0.0
+    current_count: int = 0
+    count_diff: float = 0.0
+
+
+class WeeklyComparisons(BaseModel):
+    """주간 분석의 전주·최근 4주 평균·지난달 같은 주차 비교를 묶는다."""
+
+    previous_week: WeeklyPeriodComparison = Field(default_factory=WeeklyPeriodComparison)
+    recent_4week_average: WeeklyAverageComparison = Field(default_factory=WeeklyAverageComparison)
+    same_week_last_month: WeeklyPeriodComparison = Field(default_factory=WeeklyPeriodComparison)
+
+
 class WeeklyMerchantVisit(BaseModel):
     """주간 반복 가맹점 방문 횟수와 누적 금액을 표현한다."""
 
@@ -603,6 +707,7 @@ class WeeklySpendingData(BaseModel):
     outlier_thresholds: WeeklyOutlierThresholds
     weekly_summary: WeeklySummary
     category_summary: list[WeeklyCategorySummary] = Field(default_factory=list)
+    weekly_comparisons: WeeklyComparisons = Field(default_factory=WeeklyComparisons)
     repeat_patterns: WeeklyRepeatPatterns
     weekday_pattern: WeeklyWeekdayPattern
     waste_detection: WeeklyWasteDetection
@@ -708,6 +813,55 @@ class MonthlySummary(BaseModel):
     min_day_date: str | None
     min_day_amount: int
     transaction_count: int
+
+
+class MonthlyPeriodComparison(BaseModel):
+    """월간 분석에서 기준월 하나와 분석월을 비교한 결과를 표현한다."""
+
+    label: str = ""
+    reference_month: str = ""
+    current_month: str = ""
+    reference_total: int = 0
+    current_total: int = 0
+    amount_diff: int = 0
+    amount_diff_rate_percent: float = 0.0
+    reference_count: int = 0
+    current_count: int = 0
+    count_diff: int = 0
+
+
+class MonthlyReferenceMonth(BaseModel):
+    """최근 월간 평균 계산에 포함된 기준월의 소비를 표현한다."""
+
+    month: str
+    total: int
+    transaction_count: int
+
+
+class MonthlyAverageComparison(BaseModel):
+    """월간 분석에서 여러 기준월 평균과 분석월을 비교한 결과를 표현한다."""
+
+    label: str = ""
+    reference_months: list[str] = Field(default_factory=list)
+    reference_month_details: list[MonthlyReferenceMonth] = Field(default_factory=list)
+    reference_month_count: int = 0
+    average_total: float = 0.0
+    current_month: str = ""
+    current_total: int = 0
+    amount_diff: float = 0.0
+    amount_diff_rate_percent: float = 0.0
+    average_count: float = 0.0
+    current_count: int = 0
+    count_diff: float = 0.0
+
+
+class MonthlyComparisons(BaseModel):
+    """월간 분석의 전월·최근 3개월 평균 비교를 묶는다."""
+
+    previous_month: MonthlyPeriodComparison = Field(default_factory=MonthlyPeriodComparison)
+    recent_3month_average: MonthlyAverageComparison = Field(
+        default_factory=MonthlyAverageComparison
+    )
 
 
 class MonthlyFixedItem(BaseModel):
@@ -945,6 +1099,7 @@ class MonthlySpendingData(BaseModel):
     source_path: str | None = None
     outlier_thresholds: MonthlyOutlierThresholds
     monthly_summary: MonthlySummary
+    monthly_comparisons: MonthlyComparisons = Field(default_factory=MonthlyComparisons)
     fixed_variable: MonthlyFixedVariable
     category_deep: list[MonthlyCategoryDeep] = Field(default_factory=list)
     top_savable_categories: list[MonthlyCategoryDeep] = Field(default_factory=list)

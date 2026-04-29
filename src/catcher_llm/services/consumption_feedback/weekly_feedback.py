@@ -141,6 +141,9 @@ def _build_weekly_core_metrics(weekly_data: WeeklySpendingData) -> list[Spending
     saving_potential = weekly_data.saving_potential
     weekly_metrics = weekly_data.weekly_metrics
     weekly_special_metrics = weekly_metrics.special_metrics
+    weekly_comparisons = weekly_data.weekly_comparisons
+    recent_average = weekly_comparisons.recent_4week_average
+    same_week_last_month = weekly_comparisons.same_week_last_month
 
     return [
         make_spending_metric(
@@ -163,6 +166,34 @@ def _build_weekly_core_metrics(weekly_data: WeeklySpendingData) -> list[Spending
             "percent",
             "weekly_summary.diff_rate_percent",
             "전주 총 지출 대비 이번 주 지출 증감률",
+        ),
+        make_spending_metric(
+            "최근 4주 평균 대비 지출 증감액",
+            recent_average.amount_diff,
+            "KRW",
+            "weekly_comparisons.recent_4week_average.amount_diff",
+            "최근 4주 주간 평균 지출과 분석 주간 총 지출의 차이",
+        ),
+        make_spending_metric(
+            "최근 4주 평균 대비 지출 증감률",
+            recent_average.amount_diff_rate_percent,
+            "percent",
+            "weekly_comparisons.recent_4week_average.amount_diff_rate_percent",
+            "최근 4주 주간 평균 지출 대비 분석 주간 지출 증감률",
+        ),
+        make_spending_metric(
+            "지난달 같은 주차 대비 지출 증감액",
+            same_week_last_month.amount_diff,
+            "KRW",
+            "weekly_comparisons.same_week_last_month.amount_diff",
+            "지난달 같은 주차 총 지출과 분석 주간 총 지출의 차이",
+        ),
+        make_spending_metric(
+            "지난달 같은 주차 대비 지출 증감률",
+            same_week_last_month.amount_diff_rate_percent,
+            "percent",
+            "weekly_comparisons.same_week_last_month.amount_diff_rate_percent",
+            "지난달 같은 주차 총 지출 대비 분석 주간 지출 증감률",
         ),
         make_spending_metric(
             "주간 결제 건수",

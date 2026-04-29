@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -82,6 +82,106 @@ def _main_category(frame: pd.DataFrame) -> str | None:
     if category_totals.empty:
         return None
     return str(category_totals.idxmax())
+
+
+def _build_single_day_comparison(
+    today_frame: pd.DataFrame,
+    reference_frame: pd.DataFrame,
+    *,
+    label: str,
+    reference_date: date,
+    today_total: float,
+    today_count: int,
+) -> JsonObject:
+    """당일 소비를 특정 기준일 소비와 비교하는 공통 JSON 블록을 만든다."""
+    reference_total = float(reference_frame["사용 금액"].sum())
+    reference_count = int(len(reference_frame))
+    amount_diff = today_total - reference_total
+
+    return {
+        "label": label,
+        "reference_date": str(reference_date),
+        "reference_total": _to_amount(reference_total),
+        "today_total": _to_amount(today_total),
+        "amount_diff": _to_amount(amount_diff),
+        "amount_diff_rate_percent": _round_float(_safe_rate(amount_diff, reference_total) * 100),
+        "reference_count": reference_count,
+        "today_count": today_count,
+        "count_diff": today_count - reference_count,
+        "reference_main_category": _main_category(reference_frame),
+        "today_main_category": _main_category(today_frame),
+    }
+
+
+def _get_available_daily_reference_dates(
+    past_member_frame: pd.DataFrame,
+    candidate_dates: list[date],
+) -> list[date]:
+    """거래 데이터 범위 안에 있는 일일 비교 후보 날짜만 남긴다."""
+    if past_member_frame.empty:
+        return []
+
+    first_available_date = cast(date, past_member_frame["date"].min())
+    return [
+        reference_date
+        for reference_date in candidate_dates
+        if reference_date >= first_available_date
+    ]
+
+
+def _build_same_weekday_average_comparison(
+    past_member_frame: pd.DataFrame,
+    today_frame: pd.DataFrame,
+    *,
+    analysis_day: date,
+    today_total: float,
+    today_count: int,
+    week_count: int = 4,
+) -> JsonObject:
+    """최근 N주 같은 요일의 평균 소비와 당일 소비를 비교하는 JSON 블록을 만든다."""
+    candidate_dates = [
+        analysis_day - timedelta(days=7 * index) for index in range(1, week_count + 1)
+    ]
+    reference_dates = _get_available_daily_reference_dates(past_member_frame, candidate_dates)
+    daily_totals = past_member_frame.groupby("date")["사용 금액"].sum()
+    daily_counts = past_member_frame.groupby("date").size()
+
+    reference_rows: list[JsonValue] = []
+    reference_total_sum = 0.0
+    reference_count_sum = 0
+    for reference_date in reference_dates:
+        reference_total = float(daily_totals.get(reference_date, 0.0))
+        reference_count = int(daily_counts.get(reference_date, 0))
+        reference_total_sum += reference_total
+        reference_count_sum += reference_count
+        reference_rows.append(
+            {
+                "date": str(reference_date),
+                "total": _to_amount(reference_total),
+                "transaction_count": reference_count,
+            }
+        )
+
+    reference_day_count = len(reference_dates)
+    average_total = _safe_rate(reference_total_sum, float(reference_day_count))
+    average_count = _safe_rate(float(reference_count_sum), float(reference_day_count))
+    amount_diff = today_total - average_total
+    count_diff = float(today_count) - average_count
+
+    return {
+        "label": f"최근 {week_count}주 같은 요일 평균 대비",
+        "reference_dates": [str(reference_date) for reference_date in reference_dates],
+        "reference_days": reference_rows,
+        "reference_day_count": reference_day_count,
+        "average_total": _round_float(average_total),
+        "today_total": _to_amount(today_total),
+        "amount_diff": _round_float(amount_diff),
+        "amount_diff_rate_percent": _round_float(_safe_rate(amount_diff, average_total) * 100),
+        "average_count": _round_float(average_count),
+        "today_count": today_count,
+        "count_diff": _round_float(count_diff),
+        "today_main_category": _main_category(today_frame),
+    }
 
 
 def _build_category_ratio_changes(
@@ -429,6 +529,36 @@ def build_daily_consumption_analysis_from_frames(
         "yesterday_main_category": _main_category(yesterday_frame),
         "today_main_category": _main_category(today_frame),
     }
+    same_weekday_last_week = analysis_day - timedelta(days=7)
+    same_weekday_last_week_frame = past_member_frame[
+        past_member_frame["date"] == same_weekday_last_week
+    ].copy()
+    daily_comparisons: JsonObject = {
+        "previous_day": _build_single_day_comparison(
+            today_frame,
+            yesterday_frame,
+            label="어제 대비",
+            reference_date=previous_day,
+            today_total=today_total,
+            today_count=today_count,
+        ),
+        "same_weekday_last_week": _build_single_day_comparison(
+            today_frame,
+            same_weekday_last_week_frame,
+            label="지난주 같은 요일 대비",
+            reference_date=same_weekday_last_week,
+            today_total=today_total,
+            today_count=today_count,
+        ),
+        "recent_4week_same_weekday_average": _build_same_weekday_average_comparison(
+            past_member_frame,
+            today_frame,
+            analysis_day=analysis_day,
+            today_total=today_total,
+            today_count=today_count,
+            week_count=4,
+        ),
+    }
     time_slot_analysis: JsonObject = {
         "peak_slot": peak_slot,
         "time_slots": _build_time_slot_rows(time_comparison),
@@ -456,6 +586,7 @@ def build_daily_consumption_analysis_from_frames(
         "stable_metrics": stable_metrics,
         "anomaly_detection": anomaly_detection,
         "previous_day_comparison": previous_day_comparison,
+        "daily_comparisons": daily_comparisons,
         "time_slot_analysis": time_slot_analysis,
         "payment_behavior_analysis": payment_behavior_analysis,
         "daily_metrics": daily_metrics,

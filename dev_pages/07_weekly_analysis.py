@@ -4,6 +4,7 @@ from typing import cast
 
 import pandas as pd
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.schemas.consumption_feedback import JsonObject
@@ -130,6 +131,52 @@ def _render_document_weekly_metrics(weekly_metrics: JsonObject) -> None:
     )
 
 
+def _render_weekly_comparison_card(
+    column: DeltaGenerator,
+    label: str,
+    comparison: JsonObject,
+) -> None:
+    """주간 단일 기준 기간 비교 결과를 증감액과 기준 기간이 있는 카드로 표시한다."""
+    column.metric(
+        label,
+        _format_amount(comparison["amount_diff"]),
+        _format_percent(comparison["amount_diff_rate_percent"]),
+    )
+    column.caption(
+        f"{comparison['reference_start_date']}~{comparison['reference_end_date']} · "
+        f"{_format_amount(comparison['reference_total'])} · "
+        f"{comparison['reference_count']}건"
+    )
+
+
+def _render_weekly_comparisons(weekly_comparisons: JsonObject) -> None:
+    """전주·최근 4주 평균·지난달 같은 주차 비교를 화면에 표시한다."""
+    st.subheader("확장 주간 비교")
+    previous_week = cast(JsonObject, weekly_comparisons["previous_week"])
+    recent_average = cast(JsonObject, weekly_comparisons["recent_4week_average"])
+    same_week_last_month = cast(JsonObject, weekly_comparisons["same_week_last_month"])
+
+    columns = st.columns(3)
+    _render_weekly_comparison_card(columns[0], "전주 대비", previous_week)
+    columns[1].metric(
+        "최근 4주 평균 대비",
+        _format_amount(recent_average["amount_diff"]),
+        _format_percent(recent_average["amount_diff_rate_percent"]),
+    )
+    columns[1].caption(
+        f"기준 {recent_average['reference_week_count']}주 평균 · "
+        f"{_format_amount(recent_average['average_total'])} · "
+        f"{recent_average['average_count']}건"
+    )
+    _render_weekly_comparison_card(columns[2], "지난달 같은 주차 대비", same_week_last_month)
+
+    reference_period_frame = _json_rows_to_frame(recent_average["reference_periods"])
+    if reference_period_frame.empty:
+        st.info("최근 4주 평균에 사용할 기준 주간 데이터가 없습니다.")
+    else:
+        st.dataframe(reference_period_frame, use_container_width=True, hide_index=True)
+
+
 with st.sidebar:
     st.title("🧪 Catcher Dev")
     st.caption("SQLite 거래 데이터 기준 주간 소비 분석 JSON을 확인합니다.")
@@ -163,6 +210,7 @@ if st.button("주간 분석 실행", use_container_width=True):
             st.stop()
 
     weekly_summary = cast(JsonObject, result["weekly_summary"])
+    weekly_comparisons = cast(JsonObject, result["weekly_comparisons"])
     weekly_metrics = cast(JsonObject, result["weekly_metrics"])
     repeat_patterns = cast(JsonObject, result["repeat_patterns"])
     weekday_pattern = cast(JsonObject, result["weekday_pattern"])
@@ -183,6 +231,7 @@ if st.button("주간 분석 실행", use_container_width=True):
     peak_columns[2].metric("피크 요일", str(weekday_pattern["peak_weekday"] or "-"))
 
     _render_document_weekly_metrics(weekly_metrics)
+    _render_weekly_comparisons(weekly_comparisons)
 
     _render_table("카테고리별 주간 분석", result["category_summary"], "카테고리 데이터가 없습니다.")
     _render_repeat_summary(repeat_patterns)

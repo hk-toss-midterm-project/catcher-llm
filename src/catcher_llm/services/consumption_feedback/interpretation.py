@@ -10,6 +10,7 @@ from catcher_llm.schemas.consumption_feedback import (
     CategoryRatioChange,
     CategoryShiftIndicator,
     CauseAnalysisResult,
+    DailyComparisons,
     HighSpendingItem,
     MainCategoryShift,
     MetricValue,
@@ -146,6 +147,42 @@ def _build_previous_day_metrics(previous_day: PreviousDayComparison) -> list[Spe
     ]
 
 
+def _build_daily_comparison_metrics(comparisons: DailyComparisons) -> list[SpendingMetric]:
+    """새 일일 비교 기준을 해석 체인용 핵심 지표 목록으로 변환한다."""
+    same_weekday = comparisons.same_weekday_last_week
+    recent_average = comparisons.recent_4week_same_weekday_average
+    return [
+        make_spending_metric(
+            "지난주 같은 요일 대비 지출 증감액",
+            same_weekday.amount_diff,
+            "KRW",
+            "daily_comparisons.same_weekday_last_week.amount_diff",
+            "지난주 같은 요일 총 지출과 오늘 총 지출의 차이",
+        ),
+        make_spending_metric(
+            "지난주 같은 요일 대비 지출 증감률",
+            same_weekday.amount_diff_rate_percent,
+            "percent",
+            "daily_comparisons.same_weekday_last_week.amount_diff_rate_percent",
+            "지난주 같은 요일 총 지출 대비 오늘 지출 증감률",
+        ),
+        make_spending_metric(
+            "최근 4주 같은 요일 평균 대비 지출 증감액",
+            recent_average.amount_diff,
+            "KRW",
+            "daily_comparisons.recent_4week_same_weekday_average.amount_diff",
+            "최근 4주 같은 요일 평균 지출과 오늘 총 지출의 차이",
+        ),
+        make_spending_metric(
+            "최근 4주 같은 요일 평균 대비 지출 증감률",
+            recent_average.amount_diff_rate_percent,
+            "percent",
+            "daily_comparisons.recent_4week_same_weekday_average.amount_diff_rate_percent",
+            "최근 4주 같은 요일 평균 지출 대비 오늘 지출 증감률",
+        ),
+    ]
+
+
 def _build_document_daily_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
     """문서 기준 일일 추가 지표를 해석 체인용 핵심 지표 목록으로 변환한다."""
     daily_metrics = user_data.daily_metrics
@@ -256,6 +293,7 @@ def build_core_metrics(user_data: UserSpendingData) -> list[SpendingMetric]:
             "고액 지출 기준값을 초과한 결제 항목 수",
         ),
         *_build_previous_day_metrics(previous_day),
+        *_build_daily_comparison_metrics(user_data.daily_comparisons),
         make_spending_metric(
             "오늘 소비 피크 시간대",
             user_data.time_slot_analysis.peak_slot or "",

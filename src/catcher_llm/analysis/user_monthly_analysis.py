@@ -94,11 +94,148 @@ def _parse_ym(analysis_month: str) -> tuple[int, int]:
     return year, month
 
 
+def _shift_ym(year: int, month: int, month_delta: int) -> tuple[int, int, str]:
+    """연도와 월에 월 단위 증감을 적용한 뒤 연도·월·문자열을 반환한다."""
+    month_index = year * 12 + month - 1 + month_delta
+    shifted_year = month_index // 12
+    shifted_month = month_index % 12 + 1
+    return shifted_year, shifted_month, f"{shifted_year}-{shifted_month:02d}"
+
+
 def _prev_ym(year: int, month: int) -> tuple[int, int, str]:
     """전월 연도·월·'YYYY-MM' 문자열을 반환한다."""
-    prev_year = year - 1 if month == 1 else year
-    prev_month = 12 if month == 1 else month - 1
-    return prev_year, prev_month, f"{prev_year}-{prev_month:02d}"
+    return _shift_ym(year, month, -1)
+
+
+def _build_month_comparison(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    reference_month: str,
+    current_month: str,
+    current_total: float,
+    current_count: int,
+) -> JsonObject:
+    """분석월 소비를 하나의 기준월 소비와 비교하는 JSON 블록을 만든다."""
+    reference_frame = frame[frame["ym"] == reference_month]
+    reference_total = float(reference_frame["사용 금액"].sum())
+    reference_count = int(len(reference_frame))
+    amount_diff = current_total - reference_total
+
+    return {
+        "label": label,
+        "reference_month": reference_month,
+        "current_month": current_month,
+        "reference_total": _to_amount(reference_total),
+        "current_total": _to_amount(current_total),
+        "amount_diff": _to_amount(amount_diff),
+        "amount_diff_rate_percent": _round_float(_safe_rate(amount_diff, reference_total) * 100),
+        "reference_count": reference_count,
+        "current_count": current_count,
+        "count_diff": current_count - reference_count,
+    }
+
+
+def _get_available_reference_months(
+    frame: pd.DataFrame,
+    candidate_months: list[str],
+) -> list[str]:
+    """거래 데이터 범위 안에 있는 월간 비교 후보월만 남긴다."""
+    if frame.empty:
+        return []
+
+    first_available_month = str(frame["ym"].min())
+    return [
+        reference_month
+        for reference_month in candidate_months
+        if reference_month >= first_available_month
+    ]
+
+
+def _build_recent_month_average_comparison(
+    frame: pd.DataFrame,
+    *,
+    year: int,
+    month: int,
+    current_month: str,
+    current_total: float,
+    current_count: int,
+    month_count: int = 3,
+) -> JsonObject:
+    """최근 N개월 평균 소비와 분석월 소비를 비교하는 JSON 블록을 만든다."""
+    candidate_months = [_shift_ym(year, month, -index)[2] for index in range(1, month_count + 1)]
+    reference_months = _get_available_reference_months(frame, candidate_months)
+    month_totals = frame.groupby("ym")["사용 금액"].sum()
+    month_counts = frame.groupby("ym").size()
+
+    month_rows: list[JsonValue] = []
+    total_sum = 0.0
+    count_sum = 0
+    for reference_month in reference_months:
+        reference_total = float(month_totals.get(reference_month, 0.0))
+        reference_count = int(month_counts.get(reference_month, 0))
+        total_sum += reference_total
+        count_sum += reference_count
+        month_rows.append(
+            {
+                "month": reference_month,
+                "total": _to_amount(reference_total),
+                "transaction_count": reference_count,
+            }
+        )
+
+    reference_month_count = len(reference_months)
+    average_total = _safe_rate(total_sum, float(reference_month_count))
+    average_count = _safe_rate(float(count_sum), float(reference_month_count))
+    amount_diff = current_total - average_total
+    count_diff = float(current_count) - average_count
+
+    return {
+        "label": f"최근 {month_count}개월 평균 대비",
+        "reference_months": reference_months,
+        "reference_month_details": month_rows,
+        "reference_month_count": reference_month_count,
+        "average_total": _round_float(average_total),
+        "current_month": current_month,
+        "current_total": _to_amount(current_total),
+        "amount_diff": _round_float(amount_diff),
+        "amount_diff_rate_percent": _round_float(_safe_rate(amount_diff, average_total) * 100),
+        "average_count": _round_float(average_count),
+        "current_count": current_count,
+        "count_diff": _round_float(count_diff),
+    }
+
+
+def _build_monthly_comparisons(
+    frame: pd.DataFrame,
+    *,
+    year: int,
+    month: int,
+    analysis_month: str,
+    prev_month: str,
+    current_total: float,
+    current_count: int,
+) -> JsonObject:
+    """월간 분석에 필요한 전월·최근 3개월 평균 비교를 묶는다."""
+    return {
+        "previous_month": _build_month_comparison(
+            frame,
+            label="전월 대비",
+            reference_month=prev_month,
+            current_month=analysis_month,
+            current_total=current_total,
+            current_count=current_count,
+        ),
+        "recent_3month_average": _build_recent_month_average_comparison(
+            frame,
+            year=year,
+            month=month,
+            current_month=analysis_month,
+            current_total=current_total,
+            current_count=current_count,
+            month_count=3,
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -850,6 +987,15 @@ def build_monthly_consumption_analysis_from_frames(
     spending_concentration = _build_spending_concentration(df_this)
     frictionless_and_density = _build_frictionless_and_density(df_this, this_total)
     installment_debt_pressure = _build_installment_debt_pressure(df_this, this_total)
+    monthly_comparisons = _build_monthly_comparisons(
+        df,
+        year=year,
+        month=month,
+        analysis_month=analysis_month,
+        prev_month=prev_month_str,
+        current_total=this_total,
+        current_count=int(len(df_this)),
+    )
 
     return {
         "member_id": member_id,
@@ -863,6 +1009,7 @@ def build_monthly_consumption_analysis_from_frames(
             "upper_bound": _round_float(upper_bound),
         },
         "monthly_summary": monthly_summary,
+        "monthly_comparisons": monthly_comparisons,
         "monthly_metrics": monthly_metrics,
         "fixed_variable": fixed_variable,
         "category_deep": cat_deep,

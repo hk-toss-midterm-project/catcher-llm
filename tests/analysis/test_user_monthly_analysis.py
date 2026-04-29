@@ -168,6 +168,36 @@ def test_monthly_metrics_follow_period_metric_document(base_frame: pd.DataFrame)
     assert metrics["month_end_pressure_index"] is not None
 
 
+def test_monthly_comparisons_include_recent_three_month_average() -> None:
+    """월간 분석이 전월과 최근 3개월 평균 비교를 함께 제공하는지 검증한다."""
+    frame = pd.DataFrame(
+        [
+            _make_row(1, "2024-01-10 10:00:00", 50_000, "1월", "식비"),
+            _make_row(1, "2024-02-10 10:00:00", 100_000, "2월", "식비"),
+            _make_row(1, "2024-03-10 10:00:00", 150_000, "3월", "식비"),
+            _make_row(1, "2024-04-10 10:00:00", 300_000, "4월", "식비"),
+        ]
+    )
+
+    result = build_monthly_consumption_analysis_from_frames(
+        frame,
+        member_id=1,
+        analysis_month="2024-04",
+    )
+
+    comparisons = result["monthly_comparisons"]
+    previous_month = comparisons["previous_month"]
+    recent_average = comparisons["recent_3month_average"]
+
+    assert previous_month["reference_month"] == "2024-03"
+    assert previous_month["reference_total"] == 150_000
+    assert recent_average["reference_months"] == ["2024-03", "2024-02", "2024-01"]
+    assert recent_average["reference_month_count"] == 3
+    assert recent_average["average_total"] == pytest.approx(100_000.0, abs=0.001)
+    assert recent_average["amount_diff"] == pytest.approx(200_000.0, abs=0.001)
+    assert recent_average["amount_diff_rate_percent"] == pytest.approx(200.0, abs=0.001)
+
+
 # ---------------------------------------------------------------------------
 # [1] 월간 총 지출 요약
 # ---------------------------------------------------------------------------

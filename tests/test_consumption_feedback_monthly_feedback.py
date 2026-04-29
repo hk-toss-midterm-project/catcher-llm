@@ -98,10 +98,12 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertEqual(monthly_data.analysis_month, "2024-04")
         self.assertIn("monthly_summary.this_month_total", analysis_input["indicator_json"])
         self.assertIn("monthly_metrics", analysis_input["raw_json"])
+        self.assertIn("monthly_comparisons", analysis_input["raw_json"])
         self.assertIn(
             "monthly_metrics.fixed_cost_burden_rate_percent",
             analysis_input["indicator_json"],
         )
+        self.assertIn("최근 3개월 평균 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("구독료 합계", analysis_input["indicator_json"])
         self.assertIn("fixed_variable.fixed_total", analysis_input["indicator_json"])
         self.assertIn("high_spending.items", analysis_input["indicator_json"])

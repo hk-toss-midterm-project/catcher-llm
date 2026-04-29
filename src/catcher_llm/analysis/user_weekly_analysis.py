@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -104,6 +105,189 @@ def _parse_date(value: str | date) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(value)
+
+
+def _shift_month(year: int, month: int, month_delta: int) -> tuple[int, int]:
+    """연도와 월에 월 단위 증감을 적용한 새 연도·월을 반환한다."""
+    month_index = year * 12 + month - 1 + month_delta
+    shifted_year = month_index // 12
+    shifted_month = month_index % 12 + 1
+    return shifted_year, shifted_month
+
+
+def _build_week_period_comparison(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    reference_start: date,
+    reference_end: date,
+    current_start: date,
+    current_end: date,
+    current_total: float,
+    current_count: int,
+    week_num: int | None = None,
+) -> JsonObject:
+    """분석 주간 소비를 하나의 기준 주간 소비와 비교하는 JSON 블록을 만든다."""
+    reference_frame = frame[(frame["date"] >= reference_start) & (frame["date"] <= reference_end)]
+    reference_total = float(reference_frame["사용 금액"].sum())
+    reference_count = int(len(reference_frame))
+    amount_diff = current_total - reference_total
+    comparison: JsonObject = {
+        "label": label,
+        "reference_start_date": str(reference_start),
+        "reference_end_date": str(reference_end),
+        "current_start_date": str(current_start),
+        "current_end_date": str(current_end),
+        "reference_total": _to_amount(reference_total),
+        "current_total": _to_amount(current_total),
+        "amount_diff": _to_amount(amount_diff),
+        "amount_diff_rate_percent": _round_float(_safe_rate(amount_diff, reference_total) * 100),
+        "reference_count": reference_count,
+        "current_count": current_count,
+        "count_diff": current_count - reference_count,
+    }
+    if week_num is not None:
+        comparison["week_num"] = week_num
+    return comparison
+
+
+def _get_available_week_periods(
+    frame: pd.DataFrame,
+    candidate_periods: list[tuple[date, date]],
+) -> list[tuple[date, date]]:
+    """거래 데이터 범위 안에서 온전히 비교할 수 있는 주간 후보 기간만 반환한다."""
+    if frame.empty:
+        return []
+
+    first_available_date = frame["date"].min()
+    return [
+        (period_start, period_end)
+        for period_start, period_end in candidate_periods
+        if period_start >= first_available_date
+    ]
+
+
+def _build_recent_week_average_comparison(
+    frame: pd.DataFrame,
+    *,
+    week_start: date,
+    week_end: date,
+    current_total: float,
+    current_count: int,
+    week_count: int = 4,
+) -> JsonObject:
+    """최근 N개 주간의 평균 소비와 분석 주간 소비를 비교하는 JSON 블록을 만든다."""
+    candidate_periods = [
+        (week_start - timedelta(days=7 * index), week_end - timedelta(days=7 * index))
+        for index in range(1, week_count + 1)
+    ]
+    reference_periods = _get_available_week_periods(frame, candidate_periods)
+
+    period_rows: list[JsonValue] = []
+    total_sum = 0.0
+    count_sum = 0
+    for period_start, period_end in reference_periods:
+        period_frame = frame[(frame["date"] >= period_start) & (frame["date"] <= period_end)]
+        period_total = float(period_frame["사용 금액"].sum())
+        period_count = int(len(period_frame))
+        total_sum += period_total
+        count_sum += period_count
+        period_rows.append(
+            {
+                "start_date": str(period_start),
+                "end_date": str(period_end),
+                "total": _to_amount(period_total),
+                "transaction_count": period_count,
+            }
+        )
+
+    reference_week_count = len(reference_periods)
+    average_total = _safe_rate(total_sum, float(reference_week_count))
+    average_count = _safe_rate(float(count_sum), float(reference_week_count))
+    amount_diff = current_total - average_total
+    count_diff = float(current_count) - average_count
+
+    return {
+        "label": f"최근 {week_count}주 평균 대비",
+        "reference_periods": period_rows,
+        "reference_week_count": reference_week_count,
+        "average_total": _round_float(average_total),
+        "current_total": _to_amount(current_total),
+        "amount_diff": _round_float(amount_diff),
+        "amount_diff_rate_percent": _round_float(_safe_rate(amount_diff, average_total) * 100),
+        "average_count": _round_float(average_count),
+        "current_count": current_count,
+        "count_diff": _round_float(count_diff),
+    }
+
+
+def _build_last_month_same_week_comparison(
+    frame: pd.DataFrame,
+    *,
+    week_start: date,
+    week_end: date,
+    current_total: float,
+    current_count: int,
+) -> JsonObject:
+    """분석 주차와 같은 지난달 주차의 소비를 비교하는 JSON 블록을 만든다."""
+    week_num = (week_start.day - 1) // 7 + 1
+    previous_year, previous_month = _shift_month(week_start.year, week_start.month, -1)
+    last_day = calendar.monthrange(previous_year, previous_month)[1]
+    reference_start = date(previous_year, previous_month, (week_num - 1) * 7 + 1)
+    reference_end = date(previous_year, previous_month, min(week_num * 7, last_day))
+
+    return _build_week_period_comparison(
+        frame,
+        label="지난달 같은 주차 대비",
+        reference_start=reference_start,
+        reference_end=reference_end,
+        current_start=week_start,
+        current_end=week_end,
+        current_total=current_total,
+        current_count=current_count,
+        week_num=week_num,
+    )
+
+
+def _build_weekly_comparisons(
+    frame: pd.DataFrame,
+    *,
+    week_start: date,
+    week_end: date,
+    current_total: float,
+    current_count: int,
+) -> JsonObject:
+    """주간 분석에 필요한 전주·최근 4주 평균·지난달 같은 주차 비교를 묶는다."""
+    previous_week_start = week_start - timedelta(days=7)
+    previous_week_end = week_end - timedelta(days=7)
+
+    return {
+        "previous_week": _build_week_period_comparison(
+            frame,
+            label="전주 대비",
+            reference_start=previous_week_start,
+            reference_end=previous_week_end,
+            current_start=week_start,
+            current_end=week_end,
+            current_total=current_total,
+            current_count=current_count,
+        ),
+        "recent_4week_average": _build_recent_week_average_comparison(
+            frame,
+            week_start=week_start,
+            week_end=week_end,
+            current_total=current_total,
+            current_count=current_count,
+            week_count=4,
+        ),
+        "same_week_last_month": _build_last_month_same_week_comparison(
+            frame,
+            week_start=week_start,
+            week_end=week_end,
+            current_total=current_total,
+            current_count=current_count,
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +769,13 @@ def build_weekly_consumption_analysis_from_frames(
         repeat_patterns["delivery"],  # type: ignore[arg-type]
         repeat_patterns["cafe"],  # type: ignore[arg-type]
     )
+    weekly_comparisons = _build_weekly_comparisons(
+        df,
+        week_start=ws,
+        week_end=we,
+        current_total=this_total,
+        current_count=int(len(df_this)),
+    )
     elasticity_analysis = _build_elasticity_analysis(df)
 
     return {
@@ -600,6 +791,7 @@ def build_weekly_consumption_analysis_from_frames(
         },
         "weekly_summary": weekly_summary,
         "category_summary": category_summary,
+        "weekly_comparisons": weekly_comparisons,
         "weekly_metrics": weekly_metrics,
         "repeat_patterns": repeat_patterns,
         "weekday_pattern": weekday_pattern,
