@@ -40,6 +40,9 @@ dependencies = [
     "ipykernel>=7.2.0",
     "langchain>=1.2.15",
     "streamlit-date-picker>=0.0.5",
+    "opendataloader-pdf>=2.3.0",
+    "langchain-opendataloader-pdf",
+    "matplotlib>=3.10.9",
 ]
 
 [tool.hatch.build.targets.wheel]

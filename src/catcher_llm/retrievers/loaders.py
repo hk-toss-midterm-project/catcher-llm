@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
+from langchain_opendataloader_pdf import OpenDataLoaderPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 SUPPORTED_EXTENSIONS = {".md", ".pdf", ".txt"}
@@ -33,7 +33,7 @@ def load_source_documents(path: Path) -> list[Document]:
             )
         ]
     if suffix == ".pdf":
-        documents = PyPDFLoader(str(path)).load()
+        documents = OpenDataLoaderPDFLoader(file_path=str(path)).load()
         for document in documents:
             document.metadata["source"] = str(path)
         return documents
