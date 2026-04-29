@@ -206,6 +206,26 @@ def test_build_trend_metric_tables_reuses_user_monthly_analysis_metrics() -> Non
     assert user1_february["source_module"] == "catcher_llm.analysis.user_monthly_analysis"
 
 
+def test_build_trend_metric_tables_filters_transactions_by_period() -> None:
+    """지정한 시작일과 종료일 사이의 거래만 지표에 반영되는지 검증한다."""
+    tables = build_trend_metric_tables(
+        users_frame=_make_users_frame(),
+        transactions_frame=_make_transactions_frame(),
+        start_date="2026-02-01",
+        end_date="2026-02-28",
+    )
+
+    monthly_trends = tables["monthly_trends"]
+    daily_trends = tables["daily_trends"]
+    category_trends = tables["category_monthly_trends"]
+
+    assert monthly_trends["month"].tolist() == ["2026-02"]
+    assert int(monthly_trends.iloc[0]["total_amount"]) == 140_000
+    assert int(monthly_trends.iloc[0]["cancelled_transaction_count"]) == 1
+    assert daily_trends["date"].tolist() == ["2026-02-05", "2026-02-10"]
+    assert set(category_trends["category"]) == {"납부", "식비"}
+
+
 def test_segment_monthly_trends_budget_counts_each_user_once() -> None:
     """세그먼트 예산 합계가 거래 건수만큼 중복 합산되지 않는지 검증한다."""
     tables = build_trend_metric_tables(
@@ -225,16 +245,39 @@ def test_segment_monthly_trends_budget_counts_each_user_once() -> None:
 
 
 def test_save_trend_outputs_writes_csv_and_png_files(tmp_path: Path) -> None:
-    """지표 테이블 CSV와 matplotlib PNG 차트 파일이 출력되는지 검증한다."""
+    """기간명 디렉터리 아래에 지표 CSV와 matplotlib PNG 차트 파일이 출력되는지 검증한다."""
     tables = build_trend_metric_tables(
         users_frame=_make_users_frame(),
         transactions_frame=_make_transactions_frame(),
     )
 
     result = save_trend_outputs(tables=tables, output_dir=tmp_path)
+    period_dir = tmp_path / "period_2026-01-05_to_2026-03-02"
 
-    assert (tmp_path / "monthly_trends.csv").exists()
-    assert (tmp_path / "llm_trend_metrics.csv").exists()
-    assert (tmp_path / "charts" / "monthly_total_amount.png").exists()
-    assert (tmp_path / "charts" / "category_monthly_amount.png").exists()
-    assert result.csv_paths["monthly_trends"] == tmp_path / "monthly_trends.csv"
+    assert (period_dir / "monthly_trends.csv").exists()
+    assert (period_dir / "llm_trend_metrics.csv").exists()
+    assert (period_dir / "charts" / "monthly_total_amount.png").exists()
+    assert (period_dir / "charts" / "category_monthly_amount.png").exists()
+    assert result.output_dir == period_dir
+    assert result.csv_paths["monthly_trends"] == period_dir / "monthly_trends.csv"
+
+
+def test_save_trend_outputs_uses_requested_period_directory(tmp_path: Path) -> None:
+    """요청 기간이 있으면 실제 거래일 범위보다 요청 기간을 출력 디렉터리에 사용한다."""
+    tables = build_trend_metric_tables(
+        users_frame=_make_users_frame(),
+        transactions_frame=_make_transactions_frame(),
+        start_date="2026-02-01",
+        end_date="2026-02-28",
+    )
+
+    result = save_trend_outputs(
+        tables=tables,
+        output_dir=tmp_path,
+        period_start="2026-02-01",
+        period_end="2026-02-28",
+    )
+    period_dir = tmp_path / "period_2026-02-01_to_2026-02-28"
+
+    assert result.output_dir == period_dir
+    assert (period_dir / "llm_trend_metrics.csv").exists()

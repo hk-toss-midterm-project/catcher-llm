@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import cast
 
@@ -43,6 +44,7 @@ _USER_REQUIRED_COLUMNS = {
 class TrendOutputPaths:
     """생성된 지표 CSV 경로와 차트 PNG 경로를 묶어서 반환한다."""
 
+    output_dir: Path
     csv_paths: dict[str, Path]
     chart_paths: dict[str, Path]
 
@@ -69,6 +71,24 @@ def _validate_columns(frame: pd.DataFrame, required_columns: set[str], label: st
     missing_columns = sorted(required_columns.difference(str(column) for column in frame.columns))
     if missing_columns:
         raise ValueError(f"{label} 데이터에 필요한 컬럼이 없습니다: {missing_columns}")
+
+
+def _parse_period_date(value: str | date | None, label: str) -> date | None:
+    """기간 필터 입력값을 날짜 객체로 변환하고 형식 오류를 명확히 알린다."""
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{label}는 YYYY-MM-DD 형식이어야 합니다: {value}") from error
+
+
+def _validate_period_bounds(start_date: date | None, end_date: date | None) -> None:
+    """시작일이 종료일보다 늦은 잘못된 기간 설정을 차단한다."""
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValueError(f"start_date는 end_date보다 늦을 수 없습니다: {start_date} > {end_date}")
 
 
 def _age_group(age: int | float) -> str:
@@ -175,6 +195,25 @@ def _normalize_transactions_frame(transactions_frame: pd.DataFrame) -> pd.DataFr
     else:
         transactions["가맹점명"] = transactions["결제 내역"].astype("string").fillna("")
     return transactions
+
+
+def _filter_transactions_by_period(
+    transactions: pd.DataFrame,
+    *,
+    start_date: str | date | None,
+    end_date: str | date | None,
+) -> pd.DataFrame:
+    """설정된 시작일·종료일 범위에 해당하는 거래만 남긴다."""
+    parsed_start = _parse_period_date(start_date, "start_date")
+    parsed_end = _parse_period_date(end_date, "end_date")
+    _validate_period_bounds(parsed_start, parsed_end)
+
+    filtered = transactions
+    if parsed_start is not None:
+        filtered = filtered[filtered["date"] >= parsed_start]
+    if parsed_end is not None:
+        filtered = filtered[filtered["date"] <= parsed_end]
+    return filtered.copy()
 
 
 def _trend_label(change_rate_percent: float | None) -> str:
@@ -782,10 +821,17 @@ def build_trend_metric_tables(
     *,
     users_frame: pd.DataFrame,
     transactions_frame: pd.DataFrame,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
 ) -> dict[str, pd.DataFrame]:
     """현재 사용자·거래 데이터에서 LLM/사람 확인용 동향 지표 테이블 묶음을 생성한다."""
     users = _normalize_users_frame(users_frame)
     transactions = _normalize_transactions_frame(transactions_frame)
+    transactions = _filter_transactions_by_period(
+        transactions,
+        start_date=start_date,
+        end_date=end_date,
+    )
     approved_transactions = transactions[transactions["status"] == _APPROVED_STATUS].copy()
 
     monthly_trends = _build_monthly_trends(
@@ -1005,21 +1051,76 @@ def _save_charts(tables: dict[str, pd.DataFrame], charts_dir: Path) -> dict[str,
     return chart_paths
 
 
+def _period_bounds(frame: pd.DataFrame, column: str) -> tuple[str, str] | None:
+    """지표 테이블의 기간 컬럼에서 시작값과 종료값을 문자열로 추출한다."""
+    if frame.empty or column not in frame.columns:
+        return None
+
+    values = frame[column].dropna().astype("string")
+    if values.empty:
+        return None
+    return str(values.min()), str(values.max())
+
+
+def _infer_period_directory_name(
+    tables: dict[str, pd.DataFrame],
+    *,
+    period_start: str | date | None = None,
+    period_end: str | date | None = None,
+) -> str:
+    """생성 지표의 활용 기간을 나타내는 하위 디렉터리 이름을 만든다."""
+    parsed_start = _parse_period_date(period_start, "period_start")
+    parsed_end = _parse_period_date(period_end, "period_end")
+    _validate_period_bounds(parsed_start, parsed_end)
+
+    daily_bounds = _period_bounds(tables.get("daily_trends", pd.DataFrame()), "date")
+    if parsed_start is not None or parsed_end is not None:
+        start = parsed_start.isoformat() if parsed_start is not None else None
+        end = parsed_end.isoformat() if parsed_end is not None else None
+        if daily_bounds is not None:
+            inferred_start, inferred_end = daily_bounds
+            start = start or inferred_start
+            end = end or inferred_end
+        return f"period_{start or 'unknown'}_to_{end or 'unknown'}"
+
+    if daily_bounds is not None:
+        start, end = daily_bounds
+        return f"period_{start}_to_{end}"
+
+    monthly_bounds = _period_bounds(tables.get("monthly_trends", pd.DataFrame()), "month")
+    if monthly_bounds is not None:
+        start, end = monthly_bounds
+        return f"period_{start}_to_{end}"
+
+    return "period_unknown"
+
+
 def save_trend_outputs(
     *,
     tables: dict[str, pd.DataFrame],
     output_dir: Path = DEFAULT_OUTPUT_DIR,
+    period_start: str | date | None = None,
+    period_end: str | date | None = None,
 ) -> TrendOutputPaths:
     """지표 테이블 CSV와 matplotlib 차트를 지정한 출력 디렉터리에 저장한다."""
-    output_dir.mkdir(parents=True, exist_ok=True)
+    period_output_dir = output_dir / _infer_period_directory_name(
+        tables,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    period_output_dir.mkdir(parents=True, exist_ok=True)
     csv_paths: dict[str, Path] = {}
     for table_name, table in tables.items():
-        csv_path = output_dir / f"{table_name}.csv"
+        csv_path = period_output_dir / f"{table_name}.csv"
         table.to_csv(csv_path, index=False, encoding="utf-8-sig")
         csv_paths[table_name] = csv_path
 
-    chart_paths = _save_charts(tables, output_dir / "charts")
-    return TrendOutputPaths(csv_paths=csv_paths, chart_paths=chart_paths)
+    chart_paths = _save_charts(tables, period_output_dir / "charts")
+    return TrendOutputPaths(
+        output_dir=period_output_dir,
+        csv_paths=csv_paths,
+        chart_paths=chart_paths,
+    )
 
 
 def build_and_save_trend_metrics(
@@ -1027,6 +1128,8 @@ def build_and_save_trend_metrics(
     users_path: Path = DEFAULT_USERS_PATH,
     transactions_path: Path = DEFAULT_TRANSACTIONS_PATH,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
 ) -> TrendOutputPaths:
     """기본 CSV를 읽고 전체 동향 지표 CSV와 차트를 한 번에 생성한다."""
     users_frame, transactions_frame = load_input_frames(
@@ -1036,8 +1139,15 @@ def build_and_save_trend_metrics(
     tables = build_trend_metric_tables(
         users_frame=users_frame,
         transactions_frame=transactions_frame,
+        start_date=start_date,
+        end_date=end_date,
     )
-    return save_trend_outputs(tables=tables, output_dir=output_dir)
+    return save_trend_outputs(
+        tables=tables,
+        output_dir=output_dir,
+        period_start=start_date,
+        period_end=end_date,
+    )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -1046,6 +1156,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--users", type=Path, default=DEFAULT_USERS_PATH)
     parser.add_argument("--transactions", type=Path, default=DEFAULT_TRANSACTIONS_PATH)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--start-date", default=None, help="지표에 포함할 시작일(YYYY-MM-DD)")
+    parser.add_argument("--end-date", default=None, help="지표에 포함할 종료일(YYYY-MM-DD)")
     return parser.parse_args()
 
 
@@ -1056,9 +1168,11 @@ def main() -> None:
         users_path=args.users,
         transactions_path=args.transactions,
         output_dir=args.output_dir,
+        start_date=args.start_date,
+        end_date=args.end_date,
     )
-    print(f"Saved metric CSV files to: {args.output_dir}")
-    print(f"Saved chart PNG files to: {args.output_dir / 'charts'}")
+    print(f"Saved metric CSV files to: {result.output_dir}")
+    print(f"Saved chart PNG files to: {result.output_dir / 'charts'}")
     print(f"LLM trend metrics: {result.csv_paths['llm_trend_metrics']}")
 
 
