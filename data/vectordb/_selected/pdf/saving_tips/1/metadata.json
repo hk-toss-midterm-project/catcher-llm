@@ -6,12 +6,12 @@
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/welfare/2026_hope_ladder_selected.pdf",
-      1776931207127039840,
-      1939687
+      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/1.pdf",
+      1776931207132950554,
+      451343
     ]
   ],
   "source_files": [
-    "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/welfare/2026_hope_ladder_selected.pdf"
+    "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/1.pdf"
   ]
 }
