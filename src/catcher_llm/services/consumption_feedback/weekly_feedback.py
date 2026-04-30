@@ -554,12 +554,19 @@ def _build_weekly_session_list_text(sessions: Sequence[SessionModel]) -> str:
         weekly_total = _extract_weekly_total_summary(session_row.analysis_result)
         reason_summary = extract_feedback_reason_summary(session_row.feedback_reason)
         next_mission = truncate_context_text(session_row.todo_tomorrow)
-        lines.append(
+        reaction = session_row.feedback_reaction or ""
+        reaction_reason = truncate_context_text(session_row.feedback_reaction_reason)
+        line = (
             f"- {session_row.analysis_date}: "
             f"주간지출 {weekly_total}; "
             f"핵심근거 {reason_summary}; "
             f"다음미션 {next_mission}"
         )
+        if reaction:
+            line += f"; 유저반응 {reaction}"
+        if reaction_reason:
+            line += f"; 반응이유 {reaction_reason}"
+        lines.append(line)
     return "\n".join(lines)
 
 
