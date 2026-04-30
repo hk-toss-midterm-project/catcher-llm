@@ -833,6 +833,112 @@ def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
 
+def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
+    """저장된 주간 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-03-30",
+        period_type="weekly",
+        feedback_message="기존 저장 주간 피드백입니다.",
+        feedback_reason="[]",
+        todo_tomorrow="기존 다음 주 미션입니다.",
+    )
+    fake_result = WeeklyFeedbackServiceResult(
+        member_id=1,
+        week_start="2026-03-30",
+        week_end="2026-04-05",
+        feedback=WeeklyFeedbackResult(
+            summary_title="재생성된 주간 피드백",
+            feedback_message="새로 생성한 주간 피드백입니다.",
+            key_evidences=[],
+            action_items=[],
+            next_week_mission="새 다음 주 미션입니다.",
+        ),
+        user_profile=UserProfileContext(user_id=1, name="김토스"),
+        retrieval_queries=["주간 재생성 테스트 질의"],
+    )
+    call_kwargs: dict[str, object] = {}
+
+    def fake_generate_weekly_feedback(
+        *args: object, **kwargs: object
+    ) -> WeeklyFeedbackServiceResult:
+        """재생성 버튼 클릭 시 전달된 주간 피드백 생성 인자를 저장하고 가짜 결과를 반환한다."""
+        call_kwargs.update(kwargs)
+        return fake_result
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.weekly_feedback.load_weekly_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.weekly_feedback.generate_weekly_feedback",
+            side_effect=fake_generate_weekly_feedback,
+        ),
+    ):
+        app = AppTest.from_file("dev_pages/09_weekly_feedback.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "주간 피드백 재생성")
+
+    assert len(app.exception) == 0
+    assert call_kwargs["week_start"].isoformat() == "2026-03-30"
+    assert call_kwargs["week_end"].isoformat() == "2026-04-05"
+    assert any(subheader.value == "재생성된 주간 피드백" for subheader in app.subheader)
+    assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
+
+
+def test_monthly_feedback_dev_page_can_regenerate_cached_session() -> None:
+    """저장된 월간 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-04",
+        period_type="monthly",
+        feedback_message="기존 저장 월간 피드백입니다.",
+        feedback_reason="[]",
+        todo_tomorrow="기존 다음 달 미션입니다.",
+    )
+    fake_result = MonthlyFeedbackServiceResult(
+        member_id=1,
+        analysis_month="2026-04",
+        feedback=MonthlyFeedbackResult(
+            summary_title="재생성된 월간 피드백",
+            feedback_message="새로 생성한 월간 피드백입니다.",
+            key_evidences=[],
+            action_items=[],
+            next_month_mission="새 다음 달 미션입니다.",
+        ),
+        user_profile=UserProfileContext(user_id=1, name="김토스"),
+        retrieval_queries=["월간 재생성 테스트 질의"],
+    )
+    call_kwargs: dict[str, object] = {}
+
+    def fake_generate_monthly_feedback(
+        *args: object, **kwargs: object
+    ) -> MonthlyFeedbackServiceResult:
+        """재생성 버튼 클릭 시 전달된 월간 피드백 생성 인자를 저장하고 가짜 결과를 반환한다."""
+        call_kwargs.update(kwargs)
+        return fake_result
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.monthly_feedback.load_monthly_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.monthly_feedback.generate_monthly_feedback",
+            side_effect=fake_generate_monthly_feedback,
+        ),
+    ):
+        app = AppTest.from_file("dev_pages/12_monthly_feedback.py")
+        app.run(timeout=10)
+        _click_button_by_label(app, "월간 피드백 재생성")
+
+    assert len(app.exception) == 0
+    assert call_kwargs["analysis_month"] == "2026-04"
+    assert any(subheader.value == "재생성된 월간 피드백" for subheader in app.subheader)
+    assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
+
+
 def test_feedback_dev_pages_render_feedback_reaction_controls() -> None:
     """일·주·월 피드백 개발 페이지가 피드백 반응 저장 UI를 호출하는지 검증한다."""
     page_period_snippets = {

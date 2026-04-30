@@ -210,12 +210,18 @@ _has_cache = cached_session is not None and cached_session.feedback_message
 if _has_cache and not _force_regen:
     _render_cached_weekly_session(cached_session)
 
+    if st.button("주간 피드백 재생성", width="stretch"):
+        st.session_state[_regen_date_key] = True
+        st.rerun()
+
 else:
+    should_generate = bool(_force_regen)
     if _force_regen:
         st.session_state.pop(_regen_date_key, None)
 
-    if st.button("주간 피드백 생성", width="stretch"):
-        with st.spinner("주간 피드백 생성 중..."):
+    if st.button("주간 피드백 생성", width="stretch") or should_generate:
+        spinner_label = "주간 피드백 재생성 중..." if should_generate else "주간 피드백 생성 중..."
+        with st.spinner(spinner_label):
             result = generate_weekly_feedback(
                 member_id=int(member_id),
                 week_start=week_start,
