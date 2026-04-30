@@ -144,7 +144,8 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         )
         content = str(rendered.messages[-1].content)
 
-        self.assertIn("일일 소비 잔소리", content)
+        self.assertIn("일일 소비 피드백", content)
+        self.assertIn("비난, 조롱, 과장 표현은 피한다", content)
         self.assertIn("통신비 절약", content)
         self.assertIn("비상금", content)
         self.assertIn("식비가 반복적으로 높다", content)

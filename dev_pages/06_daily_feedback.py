@@ -165,7 +165,7 @@ def _render_session_history(member_id: int) -> None:
                 "다음 미션": s.todo_tomorrow or "-",
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def _render_daily_feedback_result(

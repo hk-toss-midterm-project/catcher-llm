@@ -613,7 +613,7 @@ def call_monthly_feedback(generate_monthly_feedback, *, member_id, month, settin
 
 
 def get_action_text(feedback):
-    action_items = getattr(feedback, "action_items", []) or []
+    action_items = feedback.action_items or []
 
     if action_items:
         first = action_items[0]
@@ -643,7 +643,7 @@ def render_vote_buttons(member_id: str, month: str):
     v1, v2 = st.columns(2)
 
     with v1:
-        if st.button("👍 좋아요", use_container_width=True, type=like_type):
+        if st.button("👍 좋아요", width="stretch", type=like_type):
             st.session_state.monthly_report_vote = "like"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -653,7 +653,7 @@ def render_vote_buttons(member_id: str, month: str):
             st.rerun()
 
     with v2:
-        if st.button("👎 싫어요", use_container_width=True, type=dislike_type):
+        if st.button("👎 싫어요", width="stretch", type=dislike_type):
             st.session_state.monthly_report_vote = "dislike"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -677,11 +677,11 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
 
-    feedback_message = _html_text(getattr(feedback, "feedback_message", ""))
-    next_month_mission = _html_text(getattr(feedback, "next_month_mission", ""))
+    feedback_message = _html_text(feedback.feedback_message)
+    next_month_mission = _html_text(feedback.next_month_mission)
 
-    feedback_evidences = getattr(feedback, "key_evidences", []) or []
-    feedback_action_items = getattr(feedback, "action_items", []) or []
+    feedback_evidences = feedback.key_evidences or []
+    feedback_action_items = feedback.action_items or []
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
@@ -812,12 +812,12 @@ def render_monthly_report(result, member_id: str, month: str):
     with d1:
         with st.container(border=True):
             st.markdown("### 주차별 소비 흐름")
-            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), use_container_width=True)
+            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), width="stretch")
 
     with d2:
         with st.container(border=True):
             st.markdown("### 전월 대비 카테고리 증감")
-            st.plotly_chart(make_category_change_chart(monthly_data), use_container_width=True)
+            st.plotly_chart(make_category_change_chart(monthly_data), width="stretch")
 
     with d3:
         with st.container(border=True):
@@ -829,7 +829,7 @@ def render_monthly_report(result, member_id: str, month: str):
             )
 
             if top5_merchant_fig is not None:
-                st.plotly_chart(top5_merchant_fig, use_container_width=True)
+                st.plotly_chart(top5_merchant_fig, width="stretch")
             else:
                 st.info("가맹점 데이터가 없습니다.")
 
@@ -1003,7 +1003,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", use_container_width=True)
+        run = st.button("생성", width="stretch")
 
 if run:
     st.session_state.monthly_report_vote = None

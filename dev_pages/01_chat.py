@@ -25,7 +25,7 @@ st.caption(
 
 controls, _ = st.columns([1, 4])
 with controls:
-    if st.button("Reset chat", use_container_width=True):
+    if st.button("Reset chat", width="stretch"):
         reset_chat_state()
         st.rerun()
 

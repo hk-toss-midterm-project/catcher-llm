@@ -148,7 +148,7 @@ with st.sidebar:
         input_user_id = st.text_input("User ID 입력")
         input_user_name = st.text_input("이름 입력")
 
-        if st.button("로그인", use_container_width=True):
+        if st.button("로그인", width="stretch"):
             if input_user_id.strip() == "" or input_user_name.strip() == "":
                 st.warning("User ID와 이름을 모두 입력해주세요.")
             else:
@@ -199,7 +199,7 @@ with st.sidebar:
 
         st.markdown("---")
 
-        if st.button("로그아웃", use_container_width=True):
+        if st.button("로그아웃", width="stretch"):
             logout()
 
 # 선택된 페이지 렌더링

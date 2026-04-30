@@ -516,7 +516,7 @@ def render_report_feedback():
         if st.button(
             "👍 좋아요",
             type="primary" if like_selected else "secondary",
-            use_container_width=True,
+            width="stretch",
             key="daily_report_like",
         ):
             st.session_state.daily_report_feedback = "like"
@@ -527,7 +527,7 @@ def render_report_feedback():
         if st.button(
             "👎 싫어요",
             type="primary" if dislike_selected else "secondary",
-            use_container_width=True,
+            width="stretch",
             key="daily_report_dislike",
         ):
             st.session_state.daily_report_feedback = "dislike"
@@ -538,7 +538,6 @@ def render_report_feedback():
         st.success("좋아요가 저장되었습니다.")
     elif st.session_state.daily_report_feedback == "dislike":
         st.warning("싫어요가 저장되었습니다.")
-
 
 
 inject_css()
@@ -592,7 +591,7 @@ with col3:
         unsafe_allow_html=True,
     )
 
-run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
+run = st.button("오늘의 소비 알림장 생성", width="stretch")
 
 st.session_state.member_id = int(member_id)
 
@@ -715,11 +714,11 @@ with dashboard_left:
 
     with chart1:
         st.markdown("### 어디에 썼나")
-        st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
+        st.plotly_chart(make_category_chart(daily_analysis), width="stretch")
 
     with chart2:
         st.markdown("### 언제 썼나")
-        st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
+        st.plotly_chart(make_hour_chart(daily_analysis), width="stretch")
 
 with dashboard_right:
     st.markdown("### 소비 한도")
@@ -727,7 +726,7 @@ with dashboard_right:
     if daily_budget:
         st.plotly_chart(
             make_budget_gauge(today_amount, daily_budget),
-            use_container_width=True,
+            width="stretch",
         )
 
         remaining_label = "남은 금액" if budget_gap >= 0 else "초과 금액"

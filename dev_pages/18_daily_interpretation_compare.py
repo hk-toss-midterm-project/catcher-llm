@@ -167,7 +167,7 @@ def _render_result_chart(frame: pd.DataFrame) -> None:
         xaxis_title=None,
         legend_title_text=None,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _render_mode_json(results: Sequence[InterpretationCompareResult]) -> None:

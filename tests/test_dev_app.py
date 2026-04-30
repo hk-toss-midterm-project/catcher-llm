@@ -871,6 +871,23 @@ def test_report_pages_render_generated_feedback_fields() -> None:
     assert 'getattr(feedback, "scolding_message"' not in monthly_source
 
 
+def test_streamlit_pages_do_not_use_deprecated_container_width_argument() -> None:
+    """Streamlit 페이지 코드에서 제거 예정인 use_container_width 인자를 쓰지 않는지 검증한다."""
+    page_paths = [
+        Path("app.py"),
+        *Path("pages").glob("*.py"),
+        *Path("dev_pages").glob("*.py"),
+    ]
+
+    offenders = [
+        str(page_path)
+        for page_path in page_paths
+        if "use_container_width" in page_path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
 def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() -> None:
     """일일 피드백 반응 버튼을 누르면 반응 저장 후 사유 입력 UI가 열리는지 검증한다."""
     cached_session = SessionModel(

@@ -338,6 +338,7 @@ def build_monthly_consumption_action_prompt() -> ChatPromptTemplate:
         ]
     )
 
+
 _PERSONA_SUFFIX = (
     "\n\n━━━ [최우선 지시 — 페르소나 모드 활성화] ━━━\n"
     "위의 시스템 지시 중 어조·말투·표현 방식에 관한 다음 항목들을 모두 무효로 한다:\n"
@@ -352,7 +353,6 @@ _PERSONA_SUFFIX = (
     "교체해야 할 것: 말투·어조·표현 방식 전체를 아래 캐릭터 설정으로 완전히 대체한다.\n\n"
     "채택할 캐릭터 설정 (이 설정이 위의 모든 어조 지시보다 우선한다):\n"
 )
-
 
 
 def _build_persona_parts(persona_override: str | None) -> tuple[str, str]:
@@ -372,6 +372,7 @@ def _build_persona_parts(persona_override: str | None) -> tuple[str, str]:
             "- 조언 메시지는 온화하면서도 설득력 있게 쓰되 비난, 조롱, 과장 표현은 피한다.\n"
         )
     return system_suffix, tone_instruction
+
 
 def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatPromptTemplate:
     """일일 소비 분석, 해석 결과, RAG 문서 근거 기반 최종 피드백 프롬프트를 생성한다."""

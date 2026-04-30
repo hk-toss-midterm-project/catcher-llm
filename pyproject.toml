@@ -41,6 +41,7 @@ dependencies = [
     "langchain>=1.2.15",
     "streamlit-date-picker>=0.0.5",
     "matplotlib>=3.10.9",
+    "watchdog>=6.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

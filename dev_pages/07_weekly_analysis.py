@@ -49,7 +49,7 @@ def _render_table(title: str, rows: object, empty_message: str) -> None:
     if frame.empty:
         st.info(empty_message)
         return
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width="stretch", hide_index=True)
 
 
 def _render_repeat_summary(repeat_patterns: JsonObject) -> None:
@@ -174,7 +174,7 @@ def _render_weekly_comparisons(weekly_comparisons: JsonObject) -> None:
     if reference_period_frame.empty:
         st.info("최근 4주 평균에 사용할 기준 주간 데이터가 없습니다.")
     else:
-        st.dataframe(reference_period_frame, use_container_width=True, hide_index=True)
+        st.dataframe(reference_period_frame, width="stretch", hide_index=True)
 
 
 with st.sidebar:
@@ -196,7 +196,7 @@ with controls[1]:
         key="weekly_analysis_week",
     )
 
-if st.button("주간 분석 실행", use_container_width=True):
+if st.button("주간 분석 실행", width="stretch"):
     with st.spinner("주간 소비 분석 JSON 생성 중..."):
         try:
             result = build_weekly_consumption_analysis_json(

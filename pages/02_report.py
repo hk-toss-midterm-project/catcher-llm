@@ -46,15 +46,15 @@ if "report_type" not in st.session_state:
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("일간 레포트", use_container_width=True):
+    if st.button("일간 레포트", width="stretch"):
         st.session_state.report_type = "일간 레포트"
 
 with col2:
-    if st.button("주간 레포트", use_container_width=True):
+    if st.button("주간 레포트", width="stretch"):
         st.session_state.report_type = "주간 레포트"
 
 with col3:
-    if st.button("월간 레포트", use_container_width=True):
+    if st.button("월간 레포트", width="stretch"):
         st.session_state.report_type = "월간 레포트"
 
 report_type = st.session_state.report_type
@@ -173,7 +173,7 @@ if report_type == "일간 레포트":
             """
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         fig.update_traces(textposition="inside", textinfo="percent+label")
 
         # -----------------------------
@@ -262,11 +262,11 @@ if report_type == "일간 레포트":
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("👍 좋아요", use_container_width=True):
+            if st.button("👍 좋아요", width="stretch"):
                 st.session_state.daily_feedback_reaction = "좋아요"
 
         with col2:
-            if st.button("👎 싫어요", use_container_width=True):
+            if st.button("👎 싫어요", width="stretch"):
                 st.session_state.daily_feedback_reaction = "싫어요"
 
         # 결과 메시지
@@ -282,14 +282,14 @@ if report_type == "일간 레포트":
         # 오늘 소비 내역
         # -----------------------------
         st.markdown("### 📋 오늘 소비 내역")
-        st.dataframe(today_df, use_container_width=True)
+        st.dataframe(today_df, width="stretch")
 
         # -----------------------------
         # 전날 소비 내역
         # -----------------------------
         if not yesterday_df.empty:
             with st.expander("전날 소비 내역 보기"):
-                st.dataframe(yesterday_df, use_container_width=True)
+                st.dataframe(yesterday_df, width="stretch")
 # -----------------------------
 # 📆 주간 레포트
 # -----------------------------

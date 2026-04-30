@@ -104,7 +104,7 @@ def _render_daily_comparisons(daily_comparisons: JsonObject) -> None:
     if reference_day_frame.empty:
         st.info("최근 4주 같은 요일 평균에 사용할 기준일 데이터가 없습니다.")
     else:
-        st.dataframe(reference_day_frame, use_container_width=True, hide_index=True)
+        st.dataframe(reference_day_frame, width="stretch", hide_index=True)
 
 
 with st.sidebar:
@@ -127,7 +127,7 @@ with controls[1]:
     )
 previous_day = analysis_day - timedelta(days=1)
 
-if st.button("일일 분석 실행", use_container_width=True):
+if st.button("일일 분석 실행", width="stretch"):
     with st.spinner("일일 소비 분석 JSON 생성 중..."):
         try:
             result = build_daily_consumption_analysis_json(
@@ -214,21 +214,21 @@ if st.button("일일 분석 실행", use_container_width=True):
     if high_spending_frame.empty:
         st.info("고액 결제 기준을 초과한 당일 거래가 없습니다.")
     else:
-        st.dataframe(high_spending_frame, use_container_width=True, hide_index=True)
+        st.dataframe(high_spending_frame, width="stretch", hide_index=True)
 
     st.subheader("카테고리 비중 변화")
     category_ratio_frame = _json_rows_to_frame(stable_metrics["category_ratio_changes"])
     if category_ratio_frame.empty:
         st.info("표시할 카테고리 비중 변화가 없습니다.")
     else:
-        st.dataframe(category_ratio_frame, use_container_width=True, hide_index=True)
+        st.dataframe(category_ratio_frame, width="stretch", hide_index=True)
 
     st.subheader("시간대별 소비")
     time_slot_frame = _json_rows_to_frame(time_slot_analysis["time_slots"])
     if time_slot_frame.empty:
         st.info("표시할 시간대별 소비 데이터가 없습니다.")
     else:
-        st.dataframe(time_slot_frame, use_container_width=True, hide_index=True)
+        st.dataframe(time_slot_frame, width="stretch", hide_index=True)
 
     st.caption(
         f"past_source: `{source_paths['past_source']}` | "
