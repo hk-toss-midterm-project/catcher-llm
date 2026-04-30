@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import inspect
 import re
 
@@ -22,6 +23,11 @@ def money(value: int | float) -> str:
 
 def to_dict(value):
     return value.model_dump() if hasattr(value, "model_dump") else value
+
+
+def _html_text(value) -> str:
+    """리포트 카드에 넣을 LLM 텍스트를 HTML 안전 문자열로 변환한다."""
+    return html.escape(str(value or "")).replace("\n", "<br>")
 
 
 def safe_int(value, default: int = 0) -> int:
@@ -629,6 +635,10 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_analysis = result.monthly_analysis
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
+    feedback_message = _html_text(feedback.feedback_message)
+    next_month_mission = _html_text(feedback.next_month_mission)
+    feedback_evidences = feedback.key_evidences
+    feedback_action_items = feedback.action_items
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
@@ -789,11 +799,6 @@ def render_monthly_report(result, member_id: str, month: str):
         st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
         summary_title = getattr(feedback, "summary_title", f"다음 달 줄일 1순위: {worst_category}")
-        scolding_message = getattr(
-            feedback,
-            "scolding_message",
-            f"{worst_category}에서 {money(worst_amount)}만큼 개선 여지가 있습니다.",
-        )
 
         if "월간 소비 피드백" in summary_title:
             summary_title = "LLM 소비 코멘트"
@@ -802,7 +807,9 @@ def render_monthly_report(result, member_id: str, month: str):
             f"""
             <div class="strategy-card">
                 <div class="strategy-title">{summary_title}</div>
-                {scolding_message}<br><br>
+                {feedback_message}<br><br>
+                <b>다음 달 미션</b><br>
+                {next_month_mission}<br><br>
                 반복 가맹점: {repeat_merchant} · {repeat_count}회
             </div>
             """,
@@ -857,6 +864,32 @@ def render_monthly_report(result, member_id: str, month: str):
 
         st.subheader("월간 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
+
+        st.subheader("피드백 근거")
+        if feedback_evidences:
+            st.dataframe(
+                [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in feedback_evidences
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info("표시할 피드백 근거가 없습니다.")
+
+        st.subheader("다음 달 할 일")
+        if feedback_action_items:
+            st.dataframe(
+                [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in feedback_action_items
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info("표시할 행동 항목이 없습니다.")
 
         st.subheader("RAG 검색 질의")
         st.write(getattr(result, "retrieval_queries", []))
@@ -950,6 +983,8 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_analysis = result.monthly_analysis
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
+    feedback_message = _html_text(feedback.feedback_message)
+    next_month_mission = _html_text(feedback.next_month_mission)
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
@@ -1074,16 +1109,13 @@ def render_monthly_report(result, member_id: str, month: str):
         st.markdown("")
 
         summary_title = getattr(feedback, "summary_title", f"{worst_category} 줄이기")
-        scolding_message = getattr(
-            feedback,
-            "scolding_message",
-            f"{worst_category}에서 {money(worst_amount)} 개선 가능",
-        )
 
         st.warning(f"""
         **{summary_title}**
 
-        {scolding_message}
+        {feedback_message}
+
+        다음 달 미션: {next_month_mission}
 
         {repeat_text}
         """)

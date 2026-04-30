@@ -115,8 +115,7 @@ def render_feedback_reaction_controls(
             selected_reaction = reaction
             st.success(f"{_REACTION_LABELS[reaction]} 반응을 저장했습니다.")
 
-    # 싫어요를 선택한 경우에만 이유 입력란 표시
-    if selected_reaction != "dislike":
+    if selected_reaction is None:
         return
 
     if reason_key not in st.session_state:
@@ -127,9 +126,9 @@ def render_feedback_reaction_controls(
         )
 
     st.text_area(
-        "어떤 점이 마음에 들지 않으셨나요?",
+        "반응 이유",
         key=reason_key,
-        placeholder="피드백이 아쉬웠던 이유를 적어주세요.",
+        placeholder="피드백 반응 이유를 적어주세요.",
     )
     if st.button(
         "전송",

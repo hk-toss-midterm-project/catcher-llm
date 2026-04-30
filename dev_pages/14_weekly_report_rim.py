@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -19,6 +21,11 @@ def money(value: int | float) -> str:
 
 def _to_dict(value):
     return value.model_dump() if hasattr(value, "model_dump") else value
+
+
+def _html_text(value) -> str:
+    """리포트 카드에 넣을 LLM 텍스트를 HTML 안전 문자열로 변환한다."""
+    return html.escape(str(value or "")).replace("\n", "<br>")
 
 
 def safe_int(value, default: int = 0) -> int:
@@ -523,6 +530,10 @@ def render_weekly_report(result):
     weekly_data = _to_dict(weekly_analysis)
 
     weekly_summary = weekly_data["weekly_summary"]
+    feedback_message = _html_text(feedback.feedback_message)
+    next_week_mission = _html_text(feedback.next_week_mission)
+    feedback_evidences = feedback.key_evidences
+    feedback_action_items = feedback.action_items
 
     total_amount = safe_int(weekly_summary["this_week_total"])
     prev_rate = float(weekly_summary.get("diff_rate_percent", 0))
@@ -563,11 +574,6 @@ def render_weekly_report(result):
         )
 
     summary_title = getattr(feedback, "summary_title", "이번 주 소비 인사이트")
-    scolding_message = getattr(
-        feedback,
-        "scolding_message",
-        "이번 주 소비에서 반복적으로 나타난 지출을 줄이는 것이 중요합니다.",
-    )
 
     if "주간 소비" in summary_title and "피드백" in summary_title:
         summary_title = "LLM 소비 코멘트"
@@ -667,7 +673,9 @@ def render_weekly_report(result):
             f"""
             <div class="danger-card">
                 <div class="danger-title">{summary_title}</div>
-                {scolding_message}
+                {feedback_message}<br><br>
+                <b>다음 주 미션</b><br>
+                {next_week_mission}
             </div>
             """,
             unsafe_allow_html=True,
@@ -737,6 +745,32 @@ def render_weekly_report(result):
 
         st.subheader("주간 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
+
+        st.subheader("피드백 근거")
+        if feedback_evidences:
+            st.dataframe(
+                [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in feedback_evidences
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info("표시할 피드백 근거가 없습니다.")
+
+        st.subheader("다음 주 할 일")
+        if feedback_action_items:
+            st.dataframe(
+                [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in feedback_action_items
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            st.info("표시할 행동 항목이 없습니다.")
 
         st.subheader("RAG 검색 질의")
         st.write(getattr(result, "retrieval_queries", []))

@@ -847,6 +847,30 @@ def test_feedback_dev_pages_render_feedback_reaction_controls() -> None:
         assert period_snippet in page_source
 
 
+def test_report_pages_render_generated_feedback_fields() -> None:
+    """리포트 페이지가 피드백 개발 페이지와 같은 생성 피드백 필드를 메인 화면에 반영하는지 검증한다."""
+    daily_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+    weekly_source = Path("dev_pages/14_weekly_report_rim.py").read_text(encoding="utf-8")
+    monthly_source = Path("dev_pages/15_monthly_report_rim.py").read_text(encoding="utf-8")
+
+    assert "feedback.scolding_message" in daily_source
+    assert "feedback.tomorrow_mission" in daily_source
+    assert "feedback.key_evidences" in daily_source
+    assert "feedback.action_items" in daily_source
+
+    assert "feedback.feedback_message" in weekly_source
+    assert "feedback.next_week_mission" in weekly_source
+    assert "feedback.key_evidences" in weekly_source
+    assert "feedback.action_items" in weekly_source
+    assert 'getattr(feedback, "scolding_message"' not in weekly_source
+
+    assert "feedback.feedback_message" in monthly_source
+    assert "feedback.next_month_mission" in monthly_source
+    assert "feedback.key_evidences" in monthly_source
+    assert "feedback.action_items" in monthly_source
+    assert 'getattr(feedback, "scolding_message"' not in monthly_source
+
+
 def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() -> None:
     """일일 피드백 반응 버튼을 누르면 반응 저장 후 사유 입력 UI가 열리는지 검증한다."""
     cached_session = SessionModel(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import re
 import sqlite3
+from datetime import timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -11,6 +12,11 @@ import streamlit as st
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
+from catcher_llm.ui.date_picker import (
+    DEFAULT_CALENDAR_DATE,
+    render_date_picker_styles,
+    select_daily_date,
+)
 
 _USER_SCORE_COLUMN = "personal_score"
 
@@ -574,6 +580,7 @@ def render_report_feedback():
 
 
 inject_css()
+render_date_picker_styles()
 
 st.markdown('<div class="title">🚨 오늘의 소비 알림장</div>', unsafe_allow_html=True)
 st.markdown(
@@ -593,10 +600,15 @@ with col1:
     )
 
 with col2:
-    analysis_date = st.date_input("분석 기준일", value=default_selection.analysis_date)
+    analysis_date = select_daily_date(
+        "분석 기준일",
+        default=DEFAULT_CALENDAR_DATE,
+        key="daily_report_analysis_date",
+    )
 
 with col3:
-    previous_date = st.date_input("전일 기준일", value=default_selection.previous_date)
+    previous_date = analysis_date - timedelta(days=1)
+    st.metric("비교 기준일", previous_date.isoformat())
 
 run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
@@ -658,6 +670,9 @@ daily_saving_goal = round(monthly_goal / 30) if monthly_goal else 0
 daily_budget = max(round(past_average - daily_saving_goal), 0)
 budget_gap = daily_budget - today_amount if daily_budget else 0
 
+llm_summary_title = clean_text(feedback.summary_title)
+llm_feedback_message = clean_text(feedback.scolding_message)
+llm_tomorrow_mission = clean_text(feedback.tomorrow_mission)
 action_title, action_detail = get_action_text(feedback)
 saving_amount = max(previous_amount - today_amount, daily_saving_goal, 0)
 
@@ -805,11 +820,9 @@ with bottom1:
     st.markdown(
         f"""
         <div class="problem-box">
-            <div class="problem-title">오늘의 문제 소비: {main_category}</div>
+            <div class="problem-title">{llm_summary_title}</div>
             <div class="problem-text">
-                오늘 소비의 {main_ratio:.1f}%가 {main_category}에 집중되어 있습니다.<br><br>
-                총액보다 중요한 건 <b>소비가 한 곳에 몰렸는지</b>입니다.
-                내일은 이 카테고리 하나만 줄여도 효과가 큽니다.
+                {llm_feedback_message}
             </div>
         </div>
         """,
@@ -820,12 +833,13 @@ with bottom2:
     st.markdown(
         f"""
         <div class="action-card">
-            <div class="action-title">내일 할 일 1개</div>
+            <div class="action-title">내일 미션</div>
             <div>
                 <span class="num">01</span>
-                <span class="action-main">{action_title}</span>
+                <span class="action-main">{llm_tomorrow_mission}</span>
             </div>
             <div class="action-detail">
+                {action_title}<br>
                 {action_detail}
             </div>
         </div>
@@ -849,6 +863,34 @@ with bottom3:
         """,
         unsafe_allow_html=True,
     )
+
+
+with st.expander("LLM 피드백 근거와 실행 항목"):
+    st.subheader("피드백 근거")
+    if feedback.key_evidences:
+        st.dataframe(
+            [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in feedback.key_evidences
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.info("표시할 피드백 근거가 없습니다.")
+
+    st.subheader("오늘 할 일")
+    if feedback.action_items:
+        st.dataframe(
+            [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in feedback.action_items
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.info("표시할 행동 항목이 없습니다.")
 
 
 feedback_col1, feedback_col2 = st.columns([1.5, 1])

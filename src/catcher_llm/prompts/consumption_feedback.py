@@ -270,7 +270,7 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
             ),
             (
                 "human",
-                "아래 데이터를 바탕으로 일일 소비 피드백을 구조화해 작성하라.\n"
+                "아래 데이터를 바탕으로 일일 소비 잔소리 피드백을 구조화해 작성하라.\n"
                 "필수 조건:\n"
                 "- JSON 수치 근거를 최소 2개 이상 사용한다.\n"
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
