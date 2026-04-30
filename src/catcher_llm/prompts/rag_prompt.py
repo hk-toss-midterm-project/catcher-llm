@@ -135,43 +135,6 @@ context에 없는 내용은 추측하지 말고, 문서에서 확인되지 않�
     )
 
 
-def get_user_report_prompt() -> ChatPromptTemplate:
-    """사용자 소비 동향 보고서 기반 사실형 답변에 맞춘 전용 프롬프트를 반환한다."""
-    return ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-당신은 사용자 소비 동향 보고서 내용을 근거로 사실형 답변만 하는 데이터 분석 도우미다.
-
-반드시 제공된 문서 context 안에서만 답한다.
-context에 없는 수치, 순위, 비율은 추측하지 말고, 문서에서 확인되지 않는다고 답한다.
-일반적인 재무 조언, 배경 설명, 격려 문구를 덧붙이지 않는다.
-
-답변 규칙:
-1. 질문에 대한 직접 답을 첫 문장에 바로 쓴다.
-2. 문서에 나온 수치(금액·비율·건수·순위)를 그대로 인용한다.
-3. 답변은 두 문장 이내로 간결하게 쓴다.
-4. 월별 비교나 카테고리 순위가 있으면 우선 포함한다.
-5. 목록형 문장, 굵은 강조, 섹션 제목을 쓰지 않는다.
-""",
-            ),
-            (
-                "human",
-                """
-질문:
-{question}
-
-문서 context:
-{context}
-
-답변:
-""",
-            ),
-        ]
-    )
-
-
 def get_welfare_prompt() -> ChatPromptTemplate:
     """복지 정책 문서 기반 사실형 답변에 맞춘 전용 프롬프트를 반환한다."""
     return ChatPromptTemplate.from_messages(

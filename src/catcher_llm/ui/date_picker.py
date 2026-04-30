@@ -273,11 +273,6 @@ def _get_state_date(key: str, default: date) -> date:
     return stored_date
 
 
-def _set_state_date(key: str, selected_date: date) -> None:
-    """선택된 날짜를 Streamlit session_state에 ISO 문자열로 저장한다."""
-    st.session_state[_session_key(key)] = selected_date.isoformat()
-
-
 def _set_pending_state_date(
     state: MutableMapping[str, object], key: str, selected_date: date
 ) -> None:
@@ -316,13 +311,6 @@ def _update_popover_close_token(state: MutableMapping[str, object], key: str) ->
     next_token = current_token + 1
     state[_popover_session_key(key)] = next_token
     return next_token
-
-
-def _next_month(month_start: date) -> date:
-    """월 시작일 기준 다음 달 시작일을 계산한다."""
-    if month_start.month == 12:
-        return date(month_start.year + 1, 1, 1)
-    return date(month_start.year, month_start.month + 1, 1)
 
 
 def _render_picker_label(label: str) -> None:

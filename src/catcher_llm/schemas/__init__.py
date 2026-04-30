@@ -51,7 +51,6 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklySpendingData,
     WeeklySpendingIndicatorPayload,
 )
-from catcher_llm.schemas.document import DocumentRecord
 from catcher_llm.schemas.rag import RAGResponse, RetrievedChunk
 
 __all__ = [
@@ -69,7 +68,6 @@ __all__ = [
     "DailyFeedbackResult",
     "DailyFeedbackServiceResult",
     "DailyFeedbackSessionContext",
-    "DocumentRecord",
     "EvidenceItem",
     "FrictionlessSpending",
     "GroupCompetitionMetric",
