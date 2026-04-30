@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import html
 import re
 import sqlite3
-from datetime import timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -11,36 +11,37 @@ import streamlit as st
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
-from catcher_llm.ui.date_picker import (
-    DEFAULT_CALENDAR_DATE,
-    render_date_picker_styles,
-    select_daily_date,
-)
 
 _USER_SCORE_COLUMN = "personal_score"
 
+st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
+
+
+def clean_text(value) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    text = html.unescape(text)
+    text = re.sub(r"<[^>]*>", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 
 def _quote_sqlite_identifier(identifier: str) -> str:
-    """SQLite 식별자에 들어갈 큰따옴표를 이스케이프한다."""
     return identifier.replace('"', '""')
 
 
 def _get_daily_report_sqlite_db_path() -> str:
-    """현재 앱 설정에서 일간 보고서 포인트를 읽고 쓸 SQLite 경로를 반환한다."""
     return str(get_settings().sqlite_db_path)
 
 
 def _get_user_score_column(connection: sqlite3.Connection) -> str | None:
-    """사용자 테이블에서 v3 개인 점수 컬럼이 존재하는지 확인해 반환한다."""
     rows = connection.execute('PRAGMA table_info("users")').fetchall()
     column_names = {str(row[1]) for row in rows}
-    if _USER_SCORE_COLUMN in column_names:
-        return _USER_SCORE_COLUMN
-    return None
+    return _USER_SCORE_COLUMN if _USER_SCORE_COLUMN in column_names else None
 
 
 def add_user_point(member_id: int, point: int = 50) -> None:
-    """일간 보고서 피드백 보상 포인트를 현재 SQLite 사용자 점수에 더한다."""
     with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
         score_column = _get_user_score_column(connection)
         if score_column is None:
@@ -60,7 +61,6 @@ def add_user_point(member_id: int, point: int = 50) -> None:
 
 
 def get_user_point(member_id: int) -> int:
-    """현재 SQLite 사용자 점수 컬럼에서 일간 보고서 포인트 값을 읽는다."""
     with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
         score_column = _get_user_score_column(connection)
         if score_column is None:
@@ -83,8 +83,6 @@ def get_user_point(member_id: int) -> int:
 
 if "point_earned" not in st.session_state:
     st.session_state.point_earned = False
-
-st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
 
 def money(v: int | float) -> str:
@@ -115,100 +113,82 @@ def inject_css():
         """
         <style>
         .block-container {
-            max-width: 1080px;
-            padding-top: 2rem;
+            max-width: 1460px;
+            padding-top: 3.2rem;
+            padding-bottom: 2rem;
         }
 
         .title {
             font-size: 34px;
             font-weight: 900;
             color: #0f172a;
-            margin-bottom: 4px;
+            margin-top: 6px;
+            margin-bottom: 6px;
         }
 
         .subtitle {
             color: #64748b;
             font-size: 14px;
-            margin-bottom: 24px;
+            margin-bottom: 18px;
         }
 
         .hero-label {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 800;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             opacity: 0.92;
         }
 
         .hero-main {
-            font-size: 32px;
+            font-size: 30px;
             font-weight: 900;
-            line-height: 1.55;
+            line-height: 1.45;
         }
 
         .section {
-            font-size: 21px;
+            font-size: 20px;
             font-weight: 900;
             color: #0f172a;
-            margin: 32px 0 14px;
+            margin: 24px 0 12px;
         }
 
         .mini-card {
-            padding: 20px;
-            border-radius: 22px;
+            padding: 18px;
+            border-radius: 20px;
             background: white;
             border: 1px solid #e5e7eb;
             box-shadow: 0 8px 22px rgba(15,23,42,0.06);
-            min-height: 116px;
+            min-height: 105px;
         }
 
         .mini-label {
             color: #64748b;
             font-weight: 700;
             font-size: 13px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         .mini-value {
             color: #0f172a;
             font-weight: 900;
-            font-size: 25px;
-        }
-
-        .mission-box {
-            padding: 28px;
-            border-radius: 26px;
-            background: #ecfdf5;
-            border: 1px solid #86efac;
-            color: #065f46;
-            box-shadow: 0 8px 22px rgba(16,185,129,0.08);
-        }
-
-        .mission-title {
-            font-size: 25px;
-            font-weight: 900;
-            margin-bottom: 10px;
-        }
-
-        .mission-text {
-            font-size: 17px;
-            line-height: 1.75;
-            font-weight: 700;
+            font-size: 23px;
         }
 
         .problem-box {
-            padding: 28px;
+            padding: 26px;
             border-radius: 26px;
             background: #eff6ff;
             border: 1px solid #93c5fd;
             color: #1e3a8a;
             box-shadow: 0 8px 22px rgba(59, 130, 246, 0.08);
+            min-height: 225px;
         }
 
         .problem-title {
             font-size: 25px;
             font-weight: 900;
             color: #0052CC;
-            margin-bottom: 10px;
+            margin-bottom: 14px;
         }
 
         .problem-text {
@@ -218,12 +198,19 @@ def inject_css():
         }
 
         .action-card {
-            padding: 24px;
-            border-radius: 22px;
+            padding: 26px;
+            border-radius: 26px;
             background: white;
             border: 1px solid #e5e7eb;
             box-shadow: 0 8px 22px rgba(15,23,42,0.06);
-            margin-bottom: 14px;
+            min-height: 225px;
+        }
+
+        .action-title {
+            font-size: 25px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-bottom: 18px;
         }
 
         .num {
@@ -239,28 +226,77 @@ def inject_css():
             margin-right: 12px;
         }
 
+        .action-main {
+            font-size: 17px;
+            font-weight: 900;
+            color: #0f172a;
+        }
+
+        .action-detail {
+            margin-left: 52px;
+            margin-top: 10px;
+            color: #64748b;
+            line-height: 1.65;
+            font-weight: 650;
+            font-size: 15px;
+        }
+
         .effect {
-            padding: 24px;
-            border-radius: 22px;
+            padding: 26px;
+            border-radius: 26px;
             background: #f0f9ff;
             border: 1px solid #bae6fd;
             color: #0c4a6e;
-            font-size: 18px;
+            font-size: 17px;
+            font-weight: 800;
+            min-height: 225px;
+        }
+
+        .effect-title {
+            font-size: 25px;
             font-weight: 900;
+            margin-bottom: 18px;
+        }
+
+        .saving-box {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 18px;
+            background: white;
+            border: 1px solid #bae6fd;
+            color: #0052CC;
+            font-size: 20px;
+            font-weight: 900;
+            text-align: center;
         }
 
         .feedback-box {
-            padding: 24px;
+            padding: 22px;
             border-radius: 22px;
             background: white;
             border: 1px solid #e5e7eb;
             box-shadow: 0 8px 22px rgba(15,23,42,0.06);
-            margin-top: 12px;
+            margin-top: 8px;
+        }
+
+        .point-card {
+            margin-top: 10px;
+            padding: 12px 16px;
+            border-radius: 14px;
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            font-weight: 800;
+            color: #0c4a6e;
+            display: inline-block;
         }
 
         div[data-testid="stExpander"] {
             border-radius: 14px;
             border: 1px solid #e5e7eb;
+        }
+
+        h3 {
+            margin-top: 0.3rem;
         }
         </style>
         """,
@@ -298,12 +334,14 @@ def make_category_chart(daily_analysis):
             {
                 "category": item.category,
                 "amount": total * item.today_ratio_percent / 100,
-                "ratio": item.today_ratio_percent,
             }
             for item in changes
             if item.today_ratio_percent > 0
         ]
     )
+
+    if df.empty:
+        df = pd.DataFrame({"category": ["데이터 없음"], "amount": [0]})
 
     fig = px.pie(
         df,
@@ -323,14 +361,14 @@ def make_category_chart(daily_analysis):
     fig.update_traces(
         textinfo="label+percent",
         textposition="inside",
-        insidetextfont=dict(size=13, color="white"),
+        insidetextfont=dict(size=12, color="white"),
         marker=dict(line=dict(color="white", width=3)),
         hovertemplate="<b>%{label}</b><br>%{value:,.0f}원<br>%{percent}<extra></extra>",
     )
 
     fig.update_layout(
-        height=320,
-        margin=dict(t=10, b=10, l=10, r=10),
+        height=285,
+        margin=dict(t=5, b=5, l=5, r=5),
         showlegend=True,
         legend=dict(
             orientation="v",
@@ -338,7 +376,7 @@ def make_category_chart(daily_analysis):
             y=0.5,
             xanchor="left",
             x=1.02,
-            font=dict(size=12),
+            font=dict(size=11),
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -347,7 +385,7 @@ def make_category_chart(daily_analysis):
                 text=f"<b>오늘</b><br>{money(total)}",
                 x=0.5,
                 y=0.5,
-                font=dict(size=15, color="#0f172a"),
+                font=dict(size=14, color="#0f172a"),
                 showarrow=False,
             )
         ],
@@ -383,6 +421,9 @@ def make_hour_chart(daily_analysis):
 
     df = pd.DataFrame(rows)
 
+    if df.empty:
+        df = pd.DataFrame({"time_slot": ["데이터 없음"], "amount": [0]})
+
     fig = px.bar(
         df,
         x="time_slot",
@@ -401,8 +442,8 @@ def make_hour_chart(daily_analysis):
     )
 
     fig.update_layout(
-        height=320,
-        margin=dict(t=20, b=20, l=20, r=20),
+        height=285,
+        margin=dict(t=20, b=20, l=15, r=15),
         xaxis_title=None,
         yaxis_title=None,
         showlegend=False,
@@ -412,7 +453,7 @@ def make_hour_chart(daily_analysis):
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#334155"),
         yaxis=dict(gridcolor="#e5e7eb", zeroline=False, tickformat=","),
-        xaxis=dict(tickfont=dict(size=11)),
+        xaxis=dict(tickfont=dict(size=10)),
     )
 
     return fig
@@ -426,8 +467,8 @@ def make_budget_gauge(today_amount: int | float, daily_budget: int | float):
         go.Indicator(
             mode="gauge+number",
             value=usage_rate,
-            number={"suffix": "%", "font": {"size": 38, "color": "#64748b"}},
-            title={"text": "소비 한도 사용률", "font": {"size": 18}},
+            number={"suffix": "%", "font": {"size": 34, "color": "#64748b"}},
+            title={"text": "소비 한도 사용률", "font": {"size": 16}},
             gauge={
                 "axis": {"range": [0, 120]},
                 "bar": {"color": "#0052CC"},
@@ -446,8 +487,8 @@ def make_budget_gauge(today_amount: int | float, daily_budget: int | float):
     )
 
     fig.update_layout(
-        height=320,
-        margin=dict(t=40, b=10, l=20, r=20),
+        height=285,
+        margin=dict(t=35, b=5, l=15, r=15),
         paper_bgcolor="rgba(0,0,0,0)",
     )
 
@@ -465,7 +506,7 @@ def get_action_text(feedback):
             or getattr(first, "description", None)
             or "오늘 가장 많이 쓴 소비를 내일 하루만 줄여보세요."
         )
-        return title, detail
+        return clean_text(title), clean_text(detail)
 
     return "내일은 배달 음식 주문하지 않기", "식비 비중을 낮추기 위해 하루만 배달을 쉬어보세요."
 
@@ -500,7 +541,7 @@ def render_report_feedback():
         if not st.session_state.daily_report_rewarded:
             add_user_point(int(st.session_state.member_id), 50)
             st.session_state.daily_report_rewarded = True
-            st.session_state.point_earned = True  # 🔥 추가
+            st.session_state.point_earned = True
 
     with c1:
         if st.button(
@@ -533,7 +574,6 @@ def render_report_feedback():
 
 
 inject_css()
-render_date_picker_styles()
 
 st.markdown('<div class="title">🚨 오늘의 소비 알림장</div>', unsafe_allow_html=True)
 st.markdown(
@@ -542,7 +582,7 @@ st.markdown(
 )
 
 default_selection = get_default_daily_report_selection()
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     member_id = st.number_input(
@@ -553,19 +593,15 @@ with col1:
     )
 
 with col2:
-    analysis_date = select_daily_date(
-        "분석 기준일",
-        default=DEFAULT_CALENDAR_DATE,
-        key="daily_report_analysis_date",
-    )
+    analysis_date = st.date_input("분석 기준일", value=default_selection.analysis_date)
 
-previous_date = analysis_date - timedelta(days=1)
+with col3:
+    previous_date = st.date_input("전일 기준일", value=default_selection.previous_date)
 
 run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
 st.session_state.member_id = int(member_id)
 
-# 1) 생성 버튼을 눌렀을 때는 결과만 저장
 if run:
     from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
 
@@ -587,8 +623,6 @@ if run:
     st.session_state.daily_report_feedback = None
     st.session_state.daily_report_rewarded = False
 
-
-# 2) 저장된 결과를 기준으로 화면을 계속 그림
 result = st.session_state.get("daily_report_result")
 
 if result is None:
@@ -625,6 +659,7 @@ daily_budget = max(round(past_average - daily_saving_goal), 0)
 budget_gap = daily_budget - today_amount if daily_budget else 0
 
 action_title, action_detail = get_action_text(feedback)
+saving_amount = max(previous_amount - today_amount, daily_saving_goal, 0)
 
 if change_rate < 0:
     hero_gradient = "linear-gradient(135deg, #0052CC 0%, #0066FF 45%, #3B82F6 100%)"
@@ -638,17 +673,17 @@ else:
 st.markdown(
     f"""
     <div style="
-        padding: 34px;
+        padding: 30px 34px;
         border-radius: 28px;
         background: {hero_gradient};
         color: white;
-        margin: 28px 0 30px 0;
+        margin: 22px 0 24px 0;
         box-shadow: 0 20px 42px {hero_shadow};
     ">
         <div class="hero-label">오늘의 소비 경고</div>
         <div class="hero-main">
-            오늘은 <span style="color: {amount_color}; font-size: 48px;">{money(today_amount)}</span>을 썼고,<br>
-            가장 많이 새는 곳은 <span style="color: #ffffff; font-size: 40px;">{main_category}</span>입니다.
+            오늘은 <span style="color: {amount_color}; font-size: 44px;">{money(today_amount)}</span>을 썼고,<br>
+            가장 많이 새는 곳은 <span style="color: #ffffff; font-size: 38px;">{main_category}</span>입니다.
         </div>
     </div>
     """,
@@ -657,7 +692,7 @@ st.markdown(
 
 st.markdown('<div class="section">오늘 핵심만 보기</div>', unsafe_allow_html=True)
 
-m1, m2, m3, m4 = st.columns(4)
+m1, m2, m3, m4, m5 = st.columns([1, 1, 1.2, 1, 1])
 
 with m1:
     metric_card("오늘 소비", money(today_amount))
@@ -667,41 +702,29 @@ with m3:
     metric_card("피크 시간대", peak_time)
 with m4:
     metric_card(f"{main_category} 비중", pct(main_ratio))
+with m5:
+    user_point = get_user_point(int(member_id))
+    st.markdown(
+        f"""
+        <div class="mini-card">
+            <div class="mini-label">현재 포인트</div>
+            <div class="mini-value">💰 {user_point}P</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# 🔽 여기 추가
-user_point = get_user_point(int(member_id))
-
-# ✅ 포인트 카드
-st.markdown(
-    f"""
-    <div style="
-        margin-top:10px;
-        padding:12px 16px;
-        border-radius:14px;
-        background:#f0f9ff;
-        border:1px solid #bae6fd;
-        font-weight:800;
-        color:#0c4a6e;
-        display:inline-block;
-    ">
-        💰 현재 포인트: {user_point}P
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ✅ +50 애니메이션 (별도)
 if st.session_state.point_earned:
     st.markdown(
         """
         <div style="
             margin-top:12px;
-            padding:14px 22px;
+            padding:12px 20px;
             border-radius:18px;
             background:linear-gradient(135deg,#22c55e,#16a34a);
             color:white;
             font-weight:900;
-            font-size:22px;
+            font-size:20px;
             display:inline-block;
             animation:fadeUp 0.8s ease;
             box-shadow:0 10px 25px rgba(34,197,94,0.3);
@@ -718,34 +741,39 @@ if st.session_state.point_earned:
         """,
         unsafe_allow_html=True,
     )
-
-    # 한 번만 보여주고 OFF
     st.session_state.point_earned = False
 
-st.markdown('<div class="section">오늘 돈이 샌 위치</div>', unsafe_allow_html=True)
 
-g1, g2, g3 = st.columns(3)
+st.markdown('<div class="section">오늘 소비 대시보드</div>', unsafe_allow_html=True)
 
-with g1:
-    st.markdown("### 어디에 썼나")
-    st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
+dashboard_left, dashboard_right = st.columns([2.1, 1])
 
-with g2:
-    st.markdown("### 언제 썼나")
-    st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
+with dashboard_left:
+    chart1, chart2 = st.columns(2)
 
-with g3:
+    with chart1:
+        st.markdown("### 어디에 썼나")
+        st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
+
+    with chart2:
+        st.markdown("### 언제 썼나")
+        st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
+
+with dashboard_right:
     st.markdown("### 소비 한도")
+
     if daily_budget:
         st.plotly_chart(
             make_budget_gauge(today_amount, daily_budget),
             use_container_width=True,
         )
+
         remaining_label = "남은 금액" if budget_gap >= 0 else "초과 금액"
+
         st.markdown(
             f"""
             <div style="
-                padding:16px 20px;
+                padding:14px 18px;
                 border-radius:18px;
                 background:#f8fafc;
                 border:1px solid #e5e7eb;
@@ -753,9 +781,12 @@ with g3:
                 color:#0f172a;
                 text-align:center;
                 font-size:14px;
+                margin-top:-8px;
             ">
                 권장 한도: {money(daily_budget)}<br>
-                <span style="color:#64748b; font-weight:600;">{remaining_label}: {money(abs(budget_gap))}</span>
+                <span style="color:#64748b; font-weight:600;">
+                    {remaining_label}: {money(abs(budget_gap))}
+                </span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -763,18 +794,19 @@ with g3:
     else:
         st.info("절약 목표 없음")
 
-st.markdown('<div class="section">오늘의 판단</div>', unsafe_allow_html=True)
 
-p1, p2 = st.columns([1.05, 0.95])
+st.markdown('<div class="section">오늘의 판단 · 내일 행동 · 기대 효과</div>', unsafe_allow_html=True)
 
-with p1:
+bottom1, bottom2, bottom3 = st.columns([1.25, 1.15, 1])
+
+with bottom1:
     st.markdown(
         f"""
         <div class="problem-box">
             <div class="problem-title">오늘의 문제 소비: {main_category}</div>
             <div class="problem-text">
-                오늘 소비의 {main_ratio:.1f}%가 {main_category}에 집중되어 있습니다.<br>
-                총액보다 중요한 건 "소비가 한 곳에 몰렸는지"입니다.
+                오늘 소비의 {main_ratio:.1f}%가 {main_category}에 집중되어 있습니다.<br><br>
+                총액보다 중요한 건 <b>소비가 한 곳에 몰렸는지</b>입니다.
                 내일은 이 카테고리 하나만 줄여도 효과가 큽니다.
             </div>
         </div>
@@ -782,59 +814,58 @@ with p1:
         unsafe_allow_html=True,
     )
 
-with p2:
+with bottom2:
     st.markdown(
         f"""
-        <div class="mission-box">
-            <div class="mission-title">내일의 미션</div>
-            <div class="mission-text">
-                {action_title}<br>
-                <span style="font-size:14px; color:#047857;">{action_detail}</span>
+        <div class="action-card">
+            <div class="action-title">내일 할 일 1개</div>
+            <div>
+                <span class="num">01</span>
+                <span class="action-main">{action_title}</span>
+            </div>
+            <div class="action-detail">
+                {action_detail}
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-st.markdown('<div class="section">내일 할 일 1개</div>', unsafe_allow_html=True)
-
-st.markdown(
-    f"""
-    <div class="action-card">
-        <span class="num">01</span>
-        <b>{action_title}</b><br>
-        <span style="margin-left:54px; color:#64748b;">
-        {action_detail}
-        </span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown('<div class="section">기대 효과</div>', unsafe_allow_html=True)
-
-saving_amount = max(previous_amount - today_amount, daily_saving_goal, 0)
-
-st.markdown(
-    f"""
-    <div class="effect">
-        내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.
-        <span style="float:right;">하루 절약 목표 약 {money(saving_amount)}</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-render_report_feedback()
-
-with st.expander("상세 분석 & 데이터"):
-    st.subheader("일일 분석 JSON")
-    st.json(
-        daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis
+with bottom3:
+    st.markdown(
+        f"""
+        <div class="effect">
+            <div class="effect-title">기대 효과</div>
+            <div>
+                내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.
+            </div>
+            <div class="saving-box">
+                하루 절약 목표<br>
+                약 {money(saving_amount)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.subheader("최종 피드백 JSON")
-    st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
 
-    st.subheader("RAG 검색 질의")
-    st.write(getattr(result, "retrieval_queries", []))
+feedback_col1, feedback_col2 = st.columns([1.5, 1])
+
+with feedback_col1:
+    render_report_feedback()
+
+with feedback_col2:
+    st.markdown('<div class="section">상세 데이터</div>', unsafe_allow_html=True)
+    with st.expander("상세 분석 & 데이터"):
+        st.subheader("일일 분석 JSON")
+        st.json(
+            daily_analysis.model_dump()
+            if hasattr(daily_analysis, "model_dump")
+            else daily_analysis
+        )
+
+        st.subheader("최종 피드백 JSON")
+        st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
+
+        st.subheader("RAG 검색 질의")
+        st.write(getattr(result, "retrieval_queries", []))
