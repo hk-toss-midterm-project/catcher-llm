@@ -27,11 +27,13 @@ from catcher_llm.services.consumption_feedback.daily_feedback import (
     build_feedback_retrieval_queries,
     generate_daily_feedback,
     make_daily_feedback_input,
+    retrieve_feedback_contexts,
     serialize_advice_contexts,
 )
 from catcher_llm.services.consumption_feedback.interpretation import (
     load_user_spending_data,
 )
+from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.user_data_service import ensure_user_database
 
 
@@ -182,6 +184,122 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("비상금", payload["user_profile_json"])
         self.assertIn("식비가 반복적으로 높다", payload["memory_context_json"])
         self.assertIn("guide.pdf", serialize_advice_contexts([context]))
+
+    def test_retrieve_feedback_contexts_searches_each_document_kind_and_filters_useful_records(
+        self,
+    ) -> None:
+        """문서 종류별 벡터스토어를 각각 검색하고 유용한 청크만 피드백 근거로 남기는지 검증한다."""
+
+        def fake_retrieve_context_records(
+            question: str,
+            chunk_size: int,
+            chunk_overlap: int,
+            top_k: int,
+            *,
+            raw_data_dir: Path | str | None = None,
+            source_files: object | None = None,
+            settings: Settings | None = None,
+        ) -> list[dict[str, str | int | None]]:
+            """테스트용 검색 함수로 문서 종류별 검색 결과를 고정한다."""
+            if raw_data_dir is None:
+                return []
+            raw_dir = Path(raw_data_dir)
+            if raw_dir.name == "saving_tips":
+                return [
+                    {
+                        "source": "saving.pdf",
+                        "content": "배달 주문 횟수를 정하고 주간 예산을 먼저 잠그면 지출을 줄일 수 있다.",
+                        "page_number": 2,
+                    }
+                ]
+            if raw_dir.name == "welfare":
+                return [
+                    {
+                        "source": "welfare.pdf",
+                        "content": "청년 주거 지원 정책은 보증금과 월세 신청 조건을 확인해야 한다.",
+                        "page_number": 7,
+                    }
+                ]
+            return []
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+
+            with patch(
+                "catcher_llm.services.consumption_feedback.daily_feedback.retrieve_context_records",
+                side_effect=fake_retrieve_context_records,
+            ) as retrieve_records:
+                contexts = retrieve_feedback_contexts(
+                    ["배달 주문 지출 줄이는 방법"],
+                    top_k=1,
+                    document_kinds=[
+                        DocumentKind.SAVING_TIPS,
+                        DocumentKind.WELFARE,
+                    ],
+                    usefulness_threshold=0.3,
+                    settings=settings,
+                )
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].document_kind, "saving_tips")
+        self.assertGreaterEqual(contexts[0].usefulness_score or 0.0, 0.3)
+        self.assertIn("saving_tips", contexts[0].query)
+        self.assertEqual(retrieve_records.call_count, 2)
+        searched_dirs = [
+            Path(call.kwargs["raw_data_dir"]).relative_to(settings.raw_data_dir)
+            for call in retrieve_records.call_args_list
+        ]
+        self.assertEqual(
+            searched_dirs,
+            [
+                Path("pdf") / "saving_tips",
+                Path("pdf") / "welfare",
+            ],
+        )
+
+    def test_retrieve_feedback_contexts_keeps_best_fallback_when_all_scores_are_low(
+        self,
+    ) -> None:
+        """모든 문서 청크가 기준 미만이면 최고 점수 후보를 fallback 근거로 남기는지 검증한다."""
+
+        def fake_retrieve_context_records(
+            question: str,
+            chunk_size: int,
+            chunk_overlap: int,
+            top_k: int,
+            *,
+            raw_data_dir: Path | str | None = None,
+            source_files: object | None = None,
+            settings: Settings | None = None,
+        ) -> list[dict[str, str | int | None]]:
+            """테스트용 검색 함수로 기준 미만 후보를 반환한다."""
+            return [
+                {
+                    "source": "saving.pdf",
+                    "content": "배달 주문은 한 번 더 생각하고 결정한다.",
+                    "page_number": 1,
+                }
+            ]
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+
+            with patch(
+                "catcher_llm.services.consumption_feedback.daily_feedback.retrieve_context_records",
+                side_effect=fake_retrieve_context_records,
+            ):
+                contexts = retrieve_feedback_contexts(
+                    ["배달 주문 지출 줄이는 방법"],
+                    top_k=1,
+                    document_kinds=[DocumentKind.SAVING_TIPS],
+                    usefulness_threshold=0.95,
+                    settings=settings,
+                )
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].document_kind, "saving_tips")
+        self.assertLess(contexts[0].usefulness_score or 0.0, 0.95)
+        self.assertIn("fallback", contexts[0].usefulness_reason or "")
 
     def test_generate_daily_feedback_orchestrates_analysis_interpretation_rag_and_feedback(
         self,

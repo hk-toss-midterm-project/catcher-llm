@@ -358,12 +358,15 @@ class SpendingAnalysisResult(BaseModel):
 
 
 class RetrievedAdviceContext(BaseModel):
-    """일일 피드백 생성을 위해 RAG에서 찾은 조언 문서 청크를 표현한다."""
+    """피드백 생성을 위해 RAG에서 찾은 조언 문서 청크와 유용성 판단 결과를 표현한다."""
 
     query: str
     source: str
     content: str
     page_number: int | None = None
+    document_kind: str | None = None
+    usefulness_score: float | None = None
+    usefulness_reason: str | None = None
 
 
 class UserProfileContext(BaseModel):

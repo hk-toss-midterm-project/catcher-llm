@@ -118,6 +118,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 "interpretation_json",
                 "retrieved_contexts",
                 "user_profile_json",
+                "memory_context_json",
             },
         )
 
@@ -127,6 +128,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 "interpretation_json": '{"action_result": {"next_week_missions": []}}',
                 "retrieved_contexts": '[{"source": "guide.pdf", "content": "배달비 절약"}]',
                 "user_profile_json": '{"saving_goal_text": "비상금"}',
+                "memory_context_json": "{}",
             }
         )
         content = str(rendered.messages[-1].content)
@@ -172,12 +174,14 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 "interpretation_json",
                 "retrieved_contexts",
                 "user_profile_json",
+                "memory_context_json",
             },
         )
         self.assertIn("weekly_summary", payload["weekly_json"])
         self.assertIn("action_result", payload["interpretation_json"])
         self.assertIn("배달 소비 절약 방법", payload["retrieved_contexts"])
         self.assertIn("비상금 300만원 만들기", payload["user_profile_json"])
+        self.assertIn("{}", payload["memory_context_json"])
 
     def test_generate_weekly_feedback_orchestrates_analysis_interpretation_rag_and_feedback(
         self,
@@ -286,6 +290,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("interpretation_json", feedback_payload)
         self.assertIn("retrieved_contexts", feedback_payload)
         self.assertIn("user_profile_json", feedback_payload)
+        self.assertIn("memory_context_json", feedback_payload)
 
     def test_weekly_feedback_retrieval_queries_use_weekly_signals(self) -> None:
         """주간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""

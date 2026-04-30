@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -46,6 +47,7 @@ from catcher_llm.services.consumption_feedback.interpretation import (
     parse_user_spending_data,
     truncate_context_text,
 )
+from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.rag.core import retrieve_context_records
 from catcher_llm.services.user_data_service import ensure_user_database
 
@@ -53,6 +55,44 @@ _DEFAULT_RETRIEVAL_QUERY = "일일 소비 절약 실천 방법"
 _DAILY_MEMORY_PERIOD_TYPE = "daily"
 _DEFAULT_RECENT_SESSION_LIMIT = 7
 _DEFAULT_MEMORY_SESSION_LIMIT = 14
+_DEFAULT_USEFULNESS_THRESHOLD = 0.25
+_TOKEN_PATTERN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
+_GENERIC_QUERY_TOKENS = {
+    "방법",
+    "소비",
+    "지출",
+    "절약",
+    "실천",
+    "줄이는",
+    "줄이기",
+    "관리",
+    "개선",
+    "목표",
+    "근거",
+    "피드백",
+    "전략",
+}
+_FEEDBACK_DOCUMENT_KIND_DIRS: dict[DocumentKind, Path] = {
+    DocumentKind.SAVING_TIPS: Path("pdf") / "saving_tips",
+    DocumentKind.SELF_REPORT: Path("pdf") / "self_report",
+    DocumentKind.USER_REPORT: Path("markdown") / "users_report",
+    DocumentKind.WELFARE: Path("pdf") / "welfare",
+    DocumentKind.KCA_REPORT: Path("pdf") / "kca_report",
+}
+_DEFAULT_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
+    DocumentKind.SAVING_TIPS,
+    DocumentKind.SELF_REPORT,
+    DocumentKind.USER_REPORT,
+    DocumentKind.WELFARE,
+    DocumentKind.KCA_REPORT,
+)
+_DOCUMENT_KIND_QUERY_SUFFIXES: dict[DocumentKind, str] = {
+    DocumentKind.SAVING_TIPS: "절약 행동 실천 방법",
+    DocumentKind.SELF_REPORT: "소비 자기진단 리포트 패턴 근거",
+    DocumentKind.USER_REPORT: "사용자 소비 동향 비교 근거",
+    DocumentKind.WELFARE: "복지 지원 정책 혜택 가능성",
+    DocumentKind.KCA_REPORT: "소비자 주의사항 피해 예방 근거",
+}
 type DailyFeedbackInterpretationMode = Literal["split", "balanced", "unified"]
 
 
@@ -482,6 +522,117 @@ def _append_unique_query(queries: list[str], query: str) -> None:
         queries.append(normalized_query)
 
 
+def _coerce_feedback_document_kind(document_kind: DocumentKind | str) -> DocumentKind:
+    """문서 종류 입력을 피드백 RAG에서 사용할 DocumentKind 값으로 정규화한다."""
+    if isinstance(document_kind, DocumentKind):
+        return document_kind
+    return DocumentKind(document_kind)
+
+
+def _normalize_feedback_document_kinds(
+    document_kinds: Sequence[DocumentKind | str] | None,
+) -> list[DocumentKind]:
+    """피드백 RAG 검색에 사용할 문서 종류 목록을 중복 없이 정규화한다."""
+    raw_kinds: Sequence[DocumentKind | str] = (
+        _DEFAULT_FEEDBACK_DOCUMENT_KINDS if document_kinds is None else document_kinds
+    )
+    normalized_kinds: list[DocumentKind] = []
+    for raw_kind in raw_kinds:
+        document_kind = _coerce_feedback_document_kind(raw_kind)
+        if document_kind not in _FEEDBACK_DOCUMENT_KIND_DIRS:
+            continue
+        if document_kind not in normalized_kinds:
+            normalized_kinds.append(document_kind)
+    return normalized_kinds
+
+
+def _build_feedback_query_summary(queries: Sequence[str]) -> str:
+    """여러 사용자 기반 검색 질의를 문서 종류별 1회 검색에 사용할 대표 질의로 합친다."""
+    normalized_queries = [" ".join(query.split()) for query in queries if query.strip()]
+    if not normalized_queries:
+        return _DEFAULT_RETRIEVAL_QUERY
+    return " / ".join(normalized_queries)
+
+
+def _build_document_kind_query(document_kind: DocumentKind, query_summary: str) -> str:
+    """문서 종류의 역할을 반영한 피드백 RAG 검색 질의를 만든다."""
+    suffix = _DOCUMENT_KIND_QUERY_SUFFIXES[document_kind]
+    return f"[{document_kind.value}] {query_summary} {suffix}"
+
+
+def _get_document_kind_raw_data_dir(
+    settings: Settings,
+    document_kind: DocumentKind,
+) -> Path:
+    """문서 종류별로 분리된 원본 디렉터리 경로를 반환한다."""
+    return settings.raw_data_dir / _FEEDBACK_DOCUMENT_KIND_DIRS[document_kind]
+
+
+def _extract_usefulness_tokens(text: str) -> set[str]:
+    """유용성 판단에 사용할 검색어 토큰을 추출하고 지나치게 일반적인 단어를 제외한다."""
+    tokens = {token.lower() for token in _TOKEN_PATTERN.findall(text)}
+    specific_tokens = tokens - _GENERIC_QUERY_TOKENS
+    return specific_tokens or tokens
+
+
+def _score_context_usefulness(query: str, content: str) -> float:
+    """검색 질의와 문서 청크의 토큰 겹침 비율로 문서 근거의 유용성 점수를 계산한다."""
+    query_tokens = _extract_usefulness_tokens(query)
+    if not query_tokens:
+        return 0.0
+    content_tokens = {token.lower() for token in _TOKEN_PATTERN.findall(content)}
+    if not content_tokens:
+        return 0.0
+    matched_tokens = query_tokens & content_tokens
+    return round(len(matched_tokens) / len(query_tokens), 4)
+
+
+def _build_usefulness_reason(
+    score: float,
+    threshold: float,
+    *,
+    is_fallback: bool = False,
+) -> str:
+    """유용성 점수와 기준값을 사람이 확인할 수 있는 짧은 설명으로 만든다."""
+    if is_fallback:
+        return (
+            f"fallback: no context met threshold; best token overlap score "
+            f"{score:.2f} < threshold {threshold:.2f}"
+        )
+    return f"query-content token overlap score {score:.2f} >= threshold {threshold:.2f}"
+
+
+def _record_to_advice_context(
+    *,
+    record: dict[str, str | int | None],
+    query: str,
+    document_kind: DocumentKind | None = None,
+    usefulness_score: float | None = None,
+    usefulness_threshold: float | None = None,
+    is_fallback: bool = False,
+) -> RetrievedAdviceContext:
+    """검색 record를 최종 피드백 프롬프트에 전달할 RAG 근거 모델로 변환한다."""
+    page_number = record.get("page_number")
+    reason = (
+        _build_usefulness_reason(
+            usefulness_score,
+            usefulness_threshold,
+            is_fallback=is_fallback,
+        )
+        if usefulness_score is not None and usefulness_threshold is not None
+        else None
+    )
+    return RetrievedAdviceContext(
+        query=query,
+        source=str(record["source"]),
+        content=str(record["content"]),
+        page_number=page_number if isinstance(page_number, int) else None,
+        document_kind=document_kind.value if document_kind is not None else None,
+        usefulness_score=usefulness_score,
+        usefulness_reason=reason,
+    )
+
+
 def _iter_action_missions(action_result: object) -> list[ActionMission]:
     """해석 결과의 행동 개선 모델 또는 dict에서 실행 미션 목록을 추출한다."""
     if isinstance(action_result, ActionAnalysisResult):
@@ -562,9 +713,91 @@ def retrieve_feedback_contexts(
     top_k: int = 3,
     raw_data_dir: Path | str | None = None,
     source_files: Sequence[Path] | None = None,
+    document_kinds: Sequence[DocumentKind | str] | None = None,
+    usefulness_threshold: float = _DEFAULT_USEFULNESS_THRESHOLD,
     settings: Settings | None = None,
 ) -> list[RetrievedAdviceContext]:
-    """RAG 검색 질의 목록을 실행해 최종 피드백에 사용할 문서 청크를 수집한다."""
+    """문서 종류별 RAG 검색을 실행하고 유용한 청크만 최종 피드백 근거로 수집한다."""
+    if raw_data_dir is not None or source_files is not None:
+        return _retrieve_feedback_contexts_from_explicit_source(
+            queries,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=raw_data_dir,
+            source_files=source_files,
+            settings=settings,
+        )
+
+    config = settings or get_settings()
+    query_summary = _build_feedback_query_summary(queries)
+    normalized_document_kinds = _normalize_feedback_document_kinds(document_kinds)
+    contexts: list[RetrievedAdviceContext] = []
+    fallback_candidates: list[RetrievedAdviceContext] = []
+    seen_contexts: set[tuple[str, str, int | None, str]] = set()
+
+    for document_kind in normalized_document_kinds:
+        query = _build_document_kind_query(document_kind, query_summary)
+        records = retrieve_context_records(
+            query,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            top_k=top_k,
+            raw_data_dir=_get_document_kind_raw_data_dir(config, document_kind),
+            source_files=None,
+            settings=config,
+        )
+        for record in records:
+            content = str(record["content"])
+            usefulness_score = _score_context_usefulness(query_summary, content)
+            page_number = record.get("page_number")
+            actual_page_number = page_number if isinstance(page_number, int) else None
+            source = str(record["source"])
+            dedupe_key = (document_kind.value, source, actual_page_number, content)
+            if dedupe_key in seen_contexts:
+                continue
+            seen_contexts.add(dedupe_key)
+            context = _record_to_advice_context(
+                record=record,
+                query=query,
+                document_kind=document_kind,
+                usefulness_score=usefulness_score,
+                usefulness_threshold=usefulness_threshold,
+            )
+            if usefulness_score < usefulness_threshold:
+                fallback_candidates.append(
+                    _record_to_advice_context(
+                        record=record,
+                        query=query,
+                        document_kind=document_kind,
+                        usefulness_score=usefulness_score,
+                        usefulness_threshold=usefulness_threshold,
+                        is_fallback=True,
+                    )
+                )
+                continue
+            contexts.append(context)
+
+    if not contexts and fallback_candidates:
+        return sorted(
+            fallback_candidates,
+            key=lambda context: context.usefulness_score or 0.0,
+            reverse=True,
+        )[:1]
+    return contexts
+
+
+def _retrieve_feedback_contexts_from_explicit_source(
+    queries: Sequence[str],
+    *,
+    chunk_size: int,
+    chunk_overlap: int,
+    top_k: int,
+    raw_data_dir: Path | str | None,
+    source_files: Sequence[Path] | None,
+    settings: Settings | None,
+) -> list[RetrievedAdviceContext]:
+    """호출자가 명시한 단일 코퍼스 설정으로 기존 방식의 RAG 검색을 수행한다."""
     contexts: list[RetrievedAdviceContext] = []
     seen_contexts: set[tuple[str, int | None, str]] = set()
     for query in queries:
@@ -587,11 +820,9 @@ def retrieve_feedback_contexts(
                 continue
             seen_contexts.add(dedupe_key)
             contexts.append(
-                RetrievedAdviceContext(
+                _record_to_advice_context(
+                    record=record,
                     query=query,
-                    source=source,
-                    content=content,
-                    page_number=actual_page_number,
                 )
             )
     return contexts

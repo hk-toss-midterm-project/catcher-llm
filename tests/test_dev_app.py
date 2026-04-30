@@ -265,6 +265,22 @@ def test_user_trend_report_dev_page_wires_metric_and_report_scripts() -> None:
     assert "end_date" in page_source
 
 
+def test_rag_dev_pages_include_feedback_document_kind_search() -> None:
+    """RAG 개발 페이지들이 문서 종류별 피드백 RAG 검색 모드를 제공하는지 검증한다."""
+    retriever_source = Path("dev_pages/02_retriever_probe.py").read_text(encoding="utf-8")
+    document_rag_source = Path("dev_pages/03_document_rag.py").read_text(encoding="utf-8")
+
+    for page_source in (retriever_source, document_rag_source):
+        assert "retrieve_feedback_contexts" in page_source
+        assert "DocumentKind" in page_source
+        assert "문서 종류별 피드백 RAG" in page_source
+        assert "usefulness_threshold" in page_source
+        assert "document_kinds" in page_source
+
+    assert "PDF 코퍼스 직접 검색" in retriever_source
+    assert "단일 문서 RAG" in document_rag_source
+
+
 def test_dev_app_renders_default_page_without_exception() -> None:
     """Streamlit 개발 앱의 기본 페이지가 import 예외 없이 렌더링되는지 검증한다."""
     app = AppTest.from_file("dev_app.py")
