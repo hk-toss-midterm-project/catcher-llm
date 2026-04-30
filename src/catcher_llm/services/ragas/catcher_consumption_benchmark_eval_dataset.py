@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 
-def get_self_report_eval_questions() -> list[str]:
-    """소비 자기진단 리포트 평가에 사용할 기본 질문 목록을 반환한다."""
+def get_catcher_consumption_benchmark_eval_questions() -> list[str]:
+    """Catcher 소비 벤치마크 리포트 평가에 사용할 기본 질문 목록을 반환한다."""
     return [
         "201812 회원월당 소비성 금액은 얼마인가?",
         "201812 변동비 누수 후보 비율은 얼마인가?",
@@ -11,8 +11,8 @@ def get_self_report_eval_questions() -> list[str]:
     ]
 
 
-def get_self_report_ground_truths() -> list[str]:
-    """소비 자기진단 리포트 평가에 사용할 기본 기준 정답 목록을 반환한다."""
+def get_catcher_consumption_benchmark_ground_truths() -> list[str]:
+    """Catcher 소비 벤치마크 리포트 평가에 사용할 기본 기준 정답 목록을 반환한다."""
     return [
         "201812 회원월당 소비성 금액은 44.7만 원이다.",
         "201812 변동비 누수 후보 비율은 87.1%이다.",

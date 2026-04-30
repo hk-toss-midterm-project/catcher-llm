@@ -9,10 +9,12 @@ from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Fait
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.llm.models import get_chat_model, get_embeddings_model
-from catcher_llm.services.rag.self_report import generate_self_report_rag_reply
-from catcher_llm.services.ragas.self_report_eval_dataset import (
-    get_self_report_eval_questions,
-    get_self_report_ground_truths,
+from catcher_llm.services.rag.catcher_consumption_benchmark import (
+    generate_catcher_consumption_benchmark_rag_reply,
+)
+from catcher_llm.services.ragas.catcher_consumption_benchmark_eval_dataset import (
+    get_catcher_consumption_benchmark_eval_questions,
+    get_catcher_consumption_benchmark_ground_truths,
 )
 
 if TYPE_CHECKING:
@@ -56,16 +58,16 @@ def _extract_answer(rag_response: Any) -> str:
     return str(rag_response)
 
 
-def build_self_report_ragas_dataset(settings: Settings | None = None) -> Dataset:
-    """소비 자기진단 리포트 질문 세트와 RAG 응답으로 ragas 평가 데이터셋을 구성한다."""
-    questions = get_self_report_eval_questions()
-    ground_truths = get_self_report_ground_truths()
+def build_catcher_consumption_benchmark_ragas_dataset(settings: Settings | None = None) -> Dataset:
+    """Catcher 소비 벤치마크 리포트 질문 세트와 RAG 응답으로 ragas 평가 데이터셋을 구성한다."""
+    questions = get_catcher_consumption_benchmark_eval_questions()
+    ground_truths = get_catcher_consumption_benchmark_ground_truths()
 
     answers: list[str] = []
     contexts: list[list[str]] = []
 
     for question in questions:
-        rag_response = generate_self_report_rag_reply(question, settings=settings)
+        rag_response = generate_catcher_consumption_benchmark_rag_reply(question, settings=settings)
         answers.append(_extract_answer(rag_response))
         contexts.append(_extract_contexts(rag_response))
 
@@ -79,10 +81,12 @@ def build_self_report_ragas_dataset(settings: Settings | None = None) -> Dataset
     )
 
 
-def run_self_report_ragas_eval(settings: Settings | None = None) -> EvaluationResult:
-    """프로젝트 설정 모델로 소비 자기진단 리포트 ragas 평가를 실행한다."""
+def run_catcher_consumption_benchmark_ragas_eval(
+    settings: Settings | None = None,
+) -> EvaluationResult:
+    """프로젝트 설정 모델로 Catcher 소비 벤치마크 리포트 ragas 평가를 실행한다."""
     config = settings or get_settings()
-    dataset = build_self_report_ragas_dataset(settings=config)
+    dataset = build_catcher_consumption_benchmark_ragas_dataset(settings=config)
 
     metrics = [
         Faithfulness(),
@@ -99,12 +103,12 @@ def run_self_report_ragas_eval(settings: Settings | None = None) -> EvaluationRe
     )
 
 
-def save_self_report_ragas_result(
-    output_path: str = "self_report_ragas_result.csv",
+def save_catcher_consumption_benchmark_ragas_result(
+    output_path: str = "catcher_consumption_benchmark_ragas_result.csv",
     settings: Settings | None = None,
 ) -> DataFrame:
-    """소비 자기진단 리포트 ragas 평가 결과를 CSV로 저장하고 데이터프레임으로 반환한다."""
-    result = run_self_report_ragas_eval(settings=settings)
+    """Catcher 소비 벤치마크 리포트 ragas 평가 결과를 CSV로 저장하고 데이터프레임으로 반환한다."""
+    result = run_catcher_consumption_benchmark_ragas_eval(settings=settings)
     dataframe = result.to_pandas()
     dataframe.to_csv(output_path, index=False, encoding="utf-8-sig")
     return dataframe

@@ -13,14 +13,16 @@ from catcher_llm.services.test_service import invoke_retriever_question
 settings = get_settings()
 _FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
     DocumentKind.SAVING_TIPS,
-    DocumentKind.SELF_REPORT,
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
     DocumentKind.USER_REPORT,
     DocumentKind.WELFARE,
     DocumentKind.KCA_REPORT,
 )
 _DOCUMENT_KIND_LABELS: dict[DocumentKind, str] = {
     DocumentKind.SAVING_TIPS: "saving_tips | 절약 팁",
-    DocumentKind.SELF_REPORT: "self_report | 소비 자기진단",
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: (
+        "catcher_consumption_benchmark | Catcher 2018.07-12 소비 벤치마크"
+    ),
     DocumentKind.USER_REPORT: "user_report | 사용자 동향",
     DocumentKind.WELFARE: "welfare | 복지 정책",
     DocumentKind.KCA_REPORT: "kca_report | KCA 리포트",

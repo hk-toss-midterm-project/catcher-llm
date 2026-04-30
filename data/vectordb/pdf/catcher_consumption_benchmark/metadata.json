@@ -1,0 +1,14 @@
+{
+  "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/catcher_consumption_benchmark",
+  "embedding_provider": "openai",
+  "embedding_model": "text-embedding-3-small",
+  "chunk_size": 800,
+  "chunk_overlap": 120,
+  "file_signature": [
+    [
+      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/catcher_consumption_benchmark/catcher_consumption_benchmark_201807_201812.pdf",
+      1776931207130412385,
+      1344180
+    ]
+  ]
+}

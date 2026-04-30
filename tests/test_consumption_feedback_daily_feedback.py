@@ -220,6 +220,14 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
                         "page_number": 7,
                     }
                 ]
+            if raw_dir.name == "catcher_consumption_benchmark":
+                return [
+                    {
+                        "source": "benchmark.pdf",
+                        "content": "Catcher 소비 벤치마크는 온라인쇼핑과 정기결제 흐름을 비교한다.",
+                        "page_number": 3,
+                    }
+                ]
             return []
 
         with TemporaryDirectory() as tmp_dir:
@@ -234,6 +242,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
                     top_k=1,
                     document_kinds=[
                         DocumentKind.SAVING_TIPS,
+                        DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
                         DocumentKind.WELFARE,
                     ],
                     usefulness_threshold=0.3,
@@ -244,7 +253,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertEqual(contexts[0].document_kind, "saving_tips")
         self.assertGreaterEqual(contexts[0].usefulness_score or 0.0, 0.3)
         self.assertIn("saving_tips", contexts[0].query)
-        self.assertEqual(retrieve_records.call_count, 2)
+        self.assertEqual(retrieve_records.call_count, 3)
         searched_dirs = [
             Path(call.kwargs["raw_data_dir"]).relative_to(settings.raw_data_dir)
             for call in retrieve_records.call_args_list
@@ -253,6 +262,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
             searched_dirs,
             [
                 Path("pdf") / "saving_tips",
+                Path("pdf") / "catcher_consumption_benchmark",
                 Path("pdf") / "welfare",
             ],
         )

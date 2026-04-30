@@ -258,6 +258,51 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("검색된 문맥", messages[0].content)
         self.assertNotIn("Answer using only", messages[0].content)
 
+    def test_rag_pipeline_config_uses_catcher_consumption_benchmark_document_kind(
+        self,
+    ) -> None:
+        """Catcher 소비 벤치마크 문서 종류가 새 원본 경로와 전용 프롬프트를 쓰는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_dir = root / "raw"
+            benchmark_dir = raw_dir / "pdf" / "catcher_consumption_benchmark"
+            benchmark_dir.mkdir(parents=True)
+            benchmark_path = benchmark_dir / "benchmark.md"
+            benchmark_path.write_text("benchmark", encoding="utf-8")
+            settings = Settings(raw_data_dir=raw_dir)
+
+            config = get_rag_pipeline_config(
+                DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
+                settings=settings,
+            )
+
+        messages = config.prompt.format_messages(
+            history="",
+            context="벤치마크 문맥",
+            question="내 소비와 비교해줘",
+        )
+
+        self.assertEqual(config.document_kind, DocumentKind.CATCHER_CONSUMPTION_BENCHMARK)
+        self.assertEqual(config.source_files, [benchmark_path])
+        self.assertIn("Catcher 소비 벤치마크 리포트", messages[0].content)
+        self.assertIn("한국인 300만 명", messages[0].content)
+        self.assertIn("2018년 7월부터 12월까지", messages[0].content)
+
+    def test_default_catcher_consumption_benchmark_pdf_name_includes_analysis_period(
+        self,
+    ) -> None:
+        """기본 Catcher 소비 벤치마크 PDF 파일명이 2018년 7~12월 분석 기간을 드러내는지 검증한다."""
+        settings = Settings()
+        config = get_rag_pipeline_config(
+            DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
+            settings=settings,
+        )
+
+        self.assertEqual(
+            [path.name for path in config.source_files],
+            ["catcher_consumption_benchmark_201807_201812.pdf"],
+        )
+
     def test_welfare_rag_service_delegates_to_configured_core_pipeline(self) -> None:
         """복지 RAG 서비스가 공통 RAG 엔진에 문서별 설정을 주입하는지 검증한다."""
         with tempfile.TemporaryDirectory() as tmp_dir:

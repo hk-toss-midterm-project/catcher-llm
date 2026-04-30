@@ -276,6 +276,9 @@ def test_rag_dev_pages_include_feedback_document_kind_search() -> None:
         assert "문서 종류별 피드백 RAG" in page_source
         assert "usefulness_threshold" in page_source
         assert "document_kinds" in page_source
+        assert "catcher_consumption_benchmark" in page_source
+        assert "Catcher 2018.07-12 소비 벤치마크" in page_source
+        assert "self_report" not in page_source
 
     assert "PDF 코퍼스 직접 검색" in retriever_source
     assert "단일 문서 RAG" in document_rag_source

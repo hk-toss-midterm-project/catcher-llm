@@ -14,7 +14,7 @@ from catcher_llm.retrievers.loaders import iter_source_files
 class DocumentKind(StrEnum):
     KCA_REPORT = "kca_report"
     SAVING_TIPS = "saving_tips"
-    SELF_REPORT = "self_report"
+    CATCHER_CONSUMPTION_BENCHMARK = "catcher_consumption_benchmark"
     WELFARE = "welfare"
     USER_REPORT = "user_report"
 
@@ -30,7 +30,7 @@ class RAGPipelineConfig:
 _DOCUMENT_KIND_DIRS: dict[DocumentKind, Path] = {
     DocumentKind.KCA_REPORT: Path("pdf") / "kca_report",
     DocumentKind.SAVING_TIPS: Path("pdf") / "saving_tips",
-    DocumentKind.SELF_REPORT: Path("pdf") / "self_report",
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: Path("pdf") / "catcher_consumption_benchmark",
     DocumentKind.WELFARE: Path("pdf") / "welfare",
     DocumentKind.USER_REPORT: Path("markdown") / "users_report",
 }
@@ -44,9 +44,11 @@ _DOCUMENT_KIND_SYSTEM_INSTRUCTIONS: dict[DocumentKind, str] = {
         "검색된 문맥 중 절약 팁 내용만 근거로 답하세요. "
         "문맥이 뒷받침하는 범위에서 구체적이고 실행 가능한 절약 방법을 우선 제안하세요."
     ),
-    DocumentKind.SELF_REPORT: (
-        "검색된 문맥 중 소비 자기진단 리포트 내용만 근거로 답하세요. "
-        "문맥에 없는 데이터를 지어내지 말고 소비 패턴과 리포트 인사이트를 설명하세요."
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: (
+        "검색된 문맥 중 Catcher가 2018년 7월부터 12월까지의 한국인 300만 명 "
+        "소비 데이터를 분석해 정리한 Catcher 소비 벤치마크 리포트 내용만 근거로 답하세요. "
+        "문맥에 없는 데이터를 지어내지 말고 사용자의 소비를 비교할 기준선이 되는 "
+        "2018년 7~12월 수치, 순위, 항목명, 리포트 인사이트를 설명하세요."
     ),
     DocumentKind.WELFARE: (
         "검색된 문맥 중 복지 정책 내용만 근거로 답하세요. "

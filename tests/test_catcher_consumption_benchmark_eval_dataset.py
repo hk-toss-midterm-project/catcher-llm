@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import unittest
 
-from catcher_llm.services.ragas.self_report_eval_dataset import (
-    get_self_report_eval_questions,
-    get_self_report_ground_truths,
+from catcher_llm.services.ragas.catcher_consumption_benchmark_eval_dataset import (
+    get_catcher_consumption_benchmark_eval_questions,
+    get_catcher_consumption_benchmark_ground_truths,
 )
 
 
-class SelfReportEvalDatasetTests(unittest.TestCase):
-    def test_self_report_eval_dataset_uses_report_grounded_questions_and_answers(self) -> None:
-        """소비 자기진단 리포트 평가셋이 보고서 핵심 진단 문장에 직접 맞는지 검증한다."""
-        questions = get_self_report_eval_questions()
-        ground_truths = get_self_report_ground_truths()
+class CatcherConsumptionBenchmarkEvalDatasetTests(unittest.TestCase):
+    def test_catcher_consumption_benchmark_eval_dataset_uses_report_grounded_questions_and_answers(
+        self,
+    ) -> None:
+        """Catcher 소비 벤치마크 리포트 평가셋이 보고서 핵심 진단 문장에 직접 맞는지 검증한다."""
+        questions = get_catcher_consumption_benchmark_eval_questions()
+        ground_truths = get_catcher_consumption_benchmark_ground_truths()
 
         self.assertEqual(len(questions), len(ground_truths))
         self.assertEqual(

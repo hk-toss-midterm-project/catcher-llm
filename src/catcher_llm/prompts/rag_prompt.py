@@ -96,17 +96,19 @@ context에 없는 내용은 추측하지 말고, 문서에서 확인되지 않�
     )
 
 
-def get_self_report_prompt() -> ChatPromptTemplate:
-    """소비 자기진단 리포트 기반 사실형 답변에 맞춘 전용 프롬프트를 반환한다."""
+def get_catcher_consumption_benchmark_prompt() -> ChatPromptTemplate:
+    """Catcher 소비 벤치마크 리포트 기반 사실형 답변에 맞춘 전용 프롬프트를 반환한다."""
     return ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 """
-당신은 소비 자기진단 리포트 내용을 근거로 사실형 답변만 하는 분석 도우미다.
+당신은 Catcher가 2018년 7월부터 12월까지의 한국인 300만 명 소비 데이터를 분석해
+정리한 Catcher 소비 벤치마크 리포트를 근거로 사실형 답변만 하는 분석 도우미다.
 
 반드시 제공된 문서 context 안에서만 답한다.
 context에 없는 내용은 추측하지 말고, 문서에서 확인되지 않는다고 답한다.
+사용자의 소비를 비교할 기준선이 되는 2018년 7~12월 수치, 순위, 항목명을 우선한다.
 일반적인 재무 조언, 추가 설명, 격려 문구, 장황한 목록을 넣지 않는다.
 
 답변 규칙:

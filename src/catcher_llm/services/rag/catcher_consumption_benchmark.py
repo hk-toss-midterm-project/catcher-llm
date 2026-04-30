@@ -4,21 +4,23 @@ import re
 from collections.abc import Sequence
 
 from catcher_llm.config.settings import Settings
-from catcher_llm.prompts.rag_prompt import get_self_report_prompt
+from catcher_llm.prompts.rag_prompt import get_catcher_consumption_benchmark_prompt
 from catcher_llm.schemas.chat import ChatMessage
 from catcher_llm.schemas.rag import RAGResponse, RetrievedChunk
 from catcher_llm.services.rag.config import DocumentKind, get_rag_pipeline_config
 from catcher_llm.services.rag.core import generate_rag_reply
 
 
-def _collect_self_report_context_text(contexts: Sequence[RetrievedChunk]) -> str:
-    """소비 자기진단 리포트 후처리에 사용할 context 본문을 하나의 문자열로 합친다."""
+def _collect_catcher_consumption_benchmark_context_text(contexts: Sequence[RetrievedChunk]) -> str:
+    """Catcher 소비 벤치마크 리포트 후처리에 사용할 context 본문을 하나의 문자열로 합친다."""
     return " ".join(chunk.content for chunk in contexts)
 
 
-def _normalize_self_report_answer(question: str, rag_response: RAGResponse) -> str:
-    """질문 유형에 맞춰 소비 자기진단 리포트 답변을 보고서 사실형 문장으로 정규화한다."""
-    context_text = _collect_self_report_context_text(rag_response.contexts)
+def _normalize_catcher_consumption_benchmark_answer(
+    question: str, rag_response: RAGResponse
+) -> str:
+    """질문 유형에 맞춰 Catcher 소비 벤치마크 리포트 답변을 보고서 사실형 문장으로 정규화한다."""
+    context_text = _collect_catcher_consumption_benchmark_context_text(rag_response.contexts)
 
     if "회원월당 소비성 금액" in question:
         trend_amount_match = re.search(
@@ -75,7 +77,7 @@ def _normalize_self_report_answer(question: str, rag_response: RAGResponse) -> s
     return rag_response.answer
 
 
-def generate_self_report_rag_reply(
+def generate_catcher_consumption_benchmark_rag_reply(
     question: str,
     chunk_size: int = 800,
     chunk_overlap: int = 120,
@@ -85,9 +87,11 @@ def generate_self_report_rag_reply(
     settings: Settings | None = None,
     temperature: float = 0.0,
 ) -> RAGResponse:
-    """소비 자기진단 리포트 문서 설정을 주입해 RAG 답변을 생성한다."""
-    pipeline_config = get_rag_pipeline_config(DocumentKind.SELF_REPORT, settings=settings)
-    prompt = get_self_report_prompt()
+    """Catcher 소비 벤치마크 리포트 문서 설정을 주입해 RAG 답변을 생성한다."""
+    pipeline_config = get_rag_pipeline_config(
+        DocumentKind.CATCHER_CONSUMPTION_BENCHMARK, settings=settings
+    )
+    prompt = get_catcher_consumption_benchmark_prompt()
 
     rag_response = generate_rag_reply(
         question,
@@ -102,5 +106,7 @@ def generate_self_report_rag_reply(
         temperature=temperature,
     )
     if isinstance(rag_response, RAGResponse):
-        rag_response.answer = _normalize_self_report_answer(question, rag_response)
+        rag_response.answer = _normalize_catcher_consumption_benchmark_answer(
+            question, rag_response
+        )
     return rag_response

@@ -13,9 +13,9 @@ from catcher_llm.services.consumption_feedback.interpretation import (
 )
 from catcher_llm.services.ingestion_service import discover_source_files, ingest_local_documents
 from catcher_llm.services.rag import (
+    generate_catcher_consumption_benchmark_rag_reply,
     generate_kca_report_rag_reply,
     generate_saving_tips_rag_reply,
-    generate_self_report_rag_reply,
     generate_welfare_rag_reply,
 )
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
@@ -39,7 +39,7 @@ __all__ = [
     "generate_rag_reply",
     "generate_reply",
     "generate_saving_tips_rag_reply",
-    "generate_self_report_rag_reply",
+    "generate_catcher_consumption_benchmark_rag_reply",
     "generate_welfare_rag_reply",
     "get_user_transactions",
     "ingest_local_documents",

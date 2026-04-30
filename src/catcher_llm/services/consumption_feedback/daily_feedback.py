@@ -74,21 +74,23 @@ _GENERIC_QUERY_TOKENS = {
 }
 _FEEDBACK_DOCUMENT_KIND_DIRS: dict[DocumentKind, Path] = {
     DocumentKind.SAVING_TIPS: Path("pdf") / "saving_tips",
-    DocumentKind.SELF_REPORT: Path("pdf") / "self_report",
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: Path("pdf") / "catcher_consumption_benchmark",
     DocumentKind.USER_REPORT: Path("markdown") / "users_report",
     DocumentKind.WELFARE: Path("pdf") / "welfare",
     DocumentKind.KCA_REPORT: Path("pdf") / "kca_report",
 }
 _DEFAULT_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
     DocumentKind.SAVING_TIPS,
-    DocumentKind.SELF_REPORT,
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
     DocumentKind.USER_REPORT,
     DocumentKind.WELFARE,
     DocumentKind.KCA_REPORT,
 )
 _DOCUMENT_KIND_QUERY_SUFFIXES: dict[DocumentKind, str] = {
     DocumentKind.SAVING_TIPS: "절약 행동 실천 방법",
-    DocumentKind.SELF_REPORT: "소비 자기진단 리포트 패턴 근거",
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: (
+        "Catcher 2018년 7~12월 한국인 300만 명 소비 벤치마크 비교 근거"
+    ),
     DocumentKind.USER_REPORT: "사용자 소비 동향 비교 근거",
     DocumentKind.WELFARE: "복지 지원 정책 혜택 가능성",
     DocumentKind.KCA_REPORT: "소비자 주의사항 피해 예방 근거",
