@@ -24,7 +24,6 @@ def _to_dict(value):
 
 
 def _html_text(value) -> str:
-    """리포트 카드에 넣을 LLM 텍스트를 HTML 안전 문자열로 변환한다."""
     return html.escape(str(value or "")).replace("\n", "<br>")
 
 
@@ -92,9 +91,7 @@ def inject_css():
             letter-spacing:-0.7px;
         }
 
-        .hero-main strong {
-            color:#fde68a;
-        }
+        .hero-main strong { color:#fde68a; }
 
         .hero-desc {
             margin-top:16px;
@@ -363,63 +360,6 @@ def make_weekday_chart(weekly_analysis):
     return fig
 
 
-def make_repeat_merchant_chart(weekly_analysis):
-    data = _to_dict(weekly_analysis)
-    rows = data.get("repeat_patterns", {}).get("top_merchants", [])
-
-    parsed = []
-
-    for row in rows:
-        merchant = row.get("merchant", "-")
-        count = safe_int(row.get("visit_count", row.get("count", 0)))
-        amount = safe_int(row.get("total_amount", 0))
-
-        parsed.append(
-            {
-                "merchant": merchant,
-                "visit_count": count,
-                "amount": amount,
-            }
-        )
-
-    df = pd.DataFrame(parsed)
-
-    if df.empty:
-        df = pd.DataFrame(
-            {
-                "merchant": ["반복 가맹점 없음"],
-                "visit_count": [0],
-                "amount": [0],
-            }
-        )
-
-    df = df.sort_values("visit_count", ascending=True).tail(7)
-
-    fig = px.bar(df, x="visit_count", y="merchant", orientation="h", text="visit_count")
-
-    fig.update_traces(
-        texttemplate="%{text}회",
-        textposition="outside",
-        marker_color="#60a5fa",
-        marker_line_width=0,
-        hovertemplate="<b>%{y}</b><br>방문 %{x}회<extra></extra>",
-    )
-
-    fig.update_layout(
-        height=340,
-        margin=dict(t=24, b=8, l=8, r=32),
-        xaxis_title=None,
-        yaxis_title=None,
-        showlegend=False,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(gridcolor="#e5e7eb", zeroline=False),
-        font=dict(color="#334155", size=12),
-    )
-
-    return fig
-
-
 def get_top_repeat_merchant(weekly_data):
     rows = weekly_data.get("repeat_patterns", {}).get("top_merchants", [])
 
@@ -476,7 +416,7 @@ def get_action_text(feedback):
             or getattr(first, "description", None)
             or "반복 소비를 줄일 수 있는 행동을 하나 정해보세요."
         )
-        return title, detail
+        return _html_text(title), _html_text(detail)
 
     return (
         "반복 가맹점 방문 횟수 줄이기",
@@ -530,10 +470,6 @@ def render_weekly_report(result):
     weekly_data = _to_dict(weekly_analysis)
 
     weekly_summary = weekly_data["weekly_summary"]
-    feedback_message = _html_text(feedback.feedback_message)
-    next_week_mission = _html_text(feedback.next_week_mission)
-    feedback_evidences = feedback.key_evidences
-    feedback_action_items = feedback.action_items
 
     total_amount = safe_int(weekly_summary["this_week_total"])
     prev_rate = float(weekly_summary.get("diff_rate_percent", 0))
@@ -552,10 +488,10 @@ def render_weekly_report(result):
 
     if top_visit_count >= 2 and top_merchant != "-":
         hero_main = (
-            f"이번 주 가장 반복된 소비는 <strong>{top_merchant}</strong>이고,<br>"
+            f"이번 주 가장 반복된 소비는 <strong>{_html_text(top_merchant)}</strong>이고,<br>"
             f"총 <strong>{top_visit_count}회</strong> 방문했습니다."
         )
-        habit_title = f"습관 소비 TOP<br>{top_merchant}"
+        habit_title = f"습관 소비 TOP<br>{_html_text(top_merchant)}"
         habit_body = (
             f"<b>{top_visit_count}회 반복 방문</b><br><br>"
             "이번 주에는 같은 가맹점에서 반복적으로 지출이 발생했습니다.<br>"
@@ -563,20 +499,36 @@ def render_weekly_report(result):
         )
     else:
         hero_main = (
-            f"이번 주 소비는 반복보다 <strong>{peak_weekday}요일</strong>에 몰렸고,<br>"
+            f"이번 주 소비는 반복보다 <strong>{_html_text(peak_weekday)}요일</strong>에 몰렸고,<br>"
             f"해당 요일에 <strong>{money(peak_weekday_amount)}</strong>을 사용했습니다."
         )
         habit_title = "반복보다<br>집중 소비"
         habit_body = (
-            f"반복 가맹점이 뚜렷하지 않아 <b>{peak_weekday}요일 고액 소비</b>와 "
-            f"<b>{top_category}</b> 카테고리를 중심으로 해석했습니다.<br><br>"
+            f"반복 가맹점이 뚜렷하지 않아 <b>{_html_text(peak_weekday)}요일 고액 소비</b>와 "
+            f"<b>{_html_text(top_category)}</b> 카테고리를 중심으로 해석했습니다.<br><br>"
             "거래가 대부분 1회라면 반복 분석보다 집중 분석이 더 정확합니다."
         )
 
-    summary_title = getattr(feedback, "summary_title", "이번 주 소비 인사이트")
-
+    summary_title = _html_text(getattr(feedback, "summary_title", "이번 주 소비 인사이트"))
     if "주간 소비" in summary_title and "피드백" in summary_title:
         summary_title = "LLM 소비 코멘트"
+
+    feedback_message = _html_text(
+        getattr(
+            feedback,
+            "feedback_message",
+            getattr(
+                feedback,
+                "scolding_message",
+                "이번 주 소비에서 반복되는 패턴을 줄이는 것이 중요합니다.",
+            ),
+        )
+    )
+
+    next_week_mission = _html_text(getattr(feedback, "next_week_mission", ""))
+
+    feedback_evidences = getattr(feedback, "key_evidences", []) or []
+    feedback_action_items = getattr(feedback, "action_items", []) or []
 
     if top_visit_count and top_merchant_amount:
         expected_saving = round(top_merchant_amount / max(top_visit_count, 1))
@@ -601,8 +553,8 @@ def render_weekly_report(result):
                 </div>
                 <div class="hero-chip-wrap">
                     <div class="hero-chip">총 소비 · {money(total_amount)}</div>
-                    <div class="hero-chip">최대 요일 · {peak_weekday}</div>
-                    <div class="hero-chip">핵심 판단 · {pattern_desc}</div>
+                    <div class="hero-chip">최대 요일 · {_html_text(peak_weekday)}</div>
+                    <div class="hero-chip">핵심 판단 · {_html_text(pattern_desc)}</div>
                 </div>
             </div>
             """,
@@ -616,7 +568,7 @@ def render_weekly_report(result):
                 <div class="side-label">이번 주 핵심 신호</div>
                 <div class="side-value">{pattern_type}</div>
                 <div class="side-desc">
-                    가장 큰 소비 카테고리는 <b>{top_category}</b>입니다.<br>
+                    가장 큰 소비 카테고리는 <b>{_html_text(top_category)}</b>입니다.<br>
                     해당 카테고리에서 <b>{money(top_category_amount)}</b>을 사용했습니다.
                 </div>
             </div>
@@ -634,17 +586,19 @@ def render_weekly_report(result):
     with m2:
         if top_visit_count >= 2 and top_merchant != "-":
             metric_card(
-                "반복 소비 TOP", top_merchant, f"{top_visit_count}회 · {money(top_merchant_amount)}"
+                "반복 소비 TOP",
+                _html_text(top_merchant),
+                f"{top_visit_count}회 · {money(top_merchant_amount)}",
             )
         else:
-            metric_card("소비 집중 요일", f"{peak_weekday}요일", money(peak_weekday_amount))
+            metric_card("소비 집중 요일", f"{_html_text(peak_weekday)}요일", money(peak_weekday_amount))
 
     with m3:
-        metric_card("최대 소비 카테고리", top_category, money(top_category_amount))
+        metric_card("최대 소비 카테고리", _html_text(top_category), money(top_category_amount))
 
     st.markdown('<div class="section">주간 소비 대시보드</div>', unsafe_allow_html=True)
 
-    d1, d2, d3 = st.columns([1.25, 1.25, 1])
+    d1, d2 = st.columns([1.5, 1])
 
     with d1:
         with st.container(border=True):
@@ -652,11 +606,6 @@ def render_weekly_report(result):
             st.plotly_chart(make_weekday_chart(weekly_analysis), use_container_width=True)
 
     with d2:
-        with st.container(border=True):
-            st.markdown("### 반복 가맹점 TOP")
-            st.plotly_chart(make_repeat_merchant_chart(weekly_analysis), use_container_width=True)
-
-    with d3:
         st.markdown(
             f"""
             <div class="habit-card">
@@ -669,13 +618,16 @@ def render_weekly_report(result):
 
         st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
+        mission_html = ""
+        if next_week_mission:
+            mission_html = f"<br><br><b>다음 주 미션</b><br>{next_week_mission}"
+
         st.markdown(
             f"""
             <div class="danger-card">
                 <div class="danger-title">{summary_title}</div>
-                {feedback_message}<br><br>
-                <b>다음 주 미션</b><br>
-                {next_week_mission}
+                {feedback_message}
+                {mission_html}
             </div>
             """,
             unsafe_allow_html=True,

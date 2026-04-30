@@ -1,13 +1,13 @@
 {
-  "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/kca_report",
+  "raw_data_dir": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\kca_report",
   "embedding_provider": "openai",
   "embedding_model": "text-embedding-3-small",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/kca_report/0417_kca_split.pdf",
-      1776931207121771336,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\kca_report\\0417_kca_split.pdf",
+      1777005013971018500,
       3103159
     ]
   ]

@@ -1,43 +1,43 @@
 {
-  "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips",
+  "raw_data_dir": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips",
   "embedding_provider": "openai",
   "embedding_model": "text-embedding-3-small",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/1.pdf",
-      1776931207132950554,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\1.pdf",
+      1776906747651040700,
       451343
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/2.pdf",
-      1776931207133847639,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\2.pdf",
+      1776906747654153400,
       370263
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/3.pdf",
-      1776931207134525639,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\3.pdf",
+      1776906747655718600,
       316217
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/4.pdf",
-      1776931207135862391,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\4.pdf",
+      1776906747657266500,
       571134
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/5.pdf",
-      1776931207137152809,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\5.pdf",
+      1776906747660385600,
       289162
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/6.pdf",
-      1776931207139166561,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\6.pdf",
+      1776906747662304700,
       797283
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/saving_tips/7.pdf",
-      1776931207140959604,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\saving_tips\\7.pdf",
+      1776989446573963400,
       1026266
     ]
   ]
