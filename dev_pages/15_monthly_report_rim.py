@@ -26,7 +26,6 @@ def to_dict(value):
 
 
 def _html_text(value) -> str:
-    """리포트 카드에 넣을 LLM 텍스트를 HTML 안전 문자열로 변환한다."""
     return html.escape(str(value or "")).replace("\n", "<br>")
 
 
@@ -207,23 +206,6 @@ def inject_css():
             font-weight: 650;
         }
 
-        .chart-card {
-            padding: 22px 22px 8px 22px;
-            border-radius: 28px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 12px 34px rgba(15,23,42,0.06);
-            min-height: 410px;
-        }
-
-        .chart-title {
-            font-size: 18px;
-            font-weight: 950;
-            color: #0f172a;
-            margin-bottom: 6px;
-            letter-spacing: -0.4px;
-        }
-
         .score-card {
             padding: 22px;
             border-radius: 26px;
@@ -401,7 +383,7 @@ def get_worst_category(monthly_data):
     return worst["category"], worst["diff_amount"]
 
 
-def get_repeat_target(monthly_data):
+def get_repeat_rows(monthly_data):
     repeat_patterns = monthly_data.get("repeat_patterns", {})
     rows = []
 
@@ -412,18 +394,39 @@ def get_repeat_target(monthly_data):
         rows
         or monthly_data.get("repeated_merchants", [])
         or monthly_data.get("repeat_merchants", [])
+        or monthly_data.get("merchant_summary", [])
+        or monthly_data.get("top_merchants", [])
     )
+
+    parsed = []
+
+    for row in rows:
+        merchant = row.get("merchant", row.get("merchant_name", row.get("name", "-")))
+        count = safe_int(row.get("visit_count", row.get("count", row.get("transaction_count", 0))))
+        amount = safe_int(row.get("total_amount", row.get("amount", 0)))
+
+        if merchant and merchant != "-":
+            parsed.append(
+                {
+                    "name": merchant,
+                    "count": count,
+                    "amount": amount,
+                    "source": "merchant",
+                }
+            )
+
+    return parsed
+
+
+def get_repeat_target(monthly_data):
+    rows = get_repeat_rows(monthly_data)
 
     if not rows:
         return "-", 0, 0
 
-    top = max(rows, key=lambda x: safe_int(x.get("visit_count", x.get("count", 0))))
+    top = max(rows, key=lambda x: (x["count"], x["amount"]))
 
-    return (
-        top.get("merchant", "-"),
-        safe_int(top.get("visit_count", top.get("count", 0))),
-        safe_int(top.get("total_amount", 0)),
-    )
+    return top["name"], top["count"], top["amount"]
 
 
 def make_weekly_trend_chart(monthly_analysis):
@@ -543,6 +546,97 @@ def make_category_change_chart(monthly_data):
     return fig
 
 
+def make_top_merchant_chart(monthly_data):
+    rows = (
+        monthly_data.get("merchant_summary", [])
+        or monthly_data.get("top_merchants", [])
+        or monthly_data.get("merchant_deep", [])
+        or monthly_data.get("merchant_ranking", [])
+        or monthly_data.get("store_summary", [])
+        or monthly_data.get("stores", [])
+    )
+
+    # repeat_patterns 안에 있는 경우도 확인
+    repeat_patterns = monthly_data.get("repeat_patterns", {})
+    if not rows and isinstance(repeat_patterns, dict):
+        rows = repeat_patterns.get("top_merchants", [])
+
+    parsed = []
+
+    for row in rows:
+        merchant = (
+            row.get("merchant")
+            or row.get("merchant_name")
+            or row.get("store_name")
+            or row.get("shop_name")
+            or row.get("name")
+            or "-"
+        )
+
+        amount = safe_int(
+            row.get("total_amount")
+            or row.get("amount")
+            or row.get("spend_amount")
+            or row.get("payment_amount")
+            or 0
+        )
+
+        count = safe_int(
+            row.get("visit_count")
+            or row.get("count")
+            or row.get("transaction_count")
+            or row.get("payment_count")
+            or 0
+        )
+
+        if merchant != "-" and amount > 0:
+            parsed.append(
+                {
+                    "merchant": merchant,
+                    "amount": amount,
+                    "count": count,
+                }
+            )
+
+    df = pd.DataFrame(parsed)
+
+    if df.empty:
+        return None
+
+    df = df.sort_values("amount", ascending=True).tail(5)
+
+    fig = px.bar(
+        df,
+        x="amount",
+        y="merchant",
+        orientation="h",
+        text="amount",
+    )
+
+    fig.update_traces(
+        texttemplate="%{text:,.0f}원",
+        textposition="outside",
+        marker_color="#60a5fa",
+        marker_line_width=0,
+        hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<br>%{customdata}회<extra></extra>",
+        customdata=df["count"],
+    )
+
+    fig.update_layout(
+        height=340,
+        margin=dict(t=24, b=8, l=8, r=40),
+        xaxis_title=None,
+        yaxis_title=None,
+        showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(gridcolor="#e5e7eb", zeroline=False, tickformat=","),
+        font=dict(color="#334155", size=12),
+    )
+
+    return fig
+
+
 def call_monthly_feedback(generate_monthly_feedback, *, member_id, month, settings):
     params = inspect.signature(generate_monthly_feedback).parameters
 
@@ -582,7 +676,7 @@ def get_action_text(feedback):
             or getattr(first, "description", None)
             or "이번 달 가장 많이 쓴 카테고리를 기준으로 다음 달 절약 규칙을 정해보세요."
         )
-        return title, detail
+        return _html_text(title), _html_text(detail)
 
     return (
         "다음 달 증가 카테고리 1개만 줄이기",
@@ -635,17 +729,17 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_analysis = result.monthly_analysis
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
-    feedback_message = _html_text(feedback.feedback_message)
-    next_month_mission = _html_text(feedback.next_month_mission)
-    feedback_evidences = feedback.key_evidences
-    feedback_action_items = feedback.action_items
+
+    feedback_message = _html_text(getattr(feedback, "feedback_message", ""))
+    next_month_mission = _html_text(getattr(feedback, "next_month_mission", ""))
+
+    feedback_evidences = getattr(feedback, "key_evidences", []) or []
+    feedback_action_items = getattr(feedback, "action_items", []) or []
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
     diff_rate = float(monthly_summary.get("diff_rate_percent", 0))
     transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
-
-    saved_amount = max(prev_amount - total_amount, 0)
 
     top_category, top_category_amount = get_top_category(monthly_data)
     improved = get_improved_category(monthly_data)
@@ -653,6 +747,11 @@ def render_monthly_report(result, member_id: str, month: str):
     repeat_merchant, repeat_count, repeat_amount = get_repeat_target(monthly_data)
 
     action_title, action_detail = get_action_text(feedback)
+
+    if repeat_count > 0 and repeat_merchant != "-":
+        repeat_text = f"반복 가맹점: {_html_text(repeat_merchant)} · {repeat_count}회"
+    else:
+        repeat_text = f"우선 점검 카테고리: {_html_text(worst_category)}"
 
     if diff_rate < 0:
         status_text = "전월보다 소비가 줄어든 절약형 흐름"
@@ -668,7 +767,7 @@ def render_monthly_report(result, member_id: str, month: str):
 
     if not expected_saving:
         if repeat_count and repeat_amount:
-            expected_saving = round(repeat_amount / repeat_count * 4)
+            expected_saving = round(repeat_amount / max(repeat_count, 1) * 4)
         elif worst_amount:
             expected_saving = round(worst_amount * 0.2)
         else:
@@ -690,7 +789,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     다음 달에 가장 먼저 조정할 소비 지점을 찾았습니다.
                 </div>
                 <div class="hero-chip-wrap">
-                    <div class="hero-chip">최다 소비 · {top_category}</div>
+                    <div class="hero-chip">최다 소비 · {_html_text(top_category)}</div>
                     <div class="hero-chip">전월 대비 · {diff_rate:.2f}%</div>
                     <div class="hero-chip">결제 건수 · {transaction_count}건</div>
                 </div>
@@ -706,7 +805,7 @@ def render_monthly_report(result, member_id: str, month: str):
                 <div class="side-label">이번 달 핵심 신호</div>
                 <div class="side-value">{hero_result}</div>
                 <div class="side-desc">
-                    가장 많이 쓴 카테고리는 <b>{top_category}</b>입니다.<br>
+                    가장 많이 쓴 카테고리는 <b>{_html_text(top_category)}</b>입니다.<br>
                     해당 카테고리에서 <b>{money(top_category_amount)}</b>을 사용했습니다.
                 </div>
             </div>
@@ -728,41 +827,40 @@ def render_monthly_report(result, member_id: str, month: str):
         if is_saving:
             st.markdown(
                 f"""
-            <div class="metric-card" style="
-                background:#ecfdf5;
-                border:1px solid #bbf7d0;
-                color:#166534;
-            ">
-                <div class="metric-label">절약 금액</div>
-                <div class="metric-value">{money(saved_amount)}</div>
-                <div class="metric-desc">이번 달 소비 절감 👍</div>
-            </div>
-            """,
+                <div class="metric-card" style="
+                    background:#ecfdf5;
+                    border:1px solid #bbf7d0;
+                    color:#166534;
+                ">
+                    <div class="metric-label">절약 금액</div>
+                    <div class="metric-value">{money(saved_amount)}</div>
+                    <div class="metric-desc">이번 달 소비 절감 👍</div>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
-
         else:
             st.markdown(
                 f"""
-            <div class="metric-card" style="
-                background:#fef2f2;
-                border:1px solid #fecaca;
-                color:#991b1b;
-            ">
-                <div class="metric-label">초과 소비</div>
-                <div class="metric-value">{money(abs(saved_amount))}</div>
-                <div class="metric-desc">전월 대비 지출 증가 ⚠️</div>
-            </div>
-            """,
+                <div class="metric-card" style="
+                    background:#fef2f2;
+                    border:1px solid #fecaca;
+                    color:#991b1b;
+                ">
+                    <div class="metric-label">초과 소비</div>
+                    <div class="metric-value">{money(abs(saved_amount))}</div>
+                    <div class="metric-desc">전월 대비 지출 증가 ⚠️</div>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
     with m3:
-        metric_card("최대 소비 카테고리", top_category, money(top_category_amount))
+        metric_card("최대 소비 카테고리", _html_text(top_category), money(top_category_amount))
 
     st.markdown('<div class="section">월간 소비 대시보드</div>', unsafe_allow_html=True)
 
-    d1, d2, d3 = st.columns([1.25, 1.25, 1])
+    d1, d2, d3 = st.columns([1.15, 1.15, 1.15])
 
     with d1:
         with st.container(border=True):
@@ -775,11 +873,27 @@ def render_monthly_report(result, member_id: str, month: str):
             st.plotly_chart(make_category_change_chart(monthly_data), use_container_width=True)
 
     with d3:
+        with st.container(border=True):
+            st.markdown("### TOP 5 가맹점")
+
+            top_merchant_fig = make_top_merchant_chart(monthly_data)
+
+            if top_merchant_fig is not None:
+                st.plotly_chart(top_merchant_fig, use_container_width=True)
+            else:
+                st.info("가맹점 데이터가 없습니다.")
+
+    st.markdown('<div class="section">이번 달 판단</div>', unsafe_allow_html=True)
+
+    p1, p2 = st.columns([1, 1])
+
+    with p1:
         if improved:
             improved_category, improved_amount = improved
-            score_title = f"좋아진 소비<br>{improved_category}"
+            score_title = f"좋아진 소비<br>{_html_text(improved_category)}"
             score_body = (
-                f"{improved_category} 지출이 전월보다 <b>{money(improved_amount)}</b> 줄었습니다."
+                f"{_html_text(improved_category)} 지출이 전월보다 "
+                f"<b>{money(improved_amount)}</b> 줄었습니다."
             )
         else:
             score_title = "아직 뚜렷한<br>개선 없음"
@@ -796,21 +910,23 @@ def render_monthly_report(result, member_id: str, month: str):
             unsafe_allow_html=True,
         )
 
-        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
-
+    with p2:
         summary_title = getattr(feedback, "summary_title", f"다음 달 줄일 1순위: {worst_category}")
 
-        if "월간 소비 피드백" in summary_title:
+        if "월간 소비 피드백" in str(summary_title):
             summary_title = "LLM 소비 코멘트"
+
+        mission_html = ""
+        if next_month_mission:
+            mission_html = f"<br><br><b>다음 달 미션</b><br>{next_month_mission}"
 
         st.markdown(
             f"""
             <div class="strategy-card">
-                <div class="strategy-title">{summary_title}</div>
-                {feedback_message}<br><br>
-                <b>다음 달 미션</b><br>
-                {next_month_mission}<br><br>
-                반복 가맹점: {repeat_merchant} · {repeat_count}회
+                <div class="strategy-title">{_html_text(summary_title)}</div>
+                {feedback_message}
+                {mission_html}<br><br>
+                {repeat_text}
             </div>
             """,
             unsafe_allow_html=True,
@@ -839,7 +955,7 @@ def render_monthly_report(result, member_id: str, month: str):
             f"""
             <div class="effect-card">
                 다음 달에는 소비 전체를 줄이기보다<br>
-                <b>{worst_category}</b>부터 조정하는 전략이 좋습니다.
+                <b>{_html_text(worst_category)}</b>부터 조정하는 전략이 좋습니다.
                 <br><br>
                 예상 절약액 약 <b>{money(expected_saving)}</b>
             </div>
@@ -972,180 +1088,3 @@ if st.session_state.monthly_report_result is not None:
     )
 else:
     st.info("Member ID와 분석 월을 입력한 뒤, 생성을 눌러주세요.")
-
-
-def render_monthly_report(result, member_id: str, month: str):
-    if result.error:
-        st.error(f"월간 피드백 생성 실패: {result.error}")
-        st.stop()
-
-    feedback = result.feedback
-    monthly_analysis = result.monthly_analysis
-    monthly_data = to_dict(monthly_analysis)
-    monthly_summary = monthly_data["monthly_summary"]
-    feedback_message = _html_text(feedback.feedback_message)
-    next_month_mission = _html_text(feedback.next_month_mission)
-
-    total_amount = safe_int(monthly_summary["this_month_total"])
-    prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
-    diff_rate = float(monthly_summary.get("diff_rate_percent", 0))
-    transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
-
-    # 핵심 데이터
-    top_category, top_category_amount = get_top_category(monthly_data)
-    improved = get_improved_category(monthly_data)
-    worst_category, worst_amount = get_worst_category(monthly_data)
-    repeat_merchant, repeat_count, repeat_amount = get_repeat_target(monthly_data)
-
-    action_title, action_detail = get_action_text(feedback)
-
-    # =========================
-    # 🔥 반복가맹점 표시 로직 (핵심 수정)
-    # =========================
-    if repeat_count > 0 and repeat_merchant != "-":
-        repeat_text = f"반복 가맹점: {repeat_merchant} · {repeat_count}회"
-    else:
-        repeat_text = f"우선 점검 카테고리: {worst_category}"
-
-    # =========================
-    # 히어로 판단
-    # =========================
-    if diff_rate < 0:
-        status_text = "전월보다 소비가 줄어든 절약형 흐름입니다."
-        hero_result = "절약형"
-    elif diff_rate > 0:
-        status_text = "전월보다 소비가 늘어난 증가형 흐름입니다."
-        hero_result = "증가형"
-    else:
-        status_text = "전월과 비슷한 유지형 흐름입니다."
-        hero_result = "유지형"
-
-    expected_saving = getattr(feedback, "expected_saving_amount", 0)
-    if not expected_saving:
-        expected_saving = round(worst_amount * 0.2)
-
-    # =========================
-    # 🎯 히어로
-    # =========================
-    h1, h2 = st.columns([2.4, 1])
-
-    with h1:
-        st.markdown(
-            f"""
-        <div class="hero">
-            <div class="hero-kicker">🧠 LLM 월간 소비 해석 · {hero_result}</div>
-            <div class="hero-main">
-                이번 달은 총 <strong>{money(total_amount)}</strong>을 소비했고,<br>
-                {status_text}
-            </div>
-            <div class="hero-desc">
-                단순 총액이 아니라, 증가한 카테고리 기준으로 다음 달 절약 포인트를 도출했습니다.
-            </div>
-            <div class="hero-chip-wrap">
-                <div class="hero-chip">최다 소비 · {top_category}</div>
-                <div class="hero-chip">전월 대비 · {diff_rate:.2f}%</div>
-                <div class="hero-chip">결제 건수 · {transaction_count}건</div>
-            </div>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    with h2:
-        st.markdown(
-            f"""
-        <div class="side-panel">
-            <div class="side-label">이번 달 핵심 신호</div>
-            <div class="side-value">{hero_result}</div>
-            <div class="side-desc">
-                가장 많이 쓴 카테고리는 <b>{top_category}</b><br>
-                {money(top_category_amount)} 사용
-            </div>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    # =========================
-    # 카드
-    # =========================
-    st.markdown('<div class="section">월간 핵심 성과</div>', unsafe_allow_html=True)
-
-    m1, m2, m3, m4 = st.columns(4)
-
-    with m1:
-        metric_card("총 소비", money(total_amount), f"{diff_rate:.2f}% 변화")
-    with m2:
-        metric_card("절약 금액", money(prev_amount - total_amount), "이번 달 소비 절감 효과")
-    with m3:
-        metric_card("최대 소비", top_category)
-    with m4:
-        metric_card("결제 수", f"{transaction_count}건")
-
-    # =========================
-    # 그래프
-    # =========================
-    st.markdown('<div class="section">월간 소비 대시보드</div>', unsafe_allow_html=True)
-
-    d1, d2, d3 = st.columns([1.2, 1.2, 1])
-
-    with d1:
-        with st.container(border=True):
-            st.markdown("### 주차별 소비 흐름")
-            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), use_container_width=True)
-
-    with d2:
-        with st.container(border=True):
-            st.markdown("### 카테고리 증감")
-            st.plotly_chart(make_category_change_chart(monthly_data), use_container_width=True)
-
-    with d3:
-        if improved:
-            cat, amt = improved
-            st.success(f"좋아진 소비\n\n{cat} ↓ {money(amt)}")
-        else:
-            st.info("개선 카테고리 없음")
-
-        st.markdown("")
-
-        summary_title = getattr(feedback, "summary_title", f"{worst_category} 줄이기")
-
-        st.warning(f"""
-        **{summary_title}**
-
-        {feedback_message}
-
-        다음 달 미션: {next_month_mission}
-
-        {repeat_text}
-        """)
-
-    # =========================
-    # 실행 플랜
-    # =========================
-    st.markdown('<div class="section">다음 달 실행 플랜</div>', unsafe_allow_html=True)
-
-    a1, a2 = st.columns([1.6, 1])
-
-    with a1:
-        st.markdown(
-            f"""
-        <div class="action-card">
-            <span class="num">01</span>
-            <b>{action_title}</b><br>
-            <span style="margin-left:52px;">{action_detail}</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-    with a2:
-        st.markdown(
-            f"""
-        <div class="effect-card">
-            예상 절약액<br><br>
-            <b>{money(expected_saving)}</b>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
