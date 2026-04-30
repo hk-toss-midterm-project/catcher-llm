@@ -33,6 +33,7 @@ _SESSION_FEEDBACK_REACTION_COLUMN_NAMES = (
     "feedback_reaction",
     "feedback_reaction_reason",
 )
+_USER_FEEDBACK_MEMORY_COLUMN_NAME = "user_feedback_memory"
 type SeedCellValue = int | str | datetime | None
 
 _USER_SEED_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
@@ -268,6 +269,50 @@ def _ensure_session_feedback_reaction_columns(config: Settings) -> None:
     )
 
 
+def _ensure_user_feedback_memory_column(config: Settings) -> None:
+    """기존 user_memories 테이블에 사용자 피드백 메모리 누적 컬럼을 보강한다."""
+    _ensure_dynamic_sqlite_columns(
+        config,
+        table_name=UserMemoryModel.__tablename__,
+        column_names=(_USER_FEEDBACK_MEMORY_COLUMN_NAME,),
+    )
+
+
+def _migrate_user_feedback_memory_format(config: Settings) -> None:
+    """기존 [거부/제약] {todo} — 이유: {reason} 형식을 이유 텍스트만 남기도록 정리한다."""
+    import re
+
+    def _extract_reason(line: str) -> str:
+        line = line.strip()
+        match = re.search(r"—\s*이유:\s*(.+)", line)
+        if match:
+            return match.group(1).strip()
+        cleaned = re.sub(r"^\[거부/제약\]\s*", "", line).strip()
+        return cleaned
+
+    with session_scope(config) as session:
+        memories = list(
+            session.scalars(
+                select(UserMemoryModel).where(
+                    UserMemoryModel.user_feedback_memory.isnot(None)
+                )
+            )
+        )
+        for memory in memories:
+            raw = memory.user_feedback_memory or ""
+            if "[거부/제약]" not in raw:
+                continue
+            lines = [l for l in raw.splitlines() if l.strip()]
+            reasons: list[str] = []
+            seen: set[str] = set()
+            for line in lines:
+                reason = _extract_reason(line)
+                if reason and reason not in seen:
+                    seen.add(reason)
+                    reasons.append(reason)
+            memory.user_feedback_memory = "\n".join(reasons) + "\n" if reasons else None
+
+
 def _reflect_sqlite_table(config: Settings, *, table_name: str) -> Table:
     """현재 SQLite 스키마를 기준으로 대상 테이블을 반사해 INSERT에 사용한다."""
     metadata = MetaData()
@@ -451,6 +496,8 @@ def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult
 
     create_database_tables(config)
     _ensure_session_feedback_reaction_columns(config)
+    _ensure_user_feedback_memory_column(config)
+    _migrate_user_feedback_memory_format(config)
     _seed_users_if_empty(config)
     _seed_transactions_if_empty(config)
     _write_seed_metadata(config, csv_signature)

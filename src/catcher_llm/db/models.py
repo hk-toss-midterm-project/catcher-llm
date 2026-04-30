@@ -100,6 +100,7 @@ class UserMemoryModel(Base):
         String(20), nullable=False
     )  # 'daily', 'weekly', 'monthly'
     summary: Mapped[str] = mapped_column(Text, nullable=False)
+    user_feedback_memory: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),

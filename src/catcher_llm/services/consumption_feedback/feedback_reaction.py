@@ -7,7 +7,7 @@ from typing import Literal, cast
 from sqlalchemy import select
 
 from catcher_llm.config.settings import Settings, get_settings
-from catcher_llm.db.models import SessionModel
+from catcher_llm.db.models import SessionModel, UserMemoryModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.services.user_data_service import ensure_user_database
 
@@ -99,6 +99,48 @@ def save_session_feedback_reaction(
         session_row.feedback_reaction = normalized_reaction
         session_row.feedback_reaction_reason = normalized_reason
         db_session.flush()
+
+        # dislike + reason 이 있을 때 user_memories 에 이유 텍스트만 누적 후 구체성 순 재정렬
+        if normalized_reaction == "dislike" and normalized_reason:
+            from sqlalchemy import select as _select
+            memory_row = db_session.scalar(
+                _select(UserMemoryModel).where(
+                    UserMemoryModel.user_id == member_id,
+                    UserMemoryModel.period_type == normalized_period_type,
+                )
+            )
+            if memory_row is None:
+                memory_row = UserMemoryModel(
+                    user_id=member_id,
+                    period_type=normalized_period_type,
+                    summary="",
+                )
+                db_session.add(memory_row)
+                db_session.flush()
+            # 기존 이유 목록 + 신규 이유 합산 (이유 텍스트만, 프리픽스 없음)
+            existing_entries = [
+                line.strip()
+                for line in (memory_row.user_feedback_memory or "").splitlines()
+                if line.strip()
+            ]
+            all_entries = existing_entries + [normalized_reason]
+            # 항목이 2개 이상일 때만 LLM 구체성 기반 재정렬
+            if len(all_entries) >= 2:
+                rank_chain = build_feedback_memory_rank_chain(config, temperature=0.0)
+                ranked_text = rank_chain.invoke({"entries": "\n".join(all_entries)})
+                ranked_lines = [
+                    line.strip()
+                    for line in ranked_text.splitlines()
+                    if line.strip()
+                ]
+                # LLM 출력 항목 수가 일치하면 재정렬 적용, 아니면 원본 순서 유지
+                if len(ranked_lines) == len(all_entries):
+                    memory_row.user_feedback_memory = "\n".join(ranked_lines) + "\n"
+                else:
+                    memory_row.user_feedback_memory = "\n".join(all_entries) + "\n"
+            else:
+                memory_row.user_feedback_memory = normalized_reason + "\n"
+            db_session.flush()
 
         return FeedbackReactionSaveResult(
             member_id=session_row.user_id,

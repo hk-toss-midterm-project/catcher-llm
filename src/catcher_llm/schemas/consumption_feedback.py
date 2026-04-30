@@ -399,6 +399,7 @@ class DailyFeedbackMemoryContext(BaseModel):
     user_id: int
     period_type: str = "daily"
     memory_summary: str | None = None
+    user_feedback_memory: str | None = None
     recent_sessions: list[DailyFeedbackSessionContext] = Field(default_factory=list)
 
 

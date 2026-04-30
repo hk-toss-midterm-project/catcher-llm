@@ -14,6 +14,7 @@ from catcher_llm.prompts.consumption_feedback import (
     build_consumption_problem_prompt,
     build_consumption_unified_analysis_prompt,
     build_daily_feedback_prompt,
+    build_feedback_memory_rank_prompt,
     build_memory_summary_prompt,
     build_monthly_consumption_action_prompt,
     build_monthly_consumption_cause_prompt,
@@ -389,6 +390,17 @@ def build_memory_summary_chain(
     """기간별 피드백 세션 목록을 장기 메모리 요약 문자열로 변환하는 체인을 만든다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
     return build_memory_summary_prompt(period_label) | chat_model | StrOutputParser()
+
+
+def build_feedback_memory_rank_chain(
+    settings: Settings | None = None,
+    llm: BaseChatModel | None = None,
+    *,
+    temperature: float = 0.0,
+) -> Runnable[dict[str, str], str]:
+    """[거부/제약] 항목 목록을 의미 기반 구체성 순으로 재정렬하는 체인을 만든다."""
+    chat_model = llm or get_chat_model(settings, temperature=temperature)
+    return build_feedback_memory_rank_prompt() | chat_model | StrOutputParser()
 
 
 def build_daily_feedback_chain(
