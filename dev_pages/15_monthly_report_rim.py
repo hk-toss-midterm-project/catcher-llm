@@ -28,7 +28,9 @@ def to_dict(value):
 
 
 def _html_text(value) -> str:
-    return html.escape(str(value or "")).replace("\n", "<br>")
+    text = str(value or "")
+    text = re.sub(r"<[^>]*>", "", text)  # LLM 출력에 포함된 HTML 태그 제거
+    return html.escape(text).replace("\n", "<br>")
 
 
 def safe_int(value, default: int = 0) -> int:

@@ -539,7 +539,6 @@ def render_report_feedback():
     elif st.session_state.daily_report_feedback == "dislike":
         st.warning("싫어요가 저장되었습니다.")
 
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 inject_css()
