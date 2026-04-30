@@ -3,11 +3,13 @@ from __future__ import annotations
 import html
 import inspect
 import re
+import sqlite3
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from catcher_llm.config.settings import get_settings
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_MONTH,
     render_date_picker_styles,
@@ -38,19 +40,8 @@ def safe_int(value, default: int = 0) -> int:
         return default
 
 
-def extract_goal_amount(text: str | None) -> int:
-    if not text:
-        return 0
-
-    match = re.search(r"(\d+)\s*만원", text)
-    if match:
-        return int(match.group(1)) * 10_000
-
-    match = re.search(r"(\d+)\s*원", text)
-    if match:
-        return int(match.group(1))
-
-    return 0
+def quote_col(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def inject_css():
@@ -58,75 +49,40 @@ def inject_css():
         """
         <style>
         .stApp { background:#f8fafc; }
+        .block-container { max-width: 1500px; padding-top: 1.3rem; padding-bottom: 2rem; }
 
-        .block-container {
-            max-width: 1500px;
-            padding-top: 1.3rem;
-            padding-bottom: 2rem;
-        }
-
-        .page-title {
-            font-size: 30px;
-            font-weight: 950;
-            color: #0f172a;
-            letter-spacing: -0.7px;
-            margin-bottom: 4px;
-        }
-
-        .page-subtitle {
-            color: #64748b;
-            font-size: 14px;
-            margin-bottom: 16px;
-        }
+        .page-title { font-size:30px; font-weight:950; color:#0f172a; letter-spacing:-0.7px; margin-bottom:4px; }
+        .page-subtitle { color:#64748b; font-size:14px; margin-bottom:16px; }
 
         .hero {
-            padding: 28px 32px;
-            border-radius: 30px;
-            background:
-                radial-gradient(circle at 88% 18%, rgba(255,255,255,0.24), transparent 28%),
-                linear-gradient(135deg, #0f172a 0%, #059669 48%, #2563eb 100%);
-            color: white;
-            box-shadow: 0 26px 70px rgba(5,150,105,0.22);
-            min-height: 218px;
+            padding:28px 32px;
+            border-radius:30px;
+            background:radial-gradient(circle at 88% 18%, rgba(255,255,255,0.24), transparent 28%),
+                       linear-gradient(135deg, #0f172a 0%, #059669 48%, #2563eb 100%);
+            color:white;
+            box-shadow:0 26px 70px rgba(5,150,105,0.22);
+            min-height:218px;
         }
 
         .hero-kicker {
             display:inline-flex;
-            padding: 7px 12px;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.22);
-            font-size: 13px;
-            font-weight: 850;
-            margin-bottom: 18px;
+            padding:7px 12px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.15);
+            border:1px solid rgba(255,255,255,0.22);
+            font-size:13px;
+            font-weight:850;
+            margin-bottom:18px;
         }
 
-        .hero-main {
-            font-size: 32px;
-            font-weight: 950;
-            line-height: 1.45;
-            letter-spacing: -0.7px;
-        }
+        .hero-main { font-size:32px; font-weight:950; line-height:1.45; letter-spacing:-0.7px; }
+        .hero-main strong { color:#fde68a; }
 
-        .hero-main strong { color: #fde68a; }
+        .hero-desc { margin-top:16px; color:rgba(255,255,255,0.88); font-size:15px; line-height:1.65; font-weight:650; }
 
-        .hero-desc {
-            margin-top: 16px;
-            color: rgba(255,255,255,0.88);
-            font-size: 15px;
-            line-height: 1.65;
-            font-weight: 650;
-        }
-
-        .hero-chip-wrap {
-            display:flex;
-            gap:10px;
-            flex-wrap:wrap;
-            margin-top:20px;
-        }
-
+        .hero-chip-wrap { display:flex; gap:10px; flex-wrap:wrap; margin-top:20px; }
         .hero-chip {
-            padding: 10px 13px;
+            padding:10px 13px;
             border-radius:999px;
             background:rgba(255,255,255,0.14);
             border:1px solid rgba(255,255,255,0.18);
@@ -135,162 +91,122 @@ def inject_css():
         }
 
         .side-panel {
-            padding: 24px;
-            border-radius: 30px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 18px 46px rgba(15,23,42,0.07);
-            min-height: 218px;
+            padding:24px;
+            border-radius:30px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            box-shadow:0 18px 46px rgba(15,23,42,0.07);
+            min-height:218px;
         }
 
-        .side-label {
-            font-size: 13px;
-            font-weight: 900;
-            color: #64748b;
-            margin-bottom: 10px;
-        }
-
-        .side-value {
-            font-size: 32px;
-            font-weight: 950;
-            color: #0f172a;
-            line-height: 1.2;
-            letter-spacing: -0.7px;
-        }
-
-        .side-desc {
-            margin-top: 14px;
-            color: #64748b;
-            font-size: 14px;
-            line-height: 1.65;
-            font-weight: 650;
-        }
+        .side-label { font-size:13px; font-weight:900; color:#64748b; margin-bottom:10px; }
+        .side-value { font-size:32px; font-weight:950; color:#0f172a; line-height:1.2; letter-spacing:-0.7px; }
+        .side-desc { margin-top:14px; color:#64748b; font-size:14px; line-height:1.65; font-weight:650; }
 
         .section {
-            font-size: 19px;
-            font-weight: 950;
-            color: #0f172a;
-            margin: 22px 0 12px;
-            letter-spacing: -0.4px;
+            font-size:19px;
+            font-weight:950;
+            color:#0f172a;
+            margin:22px 0 12px;
+            letter-spacing:-0.4px;
         }
 
         .metric-card {
-            padding: 20px 22px;
-            border-radius: 24px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 10px 28px rgba(15,23,42,0.055);
-            min-height: 120px;
+            padding:20px 22px;
+            border-radius:24px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            box-shadow:0 10px 28px rgba(15,23,42,0.055);
+            min-height:120px;
         }
 
-        .metric-label {
-            color: #64748b;
-            font-weight: 850;
-            font-size: 13px;
-        }
-
-        .metric-value {
-            color: #0f172a;
-            font-weight: 950;
-            font-size: 24px;
-            margin-top: 10px;
-            line-height: 1.25;
-            letter-spacing: -0.5px;
-        }
-
-        .metric-desc {
-            color: #94a3b8;
-            font-size: 12.5px;
-            margin-top: 8px;
-            line-height: 1.45;
-            font-weight: 650;
-        }
+        .metric-label { color:#64748b; font-weight:850; font-size:13px; }
+        .metric-value { color:#0f172a; font-weight:950; font-size:24px; margin-top:10px; line-height:1.25; letter-spacing:-0.5px; }
+        .metric-desc { color:#94a3b8; font-size:12.5px; margin-top:8px; line-height:1.45; font-weight:650; }
 
         .score-card {
-            padding: 22px;
-            border-radius: 26px;
-            background: #ecfdf5;
-            border: 1px solid #bbf7d0;
-            color: #065f46;
-            min-height: 194px;
+            padding:22px;
+            border-radius:26px;
+            background:#ecfdf5;
+            border:1px solid #bbf7d0;
+            color:#065f46;
+            min-height:194px;
         }
 
         .score-title {
-            font-size: 22px;
-            font-weight: 950;
-            margin-bottom: 12px;
-            color: #047857;
-            letter-spacing: -0.5px;
+            font-size:22px;
+            font-weight:950;
+            margin-bottom:12px;
+            color:#047857;
+            letter-spacing:-0.5px;
         }
 
         .strategy-card {
-            padding: 22px;
-            border-radius: 26px;
-            background: #fff7ed;
-            border: 1px solid #fed7aa;
-            color: #9a3412;
-            min-height: 194px;
+            padding:22px;
+            border-radius:26px;
+            background:#fff7ed;
+            border:1px solid #fed7aa;
+            color:#9a3412;
+            min-height:194px;
         }
 
         .strategy-title {
-            font-size: 22px;
-            font-weight: 950;
-            color: #ea580c;
-            margin-bottom: 12px;
-            letter-spacing: -0.5px;
+            font-size:22px;
+            font-weight:950;
+            color:#ea580c;
+            margin-bottom:12px;
+            letter-spacing:-0.5px;
         }
 
         .action-card {
-            padding: 22px;
-            border-radius: 26px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 10px 28px rgba(15,23,42,0.055);
-            min-height: 138px;
+            padding:22px;
+            border-radius:26px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            box-shadow:0 10px 28px rgba(15,23,42,0.055);
+            min-height:138px;
         }
 
         .num {
-            display: inline-flex;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: #3182f6;
-            color: white;
-            align-items: center;
-            justify-content: center;
-            font-weight: 950;
-            margin-right: 12px;
+            display:inline-flex;
+            width:36px;
+            height:36px;
+            border-radius:50%;
+            background:#3182f6;
+            color:white;
+            align-items:center;
+            justify-content:center;
+            font-weight:950;
+            margin-right:12px;
         }
 
         .effect-card {
-            padding: 22px;
-            border-radius: 26px;
-            background: #ecfdf5;
-            border: 1px solid #bbf7d0;
-            color: #166534;
-            min-height: 138px;
-            font-weight: 850;
-            line-height: 1.65;
+            padding:22px;
+            border-radius:26px;
+            background:#ecfdf5;
+            border:1px solid #bbf7d0;
+            color:#166534;
+            min-height:138px;
+            font-weight:850;
+            line-height:1.65;
         }
 
         .vote-card {
-            padding: 22px;
-            border-radius: 26px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 10px 28px rgba(15,23,42,0.055);
-            min-height: 138px;
+            padding:22px;
+            border-radius:26px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            box-shadow:0 10px 28px rgba(15,23,42,0.055);
+            min-height:138px;
         }
 
         div[data-testid="stButton"] button {
-            border-radius: 18px;
-            height: 48px;
-            font-weight: 900;
+            border-radius:18px;
+            height:48px;
+            font-weight:900;
         }
 
-        div[data-testid="stTextInput"] input {
-            border-radius: 14px;
-        }
+        div[data-testid="stTextInput"] input { border-radius:14px; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -320,6 +236,7 @@ def get_category_rows(monthly_data):
 
 def get_top_category(monthly_data):
     rows = get_category_rows(monthly_data)
+
     if not rows:
         return "-", 0
 
@@ -383,7 +300,7 @@ def get_worst_category(monthly_data):
     return worst["category"], worst["diff_amount"]
 
 
-def get_repeat_rows(monthly_data):
+def get_repeat_target(monthly_data):
     repeat_patterns = monthly_data.get("repeat_patterns", {})
     rows = []
 
@@ -398,35 +315,19 @@ def get_repeat_rows(monthly_data):
         or monthly_data.get("top_merchants", [])
     )
 
-    parsed = []
-
-    for row in rows:
-        merchant = row.get("merchant", row.get("merchant_name", row.get("name", "-")))
-        count = safe_int(row.get("visit_count", row.get("count", row.get("transaction_count", 0))))
-        amount = safe_int(row.get("total_amount", row.get("amount", 0)))
-
-        if merchant and merchant != "-":
-            parsed.append(
-                {
-                    "name": merchant,
-                    "count": count,
-                    "amount": amount,
-                    "source": "merchant",
-                }
-            )
-
-    return parsed
-
-
-def get_repeat_target(monthly_data):
-    rows = get_repeat_rows(monthly_data)
-
     if not rows:
         return "-", 0, 0
 
-    top = max(rows, key=lambda x: (x["count"], x["amount"]))
+    top = max(
+        rows,
+        key=lambda x: safe_int(x.get("visit_count", x.get("count", x.get("transaction_count", 0)))),
+    )
 
-    return top["name"], top["count"], top["amount"]
+    return (
+        top.get("merchant", top.get("merchant_name", top.get("name", "-"))),
+        safe_int(top.get("visit_count", top.get("count", top.get("transaction_count", 0)))),
+        safe_int(top.get("total_amount", top.get("amount", 0))),
+    )
 
 
 def make_weekly_trend_chart(monthly_analysis):
@@ -546,71 +447,115 @@ def make_category_change_chart(monthly_data):
     return fig
 
 
-def make_top_merchant_chart(monthly_data):
-    rows = (
-        monthly_data.get("merchant_summary", [])
-        or monthly_data.get("top_merchants", [])
-        or monthly_data.get("merchant_deep", [])
-        or monthly_data.get("merchant_ranking", [])
-        or monthly_data.get("store_summary", [])
-        or monthly_data.get("stores", [])
-    )
+def get_top5_merchants_from_sqlite(member_id: int, month: str) -> pd.DataFrame:
+    db_path = str(get_settings().sqlite_db_path)
 
-    # repeat_patterns 안에 있는 경우도 확인
-    repeat_patterns = monthly_data.get("repeat_patterns", {})
-    if not rows and isinstance(repeat_patterns, dict):
-        rows = repeat_patterns.get("top_merchants", [])
+    try:
+        year, month_num = map(int, month.split("-"))
+        start_date = f"{year}-{month_num:02d}-01"
+        end_date = f"{year + 1}-01-01" if month_num == 12 else f"{year}-{month_num + 1:02d}-01"
+    except Exception:
+        start_date = None
+        end_date = None
 
-    parsed = []
+    with sqlite3.connect(db_path) as conn:
+        tables = pd.read_sql_query(
+            "SELECT name FROM sqlite_master WHERE type='table'",
+            conn,
+        )["name"].tolist()
 
-    for row in rows:
-        merchant = (
-            row.get("merchant")
-            or row.get("merchant_name")
-            or row.get("store_name")
-            or row.get("shop_name")
-            or row.get("name")
-            or "-"
-        )
+        if "transactions" not in tables:
+            return pd.DataFrame(columns=["merchant_name", "payment_count", "total_amount"])
 
-        amount = safe_int(
-            row.get("total_amount")
-            or row.get("amount")
-            or row.get("spend_amount")
-            or row.get("payment_amount")
-            or 0
-        )
+        columns = pd.read_sql_query("PRAGMA table_info(transactions)", conn)["name"].tolist()
 
-        count = safe_int(
-            row.get("visit_count")
-            or row.get("count")
-            or row.get("transaction_count")
-            or row.get("payment_count")
-            or 0
-        )
+        merchant_candidates = [
+            "merchant_name",
+            "merchant",
+            "store_name",
+            "shop_name",
+            "place_name",
+            "description",
+        ]
+        amount_candidates = [
+            "amount",
+            "total_amount",
+            "payment_amount",
+            "spend_amount",
+            "approved_amount",
+            "price",
+        ]
+        date_candidates = [
+            "date",
+            "transaction_date",
+            "payment_date",
+            "approved_date",
+            "used_date",
+            "usage_date",
+            "created_at",
+            "transaction_at",
+            "payment_at",
+            "approved_at",
+        ]
+        member_candidates = ["member_id", "user_id", "customer_id", "card_member_id"]
 
-        if merchant != "-" and amount > 0:
-            parsed.append(
-                {
-                    "merchant": merchant,
-                    "amount": amount,
-                    "count": count,
-                }
-            )
+        merchant_col = next((col for col in merchant_candidates if col in columns), None)
+        amount_col = next((col for col in amount_candidates if col in columns), None)
+        date_col = next((col for col in date_candidates if col in columns), None)
+        member_col = next((col for col in member_candidates if col in columns), None)
 
-    df = pd.DataFrame(parsed)
+        if merchant_col is None or amount_col is None:
+            return pd.DataFrame(columns=["merchant_name", "payment_count", "total_amount"])
+
+        where_parts = [
+            f"{quote_col(merchant_col)} IS NOT NULL",
+            f"{quote_col(merchant_col)} != ''",
+        ]
+        params: list[object] = []
+
+        if date_col is not None and start_date is not None and end_date is not None:
+            where_parts.append(f"date({quote_col(date_col)}) >= date(?)")
+            where_parts.append(f"date({quote_col(date_col)}) < date(?)")
+            params.extend([start_date, end_date])
+
+        if member_col is not None:
+            where_parts.append(f"{quote_col(member_col)} = ?")
+            params.append(member_id)
+
+        where_sql = " AND ".join(where_parts)
+
+        query = f"""
+        SELECT
+            {quote_col(merchant_col)} AS merchant_name,
+            COUNT(*) AS payment_count,
+            SUM(CAST({quote_col(amount_col)} AS REAL)) AS total_amount
+        FROM transactions
+        WHERE {where_sql}
+        GROUP BY {quote_col(merchant_col)}
+        HAVING total_amount IS NOT NULL
+        ORDER BY total_amount DESC
+        LIMIT 5
+        """
+
+        return pd.read_sql_query(query, conn, params=params)
+
+
+def make_top5_merchant_chart_from_sqlite(member_id: int, month: str):
+    df = get_top5_merchants_from_sqlite(member_id, month)
 
     if df.empty:
         return None
 
-    df = df.sort_values("amount", ascending=True).tail(5)
+    df["total_amount"] = df["total_amount"].fillna(0).astype(float)
+    df["payment_count"] = df["payment_count"].fillna(0).astype(int)
+    df = df.sort_values("total_amount", ascending=True)
 
     fig = px.bar(
         df,
-        x="amount",
-        y="merchant",
+        x="total_amount",
+        y="merchant_name",
         orientation="h",
-        text="amount",
+        text="total_amount",
     )
 
     fig.update_traces(
@@ -619,7 +564,7 @@ def make_top_merchant_chart(monthly_data):
         marker_color="#60a5fa",
         marker_line_width=0,
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<br>%{customdata}회<extra></extra>",
-        customdata=df["count"],
+        customdata=df["payment_count"],
     )
 
     fig.update_layout(
@@ -876,10 +821,13 @@ def render_monthly_report(result, member_id: str, month: str):
         with st.container(border=True):
             st.markdown("### TOP 5 가맹점")
 
-            top_merchant_fig = make_top_merchant_chart(monthly_data)
+            top5_merchant_fig = make_top5_merchant_chart_from_sqlite(
+                int(member_id),
+                month,
+            )
 
-            if top_merchant_fig is not None:
-                st.plotly_chart(top_merchant_fig, use_container_width=True)
+            if top5_merchant_fig is not None:
+                st.plotly_chart(top5_merchant_fig, use_container_width=True)
             else:
                 st.info("가맹점 데이터가 없습니다.")
 
@@ -1059,7 +1007,6 @@ if run:
     st.session_state.monthly_report_vote = None
     st.session_state.monthly_report_vote_log = {}
 
-    from catcher_llm.config.settings import get_settings
     from catcher_llm.services.consumption_feedback.monthly_feedback import (
         generate_monthly_feedback,
     )
