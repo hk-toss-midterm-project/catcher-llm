@@ -526,7 +526,6 @@ def render_weekly_report(result):
 
     total_amount = safe_int(weekly_summary["this_week_total"])
     prev_rate = float(weekly_summary.get("diff_rate_percent", 0))
-    transaction_count = safe_int(weekly_summary.get("transaction_count", 0))
 
     top_merchant, top_visit_count, top_merchant_amount = get_top_repeat_merchant(weekly_data)
     peak_weekday, peak_weekday_amount = get_peak_weekday(weekly_data)
@@ -576,7 +575,9 @@ def render_weekly_report(result):
     if top_visit_count and top_merchant_amount:
         expected_saving = round(top_merchant_amount / max(top_visit_count, 1))
     else:
-        expected_saving = getattr(feedback, "expected_saving_amount", 0) or round(top_category_amount * 0.15)
+        expected_saving = getattr(feedback, "expected_saving_amount", 0) or round(
+            top_category_amount * 0.15
+        )
 
     h1, h2 = st.columns([2.4, 1])
 
@@ -626,7 +627,9 @@ def render_weekly_report(result):
 
     with m2:
         if top_visit_count >= 2 and top_merchant != "-":
-            metric_card("반복 소비 TOP", top_merchant, f"{top_visit_count}회 · {money(top_merchant_amount)}")
+            metric_card(
+                "반복 소비 TOP", top_merchant, f"{top_visit_count}회 · {money(top_merchant_amount)}"
+            )
         else:
             metric_card("소비 집중 요일", f"{peak_weekday}요일", money(peak_weekday_amount))
 

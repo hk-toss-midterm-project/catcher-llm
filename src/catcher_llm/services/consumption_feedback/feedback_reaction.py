@@ -103,6 +103,7 @@ def save_session_feedback_reaction(
         # dislike + reason 이 있을 때 user_memories 에 이유 텍스트만 누적 후 구체성 순 재정렬
         if normalized_reaction == "dislike" and normalized_reason:
             from sqlalchemy import select as _select
+
             memory_row = db_session.scalar(
                 _select(UserMemoryModel).where(
                     UserMemoryModel.user_id == member_id,
@@ -126,13 +127,13 @@ def save_session_feedback_reaction(
             all_entries = existing_entries + [normalized_reason]
             # 항목이 2개 이상일 때만 LLM 구체성 기반 재정렬
             if len(all_entries) >= 2:
+                from catcher_llm.chains.consumption_feedback import (
+                    build_feedback_memory_rank_chain,
+                )
+
                 rank_chain = build_feedback_memory_rank_chain(config, temperature=0.0)
                 ranked_text = rank_chain.invoke({"entries": "\n".join(all_entries)})
-                ranked_lines = [
-                    line.strip()
-                    for line in ranked_text.splitlines()
-                    if line.strip()
-                ]
+                ranked_lines = [line.strip() for line in ranked_text.splitlines() if line.strip()]
                 # LLM 출력 항목 수가 일치하면 재정렬 적용, 아니면 원본 순서 유지
                 if len(ranked_lines) == len(all_entries):
                     memory_row.user_feedback_memory = "\n".join(ranked_lines) + "\n"

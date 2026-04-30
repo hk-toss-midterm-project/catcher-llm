@@ -4,6 +4,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from catcher_llm.config.settings import Settings
@@ -75,6 +76,67 @@ def _make_weekly_settings(root: Path) -> Settings:
 
 
 class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
+    def test_weekly_repeat_merchants_use_sqlite_merchant_name(self) -> None:
+        """SQLite merchant_name 컬럼이 있으면 반복 가맹점을 실제 가맹점명으로 집계하는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            data_dir = root / "data"
+            raw_dir = data_dir / "raw"
+            csv_dir = raw_dir / "csv"
+            csv_dir.mkdir(parents=True, exist_ok=True)
+            (csv_dir / "users_v3.csv").write_text(
+                "\n".join(
+                    [
+                        "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나",
+                        "1,김토스,29,개발자,남성,7000,서울,Gold,절약형",
+                    ]
+                ),
+                encoding="utf-8-sig",
+            )
+            (csv_dir / "transactions_v3.csv").write_text(
+                "\n".join(
+                    [
+                        "id,user_id,amount,transaction_time,description,merchant_name,is_installment,installment_months,is_interest_free,status,is_overseas,category,payment_channel",
+                        "1,1,5000,2024-04-01 09:00:00,카페 및 디저트 결제,스타벅스,False,0,False,APPROVED,False,식비,OFFLINE",
+                        "2,1,6000,2024-04-02 09:00:00,카페 및 디저트 결제,스타벅스,False,0,False,APPROVED,False,식비,OFFLINE",
+                        "3,1,4500,2024-04-03 09:00:00,카페 및 디저트 결제,이디야,False,0,False,APPROVED,False,식비,OFFLINE",
+                        "4,1,12000,2024-04-04 12:00:00,외식 결제,홍콩반점,False,0,False,APPROVED,False,식비,OFFLINE",
+                    ]
+                ),
+                encoding="utf-8-sig",
+            )
+            settings = Settings(
+                data_dir=data_dir,
+                raw_data_dir=raw_dir,
+                processed_data_dir=data_dir / "processed",
+                vectorstore_dir=data_dir / "vectordb",
+                eval_data_dir=data_dir / "evals",
+                sqlite_db_path=data_dir / "sqlite" / "app.sqlite3",
+            )
+
+            weekly_payload = build_weekly_consumption_analysis_json(
+                member_id=1,
+                week_start="2024-04-01",
+                week_end="2024-04-07",
+                settings=settings,
+            )
+
+        repeat_patterns = weekly_payload["repeat_patterns"]
+        self.assertIsInstance(repeat_patterns, dict)
+        top_merchants = cast(dict[str, object], repeat_patterns)["top_merchants"]
+        self.assertIsInstance(top_merchants, list)
+        merchant_rows: dict[str, dict[str, object]] = {}
+        for item in top_merchants:
+            self.assertIsInstance(item, dict)
+            item_dict = cast(dict[str, object], item)
+            merchant = item_dict.get("merchant")
+            if isinstance(merchant, str):
+                merchant_rows[merchant] = item_dict
+
+        self.assertEqual(merchant_rows["스타벅스"].get("visit_count"), 2)
+        self.assertEqual(merchant_rows["이디야"].get("visit_count"), 1)
+        self.assertNotIn("카페 및 디저트 결제", merchant_rows)
+
     def test_weekly_spending_analysis_input_uses_weekly_json_and_profile(self) -> None:
         """주간 분석 JSON을 주간 해석 체인의 raw/indicator/profile 입력으로 변환하는지 검증한다."""
         with TemporaryDirectory() as tmp_dir:

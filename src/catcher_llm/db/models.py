@@ -35,6 +35,8 @@ TRANSACTION_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
     "사용 시간": "used_at",
     "description": "description",
     "결제 내역": "description",
+    "merchant_name": "merchant_name",
+    "가맹점명": "merchant_name",
     "결제 장소 (가맹점 여부)": "merchant_status",
     "is_installment": "installment_flag",
     "할부 여부": "installment_flag",
@@ -80,6 +82,7 @@ class TransactionModel(Base):
     amount: Mapped[int | None]
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
     description: Mapped[str | None] = mapped_column(Text)
+    merchant_name: Mapped[str | None] = mapped_column(Text)
     merchant_status: Mapped[str | None] = mapped_column(String(50))
     installment_flag: Mapped[str | None] = mapped_column(String(20))
     installment_months: Mapped[int | None]

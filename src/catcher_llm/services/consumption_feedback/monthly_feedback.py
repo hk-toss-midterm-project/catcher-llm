@@ -552,7 +552,6 @@ def load_monthly_session_for_date(
         )
 
 
-
 def load_monthly_feedback_memory_context(
     *,
     member_id: int,

@@ -175,7 +175,7 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
         "냉철한 비판보다는 곁에서 챙겨주는 듯한 부드럽고 친절한 조언을 제공하는 것이 당신의 임무다. "
         "\n\n"
         "━━━ [최우선 규칙 1 — 사용자 피드백 메모리 거부 사항 준수] ━━━\n"
-        "사용자 메모리 JSON(memory_context_json)의 \"user_feedback_memory\" 필드는 "
+        '사용자 메모리 JSON(memory_context_json)의 "user_feedback_memory" 필드는 '
         "사용자가 직접 남긴 거부 이유 텍스트를 구체성 순으로 정렬한 줄 목록이다. "
         "이 목록의 각 줄을 읽고, 해당 이유와 관련된 행동 또는 유사한 행동을 "
         "tomorrow_mission과 피드백 조언에서 절대 제안하지 마라.\n"
@@ -660,6 +660,7 @@ def build_memory_summary_prompt(period_label: str) -> ChatPromptTemplate:
         ]
     )
 
+
 def build_feedback_memory_rank_prompt() -> ChatPromptTemplate:
     """사용자 거부 이유 목록을 의미 기반 구체성 순으로 재정렬하는 프롬프트를 생성한다."""
     return ChatPromptTemplate.from_messages(
@@ -682,8 +683,7 @@ def build_feedback_memory_rank_prompt() -> ChatPromptTemplate:
             ),
             (
                 "human",
-                "아래 거부 이유 목록을 구체성이 높은 순서대로 재정렬해서 출력하라.\n\n"
-                "{entries}",
+                "아래 거부 이유 목록을 구체성이 높은 순서대로 재정렬해서 출력하라.\n\n{entries}",
             ),
         ]
     )

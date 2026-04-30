@@ -21,7 +21,7 @@ def _transaction_rows_to_frame(transactions: list[TransactionModel]) -> pd.DataF
             "id": t.id,
             "사용 금액": t.amount or 0,
             "사용 시간": t.used_at,
-            "결제 내역": t.description or "",
+            "결제 내역": t.merchant_name or t.description or "",
             "업종 카테고리": t.category or "",
             "결제 방식 (온/오프라인)": t.payment_channel or "",
         }

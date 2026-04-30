@@ -795,7 +795,9 @@ with dashboard_right:
         st.info("절약 목표 없음")
 
 
-st.markdown('<div class="section">오늘의 판단 · 내일 행동 · 기대 효과</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section">오늘의 판단 · 내일 행동 · 기대 효과</div>', unsafe_allow_html=True
+)
 
 bottom1, bottom2, bottom3 = st.columns([1.25, 1.15, 1])
 
@@ -859,9 +861,7 @@ with feedback_col2:
     with st.expander("상세 분석 & 데이터"):
         st.subheader("일일 분석 JSON")
         st.json(
-            daily_analysis.model_dump()
-            if hasattr(daily_analysis, "model_dump")
-            else daily_analysis
+            daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis
         )
 
         st.subheader("최종 피드백 JSON")

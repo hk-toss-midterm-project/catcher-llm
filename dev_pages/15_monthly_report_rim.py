@@ -635,11 +635,6 @@ def render_monthly_report(result, member_id: str, month: str):
     diff_rate = float(monthly_summary.get("diff_rate_percent", 0))
     transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
 
-    user_profile = getattr(result, "user_profile", None)
-    saving_goal_text = getattr(user_profile, "saving_goal_text", None)
-    goal_amount = extract_goal_amount(saving_goal_text)
-
-    monthly_budget = max(prev_amount - goal_amount, 0) if goal_amount else prev_amount
     saved_amount = max(prev_amount - total_amount, 0)
 
     top_category, top_category_amount = get_top_category(monthly_data)
@@ -721,7 +716,8 @@ def render_monthly_report(result, member_id: str, month: str):
 
     with m2:
         if is_saving:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="metric-card" style="
                 background:#ecfdf5;
                 border:1px solid #bbf7d0;
@@ -731,10 +727,13 @@ def render_monthly_report(result, member_id: str, month: str):
                 <div class="metric-value">{money(saved_amount)}</div>
                 <div class="metric-desc">이번 달 소비 절감 👍</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
         else:
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div class="metric-card" style="
                 background:#fef2f2;
                 border:1px solid #fecaca;
@@ -744,7 +743,9 @@ def render_monthly_report(result, member_id: str, month: str):
                 <div class="metric-value">{money(abs(saved_amount))}</div>
                 <div class="metric-desc">전월 대비 지출 증가 ⚠️</div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
     with m3:
         metric_card("최대 소비 카테고리", top_category, money(top_category_amount))
@@ -767,7 +768,9 @@ def render_monthly_report(result, member_id: str, month: str):
         if improved:
             improved_category, improved_amount = improved
             score_title = f"좋아진 소비<br>{improved_category}"
-            score_body = f"{improved_category} 지출이 전월보다 <b>{money(improved_amount)}</b> 줄었습니다."
+            score_body = (
+                f"{improved_category} 지출이 전월보다 <b>{money(improved_amount)}</b> 줄었습니다."
+            )
         else:
             score_title = "아직 뚜렷한<br>개선 없음"
             score_body = "다음 달에는 한 카테고리만 정해서 줄이는 전략이 필요합니다."
@@ -936,6 +939,8 @@ if st.session_state.monthly_report_result is not None:
     )
 else:
     st.info("Member ID와 분석 월을 입력한 뒤, 생성을 눌러주세요.")
+
+
 def render_monthly_report(result, member_id: str, month: str):
     if result.error:
         st.error(f"월간 피드백 생성 실패: {result.error}")
@@ -990,7 +995,8 @@ def render_monthly_report(result, member_id: str, month: str):
     h1, h2 = st.columns([2.4, 1])
 
     with h1:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div class="hero">
             <div class="hero-kicker">🧠 LLM 월간 소비 해석 · {hero_result}</div>
             <div class="hero-main">
@@ -1006,10 +1012,13 @@ def render_monthly_report(result, member_id: str, month: str):
                 <div class="hero-chip">결제 건수 · {transaction_count}건</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     with h2:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div class="side-panel">
             <div class="side-label">이번 달 핵심 신호</div>
             <div class="side-value">{hero_result}</div>
@@ -1018,7 +1027,9 @@ def render_monthly_report(result, member_id: str, month: str):
                 {money(top_category_amount)} 사용
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     # =========================
     # 카드
@@ -1030,11 +1041,7 @@ def render_monthly_report(result, member_id: str, month: str):
     with m1:
         metric_card("총 소비", money(total_amount), f"{diff_rate:.2f}% 변화")
     with m2:
-        metric_card(
-            "절약 금액",
-            money(prev_amount - total_amount),
-            "이번 달 소비 절감 효과"
-        )
+        metric_card("절약 금액", money(prev_amount - total_amount), "이번 달 소비 절감 효과")
     with m3:
         metric_card("최대 소비", top_category)
     with m4:
@@ -1089,18 +1096,24 @@ def render_monthly_report(result, member_id: str, month: str):
     a1, a2 = st.columns([1.6, 1])
 
     with a1:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div class="action-card">
             <span class="num">01</span>
             <b>{action_title}</b><br>
             <span style="margin-left:52px;">{action_detail}</span>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     with a2:
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div class="effect-card">
             예상 절약액<br><br>
             <b>{money(expected_saving)}</b>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )

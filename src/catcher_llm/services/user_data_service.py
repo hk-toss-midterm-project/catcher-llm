@@ -28,11 +28,12 @@ from catcher_llm.db.session import (
 )
 
 _SEED_METADATA_SUFFIX = ".seed-meta.json"
-_SQLITE_SEED_SCHEMA_VERSION = 4
+_SQLITE_SEED_SCHEMA_VERSION = 5
 _SESSION_FEEDBACK_REACTION_COLUMN_NAMES = (
     "feedback_reaction",
     "feedback_reaction_reason",
 )
+_TRANSACTION_MERCHANT_NAME_COLUMN_NAME = "merchant_name"
 _USER_FEEDBACK_MEMORY_COLUMN_NAME = "user_feedback_memory"
 type SeedCellValue = int | str | datetime | None
 
@@ -54,6 +55,7 @@ _TRANSACTION_SEED_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "amount": ("사용 금액", "amount"),
     "used_at": ("사용 시간", "transaction_time", "used_at"),
     "description": ("결제 내역", "description"),
+    "merchant_name": ("merchant_name", "가맹점명"),
     "merchant_status": ("결제 장소 (가맹점 여부)",),
     "installment_flag": ("할부 여부", "is_installment"),
     "installment_months": ("할부 개월", "installment_months"),
@@ -278,6 +280,15 @@ def _ensure_user_feedback_memory_column(config: Settings) -> None:
     )
 
 
+def _ensure_transaction_merchant_name_column(config: Settings) -> None:
+    """기존 거래 테이블에 실제 가맹점명 컬럼을 보강한다."""
+    _ensure_dynamic_sqlite_columns(
+        config,
+        table_name=TransactionModel.__tablename__,
+        column_names=(_TRANSACTION_MERCHANT_NAME_COLUMN_NAME,),
+    )
+
+
 def _migrate_user_feedback_memory_format(config: Settings) -> None:
     """기존 [거부/제약] {todo} — 이유: {reason} 형식을 이유 텍스트만 남기도록 정리한다."""
     import re
@@ -293,16 +304,14 @@ def _migrate_user_feedback_memory_format(config: Settings) -> None:
     with session_scope(config) as session:
         memories = list(
             session.scalars(
-                select(UserMemoryModel).where(
-                    UserMemoryModel.user_feedback_memory.isnot(None)
-                )
+                select(UserMemoryModel).where(UserMemoryModel.user_feedback_memory.isnot(None))
             )
         )
         for memory in memories:
             raw = memory.user_feedback_memory or ""
             if "[거부/제약]" not in raw:
                 continue
-            lines = [l for l in raw.splitlines() if l.strip()]
+            lines = [line for line in raw.splitlines() if line.strip()]
             reasons: list[str] = []
             seen: set[str] = set()
             for line in lines:
@@ -389,6 +398,9 @@ def _build_transaction_seed_rows(
             ),
             "description": _parse_text(
                 _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["description"])
+            ),
+            "merchant_name": _parse_text(
+                _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["merchant_name"])
             ),
             "merchant_status": _parse_text(
                 _pick_csv_value(row, _TRANSACTION_SEED_COLUMN_ALIASES["merchant_status"])
@@ -496,6 +508,7 @@ def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult
 
     create_database_tables(config)
     _ensure_session_feedback_reaction_columns(config)
+    _ensure_transaction_merchant_name_column(config)
     _ensure_user_feedback_memory_column(config)
     _migrate_user_feedback_memory_format(config)
     _seed_users_if_empty(config)

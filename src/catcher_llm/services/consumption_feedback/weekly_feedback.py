@@ -530,7 +530,6 @@ def load_weekly_session_for_date(
         )
 
 
-
 def load_weekly_feedback_memory_context(
     *,
     member_id: int,
