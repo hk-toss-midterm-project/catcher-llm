@@ -20,6 +20,7 @@ from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     ActionMission,
     CategoryDirection,
+    DailyFeedbackMemoryContext,
     JsonObject,
     JsonScalar,
     JsonValue,
@@ -481,6 +482,7 @@ def make_monthly_feedback_input(
     interpretation_result: dict[str, object],
     advice_contexts: Sequence[RetrievedAdviceContext],
     user_profile: object | None = None,
+    memory_context: object | None = None,
 ) -> dict[str, str]:
     """최종 월간 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
     return {
@@ -488,6 +490,7 @@ def make_monthly_feedback_input(
         "interpretation_json": serialize_interpretation_result(interpretation_result),
         "retrieved_contexts": serialize_advice_contexts(advice_contexts),
         "user_profile_json": serialize_context_object(user_profile or {}),
+        "memory_context_json": serialize_context_object(memory_context or {}),
     }
 
 
@@ -547,6 +550,31 @@ def load_monthly_session_for_date(
                 SessionModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
             )
         )
+
+
+
+def load_monthly_feedback_memory_context(
+    *,
+    member_id: int,
+    settings: Settings | None = None,
+) -> DailyFeedbackMemoryContext:
+    """SQLite user_memories 테이블에서 월간 피드백용 장기 메모리 요약을 조회한다."""
+    config = settings or get_settings()
+    ensure_user_database(config)
+
+    with session_scope(config) as session:
+        memory = session.scalar(
+            select(UserMemoryModel).where(
+                UserMemoryModel.user_id == member_id,
+                UserMemoryModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
+            )
+        )
+
+    return DailyFeedbackMemoryContext(
+        user_id=member_id,
+        period_type=_MONTHLY_MEMORY_PERIOD_TYPE,
+        memory_summary=memory.summary if memory is not None else None,
+    )
 
 
 def _extract_monthly_total_summary(analysis_result: str | None) -> str:
@@ -723,6 +751,7 @@ def generate_monthly_feedback(
         )
 
     user_profile: UserProfileContext | None = None
+    memory_context: DailyFeedbackMemoryContext | None = None
     try:
         monthly_payload = build_monthly_consumption_analysis_json(
             member_id=member_id,
@@ -731,6 +760,10 @@ def generate_monthly_feedback(
         )
         monthly_data = parse_monthly_spending_data(monthly_payload)
         user_profile = load_user_profile_context(
+            member_id=member_id,
+            settings=config,
+        )
+        memory_context = load_monthly_feedback_memory_context(
             member_id=member_id,
             settings=config,
         )
@@ -781,6 +814,7 @@ def generate_monthly_feedback(
                 interpretation_result=interpretation_result,
                 advice_contexts=advice_contexts,
                 user_profile=user_profile,
+                memory_context=memory_context,
             )
         )
         feedback_result = (

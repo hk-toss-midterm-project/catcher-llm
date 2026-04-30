@@ -364,9 +364,10 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
         "사용자를 존중하는 온화하고 친절한 어조(해요체)를 유지하며 대화하듯 조언하라. "
         "수치와 논리를 바탕으로 하되, 사용자가 거부감을 느끼지 않도록 공감해주면서 개선할 점을 차근차근 일러주는 느낌을 주어야 한다. "
         "반드시 제공된 주간 소비 분석 JSON, 소비 해석 JSON, RAG 검색 문서 근거, "
-        "사용자 프로필만 사용하라. "
+        "사용자 프로필, 사용자 메모리 맥락만 사용하라. "
         "추측으로 소비 이유를 만들지 말고, JSON 수치 근거와 문서 근거를 함께 연결하라. "
-        "오늘 발생하지 않은 소비를 단정하지 마라. "
+        "사용자 프로필과 메모리 맥락은 개인화와 반복 패턴 설명에만 사용하고, "
+        "이번 주에 발생하지 않은 소비를 단정하지 마라. "
         "모든 문장은 한국어로 작성하고, 행동 제안은 다음 주에 확인 가능한 수준으로 제한하라.\n\n"
         "아래는 올바른 피드백 출력 예시다. 이 형식과 어조를 반드시 따르라.\n\n"
         "[칭찬 예시 — 특정 요일 소비를 잘 통제했으나 반복 소비가 많은 경우]\n"
@@ -414,6 +415,7 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 + tone_instruction
                 + "\n사용자 프로필 JSON:\n{user_profile_json}\n\n"
+                "사용자 메모리 및 최근 세션 JSON:\n{memory_context_json}\n\n"
                 "주간 소비 분석 JSON:\n{weekly_json}\n\n"
                 "소비 해석 JSON:\n{interpretation_json}\n\n"
                 "RAG 검색 문서 근거:\n{retrieved_contexts}",
@@ -537,9 +539,10 @@ def build_monthly_feedback_prompt(persona_override: str | None = None) -> ChatPr
         "사용자를 존중하는 온화하고 친절한 어조(해요체)를 유지하며 대화하듯 조언하라. "
         "수치와 논리를 바탕으로 하되, 사용자가 거부감을 느끼지 않도록 공감해주면서 개선할 점을 차근차근 일러주는 느낌을 주어야 한다. "
         "반드시 제공된 월간 소비 분석 JSON, 소비 해석 JSON, RAG 검색 문서 근거, "
-        "사용자 프로필만 사용하라. "
+        "사용자 프로필, 사용자 메모리 맥락만 사용하라. "
         "추측으로 소비 이유를 만들지 말고, JSON 수치 근거와 문서 근거를 함께 연결하라. "
-        "오늘 발생하지 않은 소비를 단정하지 마라. "
+        "사용자 프로필과 메모리 맥락은 개인화와 반복 패턴 설명에만 사용하고, "
+        "이번 달에 발생하지 않은 소비를 단정하지 마라. "
         "모든 문장은 한국어로 작성하고, 행동 제안은 다음 달에 확인 가능한 수준으로 제한하라.\n\n"
         "아래는 올바른 피드백 출력 예시다. 이 형식과 어조를 반드시 따르라.\n\n"
         "[칭찬 예시 — 고정비를 잘 절감했으나 변동비 중 특정 항목이 높은 경우]\n"
@@ -587,6 +590,7 @@ def build_monthly_feedback_prompt(persona_override: str | None = None) -> ChatPr
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 + tone_instruction
                 + "\n사용자 프로필 JSON:\n{user_profile_json}\n\n"
+                "사용자 메모리 및 최근 세션 JSON:\n{memory_context_json}\n\n"
                 "월간 소비 분석 JSON:\n{monthly_json}\n\n"
                 "소비 해석 JSON:\n{interpretation_json}\n\n"
                 "RAG 검색 문서 근거:\n{retrieved_contexts}",
