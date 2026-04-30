@@ -66,31 +66,6 @@ def add_user_point(member_id: int, point: int = 50) -> None:
         connection.commit()
 
 
-def get_user_point(member_id: int) -> int:
-    with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
-        score_column = _get_user_score_column(connection)
-        if score_column is None:
-            return 0
-
-        escaped_score_column = _quote_sqlite_identifier(score_column)
-        row = connection.execute(
-            f'SELECT COALESCE(NULLIF("{escaped_score_column}", ""), "0") FROM users WHERE id = ?',
-            (member_id,),
-        ).fetchone()
-
-    if row is None:
-        return 0
-
-    try:
-        return int(row[0])
-    except (TypeError, ValueError):
-        return 0
-
-
-if "point_earned" not in st.session_state:
-    st.session_state.point_earned = False
-
-
 def money(v: int | float) -> str:
     return f"{v:,.0f}원"
 
@@ -120,22 +95,22 @@ def inject_css():
         <style>
         .block-container {
             max-width: 1460px;
-            padding-top: 3.2rem;
+            padding-top: 2.1rem;
             padding-bottom: 2rem;
         }
 
         .title {
-            font-size: 34px;
-            font-weight: 900;
+            font-size: 38px;
+            font-weight: 950;
             color: #0f172a;
-            margin-top: 6px;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
+            letter-spacing: -0.8px;
         }
 
         .subtitle {
             color: #64748b;
-            font-size: 14px;
-            margin-bottom: 18px;
+            font-size: 15px;
+            margin-bottom: 24px;
         }
 
         .hero-label {
@@ -283,17 +258,6 @@ def inject_css():
             border: 1px solid #e5e7eb;
             box-shadow: 0 8px 22px rgba(15,23,42,0.06);
             margin-top: 8px;
-        }
-
-        .point-card {
-            margin-top: 10px;
-            padding: 12px 16px;
-            border-radius: 14px;
-            background: #f0f9ff;
-            border: 1px solid #bae6fd;
-            font-weight: 800;
-            color: #0c4a6e;
-            display: inline-block;
         }
 
         div[data-testid="stExpander"] {
@@ -547,7 +511,6 @@ def render_report_feedback():
         if not st.session_state.daily_report_rewarded:
             add_user_point(int(st.session_state.member_id), 50)
             st.session_state.daily_report_rewarded = True
-            st.session_state.point_earned = True
 
     with c1:
         if st.button(
@@ -572,9 +535,9 @@ def render_report_feedback():
             st.rerun()
 
     if st.session_state.daily_report_feedback == "like":
-        st.success("좋아요가 저장되었습니다. +50P")
+        st.success("좋아요가 저장되었습니다.")
     elif st.session_state.daily_report_feedback == "dislike":
-        st.warning("싫어요가 저장되었습니다. +50P")
+        st.warning("싫어요가 저장되었습니다.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -608,7 +571,27 @@ with col2:
 
 with col3:
     previous_date = analysis_date - timedelta(days=1)
-    st.metric("비교 기준일", previous_date.isoformat())
+
+    st.markdown(
+        f"""
+        <div style="
+            font-size:14px;
+            color:#0f172a;
+            margin-bottom:12px;
+        ">
+            비교 기준일
+        </div>
+        <div style="
+            font-size:16px;
+            color:#374151;
+            font-weight:400;
+            padding-top:2px;
+        ">
+            {previous_date.isoformat()}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
@@ -674,7 +657,13 @@ llm_summary_title = clean_text(feedback.summary_title)
 llm_feedback_message = clean_text(feedback.scolding_message)
 llm_tomorrow_mission = clean_text(feedback.tomorrow_mission)
 action_title, action_detail = get_action_text(feedback)
-saving_amount = max(previous_amount - today_amount, daily_saving_goal, 0)
+
+if previous_amount > today_amount:
+    saving_amount = previous_amount - today_amount
+    saving_box_title = "오늘 절약 금액"
+else:
+    saving_amount = daily_saving_goal if daily_saving_goal > 0 else round(today_amount * 0.1)
+    saving_box_title = "내일 절약 목표"
 
 if change_rate < 0:
     hero_gradient = "linear-gradient(135deg, #0052CC 0%, #0066FF 45%, #3B82F6 100%)"
@@ -707,7 +696,7 @@ st.markdown(
 
 st.markdown('<div class="section">오늘 핵심만 보기</div>', unsafe_allow_html=True)
 
-m1, m2, m3, m4, m5 = st.columns([1, 1, 1.2, 1, 1])
+m1, m2, m3, m4 = st.columns([1, 1, 1.2, 1])
 
 with m1:
     metric_card("오늘 소비", money(today_amount))
@@ -717,47 +706,6 @@ with m3:
     metric_card("피크 시간대", peak_time)
 with m4:
     metric_card(f"{main_category} 비중", pct(main_ratio))
-with m5:
-    user_point = get_user_point(int(member_id))
-    st.markdown(
-        f"""
-        <div class="mini-card">
-            <div class="mini-label">현재 포인트</div>
-            <div class="mini-value">💰 {user_point}P</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-if st.session_state.point_earned:
-    st.markdown(
-        """
-        <div style="
-            margin-top:12px;
-            padding:12px 20px;
-            border-radius:18px;
-            background:linear-gradient(135deg,#22c55e,#16a34a);
-            color:white;
-            font-weight:900;
-            font-size:20px;
-            display:inline-block;
-            animation:fadeUp 0.8s ease;
-            box-shadow:0 10px 25px rgba(34,197,94,0.3);
-        ">
-            +50P 🎉
-        </div>
-
-        <style>
-        @keyframes fadeUp {
-            0% {opacity:0; transform:translateY(12px);}
-            100% {opacity:1; transform:translateY(0);}
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.session_state.point_earned = False
-
 
 st.markdown('<div class="section">오늘 소비 대시보드</div>', unsafe_allow_html=True)
 
@@ -809,7 +757,6 @@ with dashboard_right:
     else:
         st.info("절약 목표 없음")
 
-
 st.markdown(
     '<div class="section">오늘의 판단 · 내일 행동 · 기대 효과</div>', unsafe_allow_html=True
 )
@@ -856,14 +803,13 @@ with bottom3:
                 내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.
             </div>
             <div class="saving-box">
-                하루 절약 목표<br>
+                {saving_box_title}<br>
                 약 {money(saving_amount)}
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
 
 with st.expander("LLM 피드백 근거와 실행 항목"):
     st.subheader("피드백 근거")
@@ -891,7 +837,6 @@ with st.expander("LLM 피드백 근거와 실행 항목"):
         )
     else:
         st.info("표시할 행동 항목이 없습니다.")
-
 
 feedback_col1, feedback_col2 = st.columns([1.5, 1])
 
