@@ -24,12 +24,21 @@ st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", la
 
 
 def clean_text(value) -> str:
+    """LLM 출력을 HTML 템플릿 안에 안전하게 삽입할 수 있는 순수 텍스트로 변환한다.
+
+    처리 순서:
+    1. HTML 엔티티 디코딩  (&lt;/div&gt; → </div>)
+    2. HTML 태그 제거      (</div>, <br/> 등)
+    3. 공백 정규화
+    4. HTML 이스케이프     (남은 < > & " → 엔티티로 변환, 브라우저가 태그로 해석하지 않도록)
+    """
     if value is None:
         return ""
     text = str(value)
-    text = html.unescape(text)
-    text = re.sub(r"<[^>]*>", "", text)
+    text = html.unescape(text)           # &lt;/div&gt; → </div>
+    text = re.sub(r"<[^>]*>", "", text)  # HTML 태그 제거
     text = re.sub(r"\s+", " ", text).strip()
+    text = html.escape(text)             # 남은 < > & 문자가 태그로 오해되지 않도록
     return text
 
 
@@ -498,6 +507,7 @@ def render_report_feedback():
             <div style="color:#64748b; font-size:14px; margin-bottom:16px;">
                 피드백은 한 번만 포인트가 적립됩니다.
             </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
