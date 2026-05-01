@@ -358,8 +358,8 @@ def make_monthly_spending_analysis_input(
     """월간 해석 체인에 전달할 원본 JSON, 추출 지표 JSON, 사용자 프로필 JSON 입력을 만든다."""
     indicators = extract_monthly_spending_indicators(monthly_data)
     return {
-        "raw_json": monthly_data.model_dump_json(indent=2),
-        "indicator_json": indicators.model_dump_json(indent=2),
+        "raw_json": monthly_data.model_dump_json(),
+        "indicator_json": indicators.model_dump_json(),
         "user_profile_json": serialize_context_object(user_profile or {}),
     }
 
@@ -486,7 +486,7 @@ def make_monthly_feedback_input(
 ) -> dict[str, str]:
     """최종 월간 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
     return {
-        "monthly_json": monthly_data.model_dump_json(indent=2),
+        "monthly_json": monthly_data.model_dump_json(),
         "interpretation_json": serialize_interpretation_result(interpretation_result),
         "retrieved_contexts": serialize_advice_contexts(advice_contexts),
         "user_profile_json": serialize_context_object(user_profile or {}),

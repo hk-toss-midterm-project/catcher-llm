@@ -347,8 +347,8 @@ def make_weekly_spending_analysis_input(
     """주간 해석 체인에 전달할 원본 JSON, 추출 지표 JSON, 사용자 프로필 JSON 입력을 만든다."""
     indicators = extract_weekly_spending_indicators(weekly_data)
     return {
-        "raw_json": weekly_data.model_dump_json(indent=2),
-        "indicator_json": indicators.model_dump_json(indent=2),
+        "raw_json": weekly_data.model_dump_json(),
+        "indicator_json": indicators.model_dump_json(),
         "user_profile_json": serialize_context_object(user_profile or {}),
     }
 
@@ -464,7 +464,7 @@ def make_weekly_feedback_input(
 ) -> dict[str, str]:
     """최종 주간 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
     return {
-        "weekly_json": weekly_data.model_dump_json(indent=2),
+        "weekly_json": weekly_data.model_dump_json(),
         "interpretation_json": serialize_interpretation_result(interpretation_result),
         "retrieved_contexts": serialize_advice_contexts(advice_contexts),
         "user_profile_json": serialize_context_object(user_profile or {}),

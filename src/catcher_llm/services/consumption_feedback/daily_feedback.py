@@ -225,7 +225,6 @@ def serialize_interpretation_result(interpretation_result: dict[str, object]) ->
     return json.dumps(
         _to_json_object(interpretation_result),
         ensure_ascii=False,
-        indent=2,
     )
 
 
@@ -234,7 +233,6 @@ def serialize_advice_contexts(contexts: Sequence[RetrievedAdviceContext]) -> str
     return json.dumps(
         [context.model_dump() for context in contexts],
         ensure_ascii=False,
-        indent=2,
     )
 
 
@@ -243,7 +241,6 @@ def serialize_context_object(value: object) -> str:
     return json.dumps(
         _to_json_object(value),
         ensure_ascii=False,
-        indent=2,
     )
 
 
@@ -835,7 +832,7 @@ def make_daily_feedback_input(
 ) -> dict[str, str]:
     """최종 일일 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
     return {
-        "daily_json": user_data.model_dump_json(indent=2),
+        "daily_json": user_data.model_dump_json(),
         "interpretation_json": serialize_interpretation_result(interpretation_result),
         "retrieved_contexts": serialize_advice_contexts(advice_contexts),
         "user_profile_json": serialize_context_object(user_profile or {}),
@@ -887,7 +884,7 @@ def generate_daily_feedback(
     interpretation_mode: DailyFeedbackInterpretationMode = "split",
     timing_callback: DailyFeedbackTimingCallback | None = None,
 ) -> DailyFeedbackServiceResult:
-    """일일 소비 분석, 해석, RAG 검색, 최종 잔소리 피드백 생성을 한 번에 실행한다."""
+    """일일 소비 분석, 해석, RAG 검색, 최종 소비 피드백 생성을 한 번에 실행한다."""
     config = settings or get_settings()
     analysis_day = _parse_analysis_date(analysis_date)
     previous_day = _parse_analysis_date(previous_date)
