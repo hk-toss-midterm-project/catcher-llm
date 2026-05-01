@@ -994,6 +994,54 @@ def test_streamlit_pages_do_not_use_deprecated_container_width_argument() -> Non
     assert offenders == []
 
 
+def test_main_profile_page_renders_long_persona_as_separate_panel() -> None:
+    """메인 사용자 프로필 페이지가 카드 등급을 숨기고 긴 페르소나를 별도 패널로 표시하는지 검증한다."""
+    app_source = Path("app.py").read_text(encoding="utf-8")
+
+    assert 'st.metric("최상위 카드 등급"' not in app_source
+    assert 'st.metric("페르소나"' not in app_source
+    assert 'persona_text = profile.get("persona")' in app_source
+    assert "나의 페르소나" in app_source
+    assert "아직 등록된 페르소나가 없습니다." in app_source
+
+
+def test_signup_page_uses_korean_labels_and_grouped_layout() -> None:
+    """회원가입 페이지가 사용자 입력 라벨을 한국어로 표시하고 섹션별로 배치하는지 검증한다."""
+    page_source = Path("pages/00_user_signup.py").read_text(encoding="utf-8")
+
+    expected_labels = [
+        '"이름"',
+        '"나이"',
+        '"성별"',
+        '"직업"',
+        '"연소득"',
+        '"거주 지역"',
+        '"월 목표 최대 소비 금액"',
+        '"페르소나"',
+        '"절약 목표"',
+    ]
+    for label in expected_labels:
+        assert label in page_source
+
+    legacy_label_snippets = [
+        'st.text_input("name"',
+        'st.number_input("age"',
+        'st.selectbox("gender"',
+        'st.text_input("occupation"',
+        'st.number_input("annual_income"',
+        'st.text_input("region"',
+        'st.number_input("target_max_spending_amount"',
+        'st.text_area("persona"',
+        'st.text_area("saving_goal_text"',
+    ]
+    for label in legacy_label_snippets:
+        assert label not in page_source
+
+    assert 'st.markdown("#### 기본 정보")' in page_source
+    assert 'st.markdown("#### 소득과 목표")' in page_source
+    assert 'st.markdown("#### 상세 프로필")' in page_source
+
+
 def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() -> None:
     """일일 피드백 반응 버튼을 누르면 반응 저장 후 사유 입력 UI가 열리는지 검증한다."""
     cached_session = SessionModel(

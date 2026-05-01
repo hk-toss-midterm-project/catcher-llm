@@ -6,15 +6,20 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from catcher_llm.config.settings import Settings
 from catcher_llm.db.models import SessionModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
 from catcher_llm.services.user_data_service import (
+    UserRegistrationInput,
     authenticate_user,
     ensure_user_database,
+    get_user_registration_columns,
     get_user_transactions,
     list_user_memories,
+    register_user,
     save_user_memory,
 )
 
@@ -356,6 +361,95 @@ def test_authenticate_user_and_load_transactions_from_sqlite(tmp_path: Path) -> 
     assert len(transactions) == 2
     assert transactions[0]["user_id"] == 1
     assert transactions[0]["id"] == 100
+
+
+def test_get_user_registration_columns_reads_users_v3_header(tmp_path: Path) -> None:
+    """회원가입 폼 구성을 위해 v3 사용자 CSV 헤더를 순서대로 읽는지 검증한다."""
+    settings = _make_settings(tmp_path)
+
+    columns = get_user_registration_columns(settings=settings)
+
+    assert columns == [
+        "id",
+        "name",
+        "age",
+        "occupation",
+        "gender",
+        "annual_income",
+        "region",
+        "persona",
+        "personal_score",
+        "saving_goal_text",
+        "target_max_spending_amount",
+    ]
+
+
+def test_register_user_appends_csv_and_rebuilds_sqlite(tmp_path: Path) -> None:
+    """회원가입 입력값과 기본 개인 점수 0을 users_v3.csv와 SQLite에 반영하는지 검증한다."""
+    settings = _make_settings(tmp_path)
+    ensure_user_database(settings=settings)
+
+    result = register_user(
+        UserRegistrationInput(
+            name="신규가입",
+            age=35,
+            occupation="데이터 분석가",
+            gender="Female",
+            annual_income=72_000_000,
+            region="서울 서울-마포구",
+            persona="지출 패턴을 꼼꼼히 기록하는 직장인입니다.",
+            saving_goal_text="전세 보증금 마련하기",
+            target_max_spending_amount=2_100_000,
+        ),
+        settings=settings,
+    )
+
+    profile = authenticate_user(result.user_id, "신규가입", settings=settings)
+
+    assert result.user_id == 3
+    assert profile is not None
+    assert profile["name"] == "신규가입"
+    assert profile["job"] == "데이터 분석가"
+    assert profile["income"] == "72000000"
+    assert profile["saving_goal_text"] == "전세 보증금 마련하기"
+    assert _fetch_sqlite_cell(settings.sqlite_db_path, "users", "personal_score", row_id=3) == "0"
+    assert (
+        _fetch_sqlite_cell(
+            settings.sqlite_db_path,
+            "users",
+            "target_max_spending_amount",
+            row_id=3,
+        )
+        == "2100000"
+    )
+    assert settings.members_csv_path.read_text(encoding="utf-8").splitlines()[-1] == (
+        "3,신규가입,35,데이터 분석가,Female,72000000,서울 서울-마포구,"
+        "지출 패턴을 꼼꼼히 기록하는 직장인입니다.,0,전세 보증금 마련하기,2100000"
+    )
+
+
+def test_register_user_rejects_empty_name(tmp_path: Path) -> None:
+    """회원가입 시 필수 이름이 비어 있으면 CSV와 SQLite를 변경하지 않는지 검증한다."""
+    settings = _make_settings(tmp_path)
+    ensure_user_database(settings=settings)
+
+    with pytest.raises(ValueError, match="이름"):
+        register_user(
+            UserRegistrationInput(
+                name=" ",
+                age=35,
+                occupation="데이터 분석가",
+                gender="Female",
+                annual_income=72_000_000,
+                region="서울 서울-마포구",
+                persona="지출 패턴을 꼼꼼히 기록하는 직장인입니다.",
+                saving_goal_text="전세 보증금 마련하기",
+                target_max_spending_amount=2_100_000,
+            ),
+            settings=settings,
+        )
+
+    assert ensure_user_database(settings=settings).user_count == 2
 
 
 def test_save_user_memory_persists_memory_in_same_sqlite_database(tmp_path: Path) -> None:

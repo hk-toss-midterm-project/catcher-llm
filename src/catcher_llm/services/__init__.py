@@ -21,14 +21,20 @@ from catcher_llm.services.rag import (
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
 from catcher_llm.services.test_service import invoke_retriever_question
 from catcher_llm.services.user_data_service import (
+    UserRegistrationInput,
+    UserRegistrationResult,
     authenticate_user,
     ensure_user_database,
+    get_user_registration_columns,
     get_user_transactions,
     list_user_memories,
+    register_user,
     save_user_memory,
 )
 
 __all__ = [
+    "UserRegistrationInput",
+    "UserRegistrationResult",
     "authenticate_user",
     "build_daily_consumption_analysis_json",
     "discover_source_files",
@@ -42,6 +48,7 @@ __all__ = [
     "generate_catcher_consumption_benchmark_rag_reply",
     "generate_welfare_rag_reply",
     "get_user_transactions",
+    "get_user_registration_columns",
     "ingest_local_documents",
     "invoke_retriever_question",
     "list_user_memories",
@@ -49,5 +56,6 @@ __all__ = [
     "make_spending_analysis_input",
     "parse_user_spending_data",
     "rag_target",
+    "register_user",
     "save_user_memory",
 ]

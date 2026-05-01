@@ -1,5 +1,6 @@
+import html
+
 import streamlit as st
-import streamlit.components.v1 as components
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.user_data_service import authenticate_user, ensure_user_database
@@ -53,12 +54,35 @@ def logout():
     st.rerun()
 
 
+def render_profile_text_panel(
+    *,
+    title: str,
+    text: object,
+    empty_message: str,
+) -> None:
+    """사용자 프로필의 긴 텍스트 항목을 별도 패널로 표시한다."""
+    if text is None or str(text).strip() == "":
+        st.info(empty_message)
+        return
+
+    escaped_text = html.escape(str(text).strip()).replace("\n", "<br>")
+    st.markdown(
+        f"""
+        <div style="background-color:#F5F9FF; border:1px solid #D6E4F0; padding:22px 24px; border-radius:18px;">
+            <div style="margin:0 0 10px 0; font-size:14px; color:#6B7280; font-weight:600;">{title}</div>
+            <div style="margin:0; font-size:18px; color:#1D4ED8; font-weight:700; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere;">{escaped_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # -----------------------------
 # 페이지 정의
 # -----------------------------
 def login_page():
     st.title("Catcher 소비 분석 서비스")
-    st.info("왼쪽 사이드바에서 User ID와 이름을 입력하고 로그인해주세요.")
+    st.info("왼쪽 사이드바에서 User ID와 이름을 입력하거나 회원 가입을 진행해주세요.")
 
 
 def profile_page():
@@ -67,7 +91,7 @@ def profile_page():
 
     st.title("👤 사용자 프로필")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
         st.metric("이름", profile["name"])
@@ -79,9 +103,17 @@ def profile_page():
         st.metric("지역", profile["region"])
         st.metric("연봉", profile["income"])
 
-    with col3:
-        st.metric("최상위 카드 등급", profile["card_grade"])
-        st.metric("페르소나", profile["persona"])
+    # -----------------------------
+    # 페르소나 (긴 텍스트)
+    # -----------------------------
+    st.markdown("---")
+
+    persona_text = profile.get("persona")
+    render_profile_text_panel(
+        title="🧭 나의 페르소나",
+        text=persona_text,
+        empty_message="아직 등록된 페르소나가 없습니다.",
+    )
 
     # -----------------------------
     # 절약 목표 (토스 스타일)
@@ -89,19 +121,11 @@ def profile_page():
     st.markdown("---")
 
     saving_goal_text = profile.get("saving_goal_text")
-
-    if saving_goal_text:
-        goal_html = f"""
-        <div style="background-color:#F5F9FF; border:1px solid #D6E4F0; padding:22px 24px; border-radius:18px;">
-            <div style="margin:0 0 10px 0; font-size:14px; color:#6B7280; font-weight:600;">🎯 나의 절약 목표</div>
-            <div style="margin:0; font-size:18px; color:#1D4ED8; font-weight:700; line-height:1.6;">{saving_goal_text}</div>
-        </div>
-        """
-
-        components.html(goal_html, height=130)
-
-    else:
-        st.info("아직 등록된 절약 목표가 없습니다.")
+    render_profile_text_panel(
+        title="🎯 나의 절약 목표",
+        text=saving_goal_text,
+        empty_message="아직 등록된 절약 목표가 없습니다.",
+    )
 
     # -----------------------------
     # 안내 박스
@@ -127,12 +151,14 @@ def profile_page():
 # -----------------------------
 # 네비게이션 라우팅
 # -----------------------------
+login_pg = st.Page(login_page, title="로그인", url_path="login", default=True)
+signup_pg = st.Page("pages/00_user_signup.py", title="회원 가입", icon="📝", url_path="signup")
 profile_pg = st.Page(profile_page, title="프로필", icon="👤", url_path="profile", default=True)
 upload_pg = st.Page("pages/01_csv_upload.py", title="CSV 업로드", icon="📂", url_path="upload")
 report_pg = st.Page("pages/02_report.py", title="리포트 조회", icon="📑", url_path="report")
 
 if not st.session_state.logged_in:
-    pg = st.navigation([st.Page(login_page, title="로그인", url_path="login")], position="hidden")
+    pg = st.navigation([login_pg, signup_pg], position="hidden")
 else:
     pg = st.navigation([profile_pg, upload_pg, report_pg], position="hidden")
 
@@ -172,6 +198,9 @@ with st.sidebar:
                     st.session_state.user_profile = profile
 
                     st.rerun()
+
+        st.markdown("---")
+        st.page_link(signup_pg, label="회원 가입", icon="📝")
 
     else:
         if profile := st.session_state.user_profile:

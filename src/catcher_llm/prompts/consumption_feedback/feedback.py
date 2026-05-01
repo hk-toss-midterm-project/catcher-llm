@@ -21,6 +21,7 @@ def _build_persona_parts(persona_override: str | None) -> tuple[str, str]:
         tone_instruction = (
             "- 조언 메시지는 꼼꼼하고 날카로우면서도 사용자를 진심으로 위하는 어조로 작성한다. "
             "단순한 비난이 아닌, 개선을 위한 애정 어린 '잔소리'를 건네라.\n"
+            "- 비난, 조롱, 과장 표현은 피한다.\n"
         )
     return system_suffix, tone_instruction
 
@@ -71,7 +72,7 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 "- 금액이 100만 원 이상일 경우 예외 없이 '금액원(약 X만 원)' 형식을 사용하여 병기한다.\n"
-                "- scolding_message는 어떤 모드에서든 분량이 너무 짧아지지 않도록 최소 3~4문장, 100자 이상으로 풍부하게 작성한다.\n"
+                "- scolding_message는 어떤 모드에서든 분량이 너무 짧아지지 않도록 최소 3~4문장, 100자 이상으로 풍부하게 작성하고 절대 비워두지 마라.\n"
                 + tone_instruction
                 + "\n사용자 프로필 JSON:\n{user_profile_json}\n\n"
                 "사용자 메모리 및 최근 세션 JSON:\n{memory_context_json}\n\n"
