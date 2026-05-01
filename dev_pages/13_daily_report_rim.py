@@ -490,6 +490,46 @@ def get_action_text(feedback):
     return "내일은 배달 음식 주문하지 않기", "식비 비중을 낮추기 위해 하루만 배달을 쉬어보세요."
 
 
+def _get_first_evidence_text(feedback: object) -> tuple[str | None, str | None]:
+    """피드백 근거 목록에서 판단 카드 대체 제목과 본문으로 쓸 첫 항목을 찾는다."""
+    evidences = getattr(feedback, "key_evidences", []) or []
+    for evidence in evidences:
+        title = clean_text(getattr(evidence, "title", None))
+        detail = clean_text(getattr(evidence, "detail", None))
+        if title or detail:
+            return title or None, detail or None
+    return None, None
+
+
+def get_judgment_text(feedback: object, daily_analysis: object | None = None) -> tuple[str, str]:
+    """일일 보고서 판단 카드에 표시할 제목과 본문을 피드백·근거·분석값 순서로 고른다."""
+    title = clean_text(getattr(feedback, "summary_title", None))
+    message = clean_text(getattr(feedback, "scolding_message", None))
+
+    if title and message:
+        return title, message
+
+    evidence_title, evidence_detail = _get_first_evidence_text(feedback)
+    if not title:
+        title = evidence_title or "오늘의 판단"
+    if not message and evidence_detail:
+        message = evidence_detail
+
+    if not message and daily_analysis is not None:
+        raw_today_total = getattr(
+            getattr(daily_analysis, "stable_metrics", None),
+            "today_total",
+            0,
+        )
+        today_total = raw_today_total if isinstance(raw_today_total, int | float) else 0
+        message = f"오늘 소비는 {money(today_total)}입니다. 주요 소비 항목을 확인하고 내일 행동을 정해보세요."
+
+    return (
+        title or "오늘의 판단",
+        message or "오늘 소비 흐름을 확인할 수 있는 판단 근거가 없습니다.",
+    )
+
+
 def render_report_feedback():
     if "daily_report_feedback" not in st.session_state:
         st.session_state.daily_report_feedback = None
@@ -555,7 +595,7 @@ render_date_picker_styles()
 
 st.markdown('<div class="title">🚨 오늘의 소비 알림장</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="subtitle">일간 보고서는 분석보다 "내일 바로 바꿀 행동"에 집중합니다.</div>',
+    '<div class="subtitle">일일 보고서는 분석보다 "내일 바로 바꿀 행동"에 집중합니다.</div>',
     unsafe_allow_html=True,
 )
 
@@ -661,8 +701,10 @@ daily_saving_goal = round(monthly_goal / 30) if monthly_goal else 0
 daily_budget = max(round(past_average - daily_saving_goal), 0)
 budget_gap = daily_budget - today_amount if daily_budget else 0
 
-llm_summary_title = clean_text(feedback.summary_title)
-llm_feedback_message = clean_text(feedback.scolding_message)
+llm_summary_title, llm_feedback_message = get_judgment_text(
+    feedback,
+    daily_analysis=daily_analysis,
+)
 llm_tomorrow_mission = clean_text(feedback.tomorrow_mission)
 action_title, action_detail = get_action_text(feedback)
 
