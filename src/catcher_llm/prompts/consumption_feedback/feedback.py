@@ -118,9 +118,8 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
         "7. '이것은 ~을 나타냅니다/나타내며' 표현 사용 금지\n"
         "8. 소비 없는 날에 '고정비 걱정', '아껴 쓰세요', '주의하세요' 등 부정적 문구 절대 금지\n"
         "9. '이 부분이 예산 균형에 큰 영향을 미칩니다', '이러한 소비가 지속되면 예산이 빠듯해질 수 있습니다', '소비가 반복되면 부담이 커질 수 있습니다' 같은 고정 패턴 표현을 쓰지 마라. 해당 날짜·수치·항목에 맞게 매번 새 문장을 만들어라.\n"
-        "10. 모든 금액은 천 단위 쉼표(,)를 포함한다. (예: 1,572,400원)\n"
-        "11. 100만 원 이상의 고액은 한글 단위를 병기하여 직관성을 높인다. (예: 1,164,600원(약 116만 원))\n"
-        "12. [일관성 유지]: 분석한 '우선 점검 카테고리'와 '내일 미션'의 대상을 반드시 일치시킬 것."
+        "10. 금액 표기 시 반드시 천 단위 쉼표(,)를 넣고, 100만 원 이상의 고액은 한글 단위를 병기하여 직관성을 높여라. (예: 1,164,600원(약 116만 원))\n"
+        "11. 분석한 '우선 점검 카테고리'와 '내일 미션'의 대상을 반드시 일치시킬 것."
     )
     _persona_suffix, tone_instruction = _build_persona_parts(persona_override)
     system_msg = _base_system + _persona_suffix
@@ -135,6 +134,7 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
                 "아래 데이터를 바탕으로 일일 소비 피드백을 구조화해 작성하라.\n"
                 "필수 조건:\n"
                 "- JSON 수치 근거를 최소 2개 이상 사용한다.\n"
+                "- 금액이 100만 원 이상일 경우 예외 없이 한글 단위(예: 약 116만 원)를 병기한다.\n"
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 "- memory_context_json의 user_feedback_memory 필드에 [거부/제약] 항목이 있으면 "
@@ -222,9 +222,8 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
         "6. '전주(X%)' 괄호 형식 절대 사용 금지 — 반드시 '전주 X%'로 표기\n"
         "7. '이것은 ~을 나타냅니다/나타내며' 표현 사용 금지\n"
         "8. '이 부분이 예산 균형에 큰 영향을 미칩니다', '이러한 소비가 지속되면 예산이 빠듯해질 수 있습니다', '소비가 반복되면 부담이 커질 수 있습니다' 같은 고정 패턴 표현을 쓰지 마라. 해당 날짜·수치·항목에 맞게 매번 새 문장을 만들어라.\n"
-        "9. 모든 금액은 천 단위 쉼표(,)를 포함한다. (예: 1,572,400원)\n"
-        "10. 100만 원 이상의 고액은 한글 단위를 병기하여 직관성을 높인다. (예: 1,164,600원(약 116만 원))\n"
-        "11. [일관성 유지]: 분석한 '우선 점검 카테고리'와 '다음 주 미션'의 대상을 반드시 일치시킬 것."
+        "9. 금액 표기 시 반드시 천 단위 쉼표(,)를 넣고, 100만 원 이상의 고액은 한글 단위를 병기하여 직관성을 높여라. (예: 1,164,600원(약 116만 원))\n"
+        "10. 분석한 '우선 점검 카테고리'와 '다음 주 미션'의 대상을 반드시 일치시킬 것."
     )
     _persona_suffix, tone_instruction = _build_persona_parts(persona_override)
     system_msg = _base_system + _persona_suffix
@@ -239,6 +238,7 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
                 "아래 데이터를 바탕으로 주간 소비 피드백을 구조화해 작성하라.\n"
                 "필수 조건:\n"
                 "- JSON 수치 근거를 최소 2개 이상 사용한다.\n"
+                "- 금액이 100만 원 이상일 경우 예외 없이 한글 단위(예: 약 116만 원)를 병기한다.\n"
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 "- memory_context_json의 user_feedback_memory 필드에 거부 항목이 있으면 "
@@ -326,9 +326,8 @@ def build_monthly_feedback_prompt(persona_override: str | None = None) -> ChatPr
         "6. '전월(X%)' 괄호 형식 절대 사용 금지 — 반드시 '전월 X%'로 표기\n"
         "7. '이것은 ~을 나타냅니다/나타내며' 표현 사용 금지\n"
         "8. '이 부분이 예산 균형에 큰 영향을 미칩니다', '이러한 소비가 지속되면 예산이 빠듯해질 수 있습니다', '소비가 반복되면 부담이 커질 수 있습니다' 같은 고정 패턴 표현을 쓰지 마라. 해당 날짜·수치·항목에 맞게 매번 새 문장을 만들어라.\n"
-        "9. 모든 금액은 천 단위 쉼표(,)를 포함한다. (예: 1,572,400원)\n"
-        "10. 100만 원 이상의 고액은 한글 단위를 병기하여 직관성을 높인다. (예: 1,164,600원(약 116만 원))\n"
-        "11. [일관성 유지]: 분석한 '우선 점검 카테고리'와 '다음 달 미션'의 대상을 반드시 일치시킬 것."
+        "9. 금액 표기 시 반드시 천 단위 쉼표(,)를 넣고, 100만 원 이상의 고액은 한글 단위를 병기하여 직관성을 높여라. (예: 1,164,600원(약 116만 원))\n"
+        "10. 분석한 '우선 점검 카테고리'와 '다음 달 미션'의 대상을 반드시 일치시킬 것."
     )
     _persona_suffix, tone_instruction = _build_persona_parts(persona_override)
     system_msg = _base_system + _persona_suffix
@@ -343,6 +342,7 @@ def build_monthly_feedback_prompt(persona_override: str | None = None) -> ChatPr
                 "아래 데이터를 바탕으로 월간 소비 피드백을 구조화해 작성하라.\n"
                 "필수 조건:\n"
                 "- JSON 수치 근거를 최소 2개 이상 사용한다.\n"
+                "- 금액이 100만 원 이상일 경우 예외 없이 한글 단위(예: 약 116만 원)를 병기한다.\n"
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 "- memory_context_json의 user_feedback_memory 필드에 거부 항목이 있으면 "
