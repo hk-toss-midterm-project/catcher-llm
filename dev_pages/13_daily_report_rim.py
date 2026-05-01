@@ -504,7 +504,9 @@ def _get_first_evidence_text(feedback: object) -> tuple[str | None, str | None]:
 def get_judgment_text(feedback: object, daily_analysis: object | None = None) -> tuple[str, str]:
     """일일 보고서 판단 카드에 표시할 제목과 본문을 피드백·근거·분석값 순서로 고른다."""
     title = clean_text(getattr(feedback, "summary_title", None))
-    message = clean_text(getattr(feedback, "scolding_message", None))
+    message = clean_text(
+        feedback.scolding_message if hasattr(feedback, "scolding_message") else None
+    )
 
     if title and message:
         return title, message

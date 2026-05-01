@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Self
+
+from pydantic import BaseModel, Field, model_validator
 
 from catcher_llm.schemas.consumption_feedback.base import (
     ActionUrgency,
@@ -274,14 +276,100 @@ class DailyFeedbackAction(BaseModel):
     related_source: str | None = None
 
 
+_MIN_DAILY_FEEDBACK_MESSAGE_LENGTH = 80
+
+
+def _clean_feedback_sentence(value: str | None) -> str:
+    """피드백 문장 조립에 사용할 문자열의 불필요한 공백을 정리한다."""
+    if value is None:
+        return ""
+    return " ".join(value.split())
+
+
+def _ensure_sentence_end(value: str) -> str:
+    """피드백 조각이 자연스러운 문장 종결 기호로 끝나도록 보정한다."""
+    if not value:
+        return value
+    if value.endswith((".", "!", "?", "요", "다")):
+        return value
+    return f"{value}."
+
+
+def _first_daily_feedback_evidence_text(evidences: list[DailyFeedbackEvidence]) -> str:
+    """피드백 근거 목록에서 본문 보강에 쓸 첫 번째 근거 문장을 고른다."""
+    for evidence in evidences:
+        detail = _clean_feedback_sentence(evidence.detail)
+        if detail:
+            return detail
+        title = _clean_feedback_sentence(evidence.title)
+        if title:
+            return title
+    return ""
+
+
+def _expand_daily_feedback_message(
+    *,
+    summary_title: str,
+    scolding_message: str,
+    key_evidences: list[DailyFeedbackEvidence],
+    tomorrow_mission: str,
+) -> str:
+    """최종 일일 피드백 본문이 비었거나 짧을 때 근거와 미션을 연결해 저장 가능한 길이로 보강한다."""
+    message = _clean_feedback_sentence(scolding_message)
+    if len(message) >= _MIN_DAILY_FEEDBACK_MESSAGE_LENGTH:
+        return message
+
+    summary = _clean_feedback_sentence(summary_title)
+    evidence_text = _first_daily_feedback_evidence_text(key_evidences)
+    mission = _clean_feedback_sentence(tomorrow_mission)
+
+    parts: list[str] = []
+    if message:
+        parts.append(_ensure_sentence_end(message))
+    elif summary:
+        parts.append(_ensure_sentence_end(summary))
+    else:
+        parts.append("오늘 소비 흐름을 한 번 더 확인해볼 필요가 있어요.")
+
+    if evidence_text and evidence_text not in " ".join(parts):
+        parts.append(_ensure_sentence_end(evidence_text))
+
+    parts.append(
+        "이 내용은 오늘의 지출 균형을 판단하는 핵심 근거라서 가볍게 넘기기보다 내일 행동으로 연결하는 편이 좋습니다."
+    )
+    if mission and mission not in " ".join(parts):
+        parts.append(_ensure_sentence_end(mission))
+
+    expanded_message = " ".join(parts)
+    if len(expanded_message) < _MIN_DAILY_FEEDBACK_MESSAGE_LENGTH:
+        expanded_message = (
+            f"{expanded_message} key_evidences의 수치와 tomorrow_mission을 함께 확인해 "
+            "사용자에게 보여줄 본문을 충분히 남깁니다."
+        )
+    return expanded_message
+
+
 class DailyFeedbackResult(BaseModel):
     """분석 JSON과 RAG 근거를 바탕으로 생성한 최종 일일 소비 피드백을 표현한다."""
 
     summary_title: str
-    scolding_message: str
+    scolding_message: str = Field(
+        description="사용자에게 직접 표시할 최종 일일 피드백 본문. 비워두지 않고 2~4문장으로 작성한다."
+    )
     key_evidences: list[DailyFeedbackEvidence]
     action_items: list[DailyFeedbackAction]
     tomorrow_mission: str
+
+    @model_validator(mode="after")
+    def ensure_visible_scolding_message(self) -> Self:
+        """scolding_message가 빈 문자열이거나 너무 짧으면 근거와 미션으로 본문을 보강한다."""
+        self.scolding_message = _expand_daily_feedback_message(
+            summary_title=self.summary_title,
+            scolding_message=self.scolding_message,
+            key_evidences=self.key_evidences,
+            tomorrow_mission=self.tomorrow_mission,
+        )
+        return self
 
 
 class DailyFeedbackServiceResult(BaseModel):

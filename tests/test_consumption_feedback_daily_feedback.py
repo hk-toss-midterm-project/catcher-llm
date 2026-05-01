@@ -150,6 +150,57 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("비상금", content)
         self.assertIn("식비가 반복적으로 높다", content)
         self.assertIn("JSON 수치 근거", content)
+        self.assertIn("scolding_message", content)
+        self.assertIn("비워두지 마라", content)
+
+    def test_daily_feedback_result_expands_blank_scolding_message(self) -> None:
+        """최종 일일 피드백 본문이 비어 있으면 근거와 미션으로 저장 가능한 본문을 보강하는지 검증한다."""
+        feedback = DailyFeedbackResult(
+            summary_title="오늘 생활비 지출 점검",
+            scolding_message=" ",
+            key_evidences=[
+                DailyFeedbackEvidence(
+                    evidence_type="spending_metric",
+                    title="생활비 비중 증가",
+                    detail="생활 카테고리가 오늘 지출의 77.12%를 차지했습니다.",
+                    source_json_path="stable_metrics.category_ratio_changes[0]",
+                )
+            ],
+            action_items=[
+                DailyFeedbackAction(
+                    title="생활비 영수증 확인",
+                    detail="오늘 결제한 생활비 항목을 한 번 정리합니다.",
+                    target_json_path="stable_metrics.category_ratio_changes[0]",
+                    urgency="immediate",
+                )
+            ],
+            tomorrow_mission="내일은 생활비 결제 전에 필요한 항목인지 먼저 확인해보세요.",
+        )
+
+        self.assertGreaterEqual(len(feedback.scolding_message), 80)
+        self.assertIn("생활 카테고리", feedback.scolding_message)
+        self.assertIn("내일은 생활비", feedback.scolding_message)
+
+    def test_daily_feedback_result_expands_too_short_scolding_message(self) -> None:
+        """최종 일일 피드백 본문이 지나치게 짧으면 기존 문장을 살려 근거 설명을 덧붙이는지 검증한다."""
+        feedback = DailyFeedbackResult(
+            summary_title="오늘 소비가 좋아요",
+            scolding_message="좋은 흐름이에요.",
+            key_evidences=[
+                DailyFeedbackEvidence(
+                    evidence_type="spending_metric",
+                    title="무소비일",
+                    detail="오늘 총 지출액은 0원입니다.",
+                    source_json_path="stable_metrics.today_total",
+                )
+            ],
+            action_items=[],
+            tomorrow_mission="내일은 가벼운 산책으로 좋은 리듬을 이어가세요.",
+        )
+
+        self.assertGreaterEqual(len(feedback.scolding_message), 80)
+        self.assertTrue(feedback.scolding_message.startswith("좋은 흐름이에요."))
+        self.assertIn("오늘 총 지출액은 0원", feedback.scolding_message)
 
     def test_make_daily_feedback_input_serializes_contexts(self) -> None:
         """최종 피드백 체인 입력이 사용자·메모리 컨텍스트까지 직렬화되는지 검증한다."""

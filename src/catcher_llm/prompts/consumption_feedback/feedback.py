@@ -62,6 +62,7 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
         "② 오늘 소비가 전일 또는 최근 평균 대비 실질적으로 줄어든 날:\n"
         "  - 얼마나 줄었는지 구체적으로 언급하며 칭찬하는 문장 1~2개\n"
         "  - 조언은 완전히 생략하거나 딱 1문장만, 반드시 긍정적 제안으로만\n"
+        "  - 이 경우에도 scolding_message는 비워두지 말고, 칭찬과 응원을 담은 사용자 노출 본문으로 작성한다.\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "소비가 있고 문제 카테고리가 확인된 일반적인 경우에는 아래 흐름을 따르라: "
         "① 칭찬할 요소가 있다면 총 지출 금액과 증감율을 직접 언급하지 말고 "
@@ -137,6 +138,9 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
                 "- 금액이 100만 원 이상일 경우 예외 없이 한글 단위(예: 약 116만 원)를 병기한다.\n"
                 "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
+                "- scolding_message는 사용자에게 바로 표시되는 최종 본문이므로 절대 비워두지 마라.\n"
+                "- scolding_message는 소비 없음·소비 개선 상황에서도 칭찬과 응원을 포함해 2~4문장, 80자 이상으로 작성한다.\n"
+                "- summary_title, key_evidences, action_items, tomorrow_mission만 채우고 scolding_message를 생략하지 마라.\n"
                 "- memory_context_json의 user_feedback_memory 필드에 [거부/제약] 항목이 있으면 "
                 "  반드시 확인하고, 해당 행동 및 유사 행동을 tomorrow_mission에서 제외한다.\n"
                 + tone_instruction
