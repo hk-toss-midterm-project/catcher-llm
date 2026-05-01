@@ -20,6 +20,14 @@ from catcher_llm.services.rag import (
 )
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
 from catcher_llm.services.test_service import invoke_retriever_question
+from catcher_llm.services.transaction_upload_service import (
+    MerchantInference,
+    MerchantInferenceBatch,
+    TransactionUploadResult,
+    infer_merchant_transaction_fields,
+    resolve_transaction_upload_column_mapping,
+    upload_transactions_dataframe,
+)
 from catcher_llm.services.user_data_service import (
     UserRegistrationInput,
     UserRegistrationResult,
@@ -35,6 +43,9 @@ from catcher_llm.services.user_data_service import (
 __all__ = [
     "UserRegistrationInput",
     "UserRegistrationResult",
+    "MerchantInference",
+    "MerchantInferenceBatch",
+    "TransactionUploadResult",
     "authenticate_user",
     "build_daily_consumption_analysis_json",
     "discover_source_files",
@@ -49,6 +60,7 @@ __all__ = [
     "generate_welfare_rag_reply",
     "get_user_transactions",
     "get_user_registration_columns",
+    "infer_merchant_transaction_fields",
     "ingest_local_documents",
     "invoke_retriever_question",
     "list_user_memories",
@@ -56,6 +68,8 @@ __all__ = [
     "make_spending_analysis_input",
     "parse_user_spending_data",
     "rag_target",
+    "resolve_transaction_upload_column_mapping",
     "register_user",
     "save_user_memory",
+    "upload_transactions_dataframe",
 ]

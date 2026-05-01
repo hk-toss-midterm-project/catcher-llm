@@ -48,6 +48,10 @@ _USER_REGISTRATION_COLUMNS: tuple[str, ...] = (
     "saving_goal_text",
     "target_max_spending_amount",
 )
+_USER_REGISTRATION_DYNAMIC_COLUMN_NAMES: tuple[str, ...] = (
+    "personal_score",
+    "target_max_spending_amount",
+)
 type SeedCellValue = int | str | datetime | None
 
 _USER_SEED_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
@@ -90,7 +94,7 @@ class DatabaseSeedResult:
 
 @dataclass(slots=True, frozen=True)
 class UserRegistrationInput:
-    """회원가입 폼에서 받은 사용자 CSV 컬럼 값을 표현한다."""
+    """회원가입 폼에서 받은 사용자 입력값을 표현한다."""
 
     name: str
     age: int
@@ -295,22 +299,19 @@ def _ensure_registration_csv_columns(fieldnames: Sequence[str]) -> None:
         raise ValueError(f"회원가입 CSV에 필요한 컬럼이 없습니다: {joined_columns}")
 
 
-def _get_next_user_id(rows: Sequence[dict[str, str | None]]) -> int:
-    """기존 사용자 CSV 행에서 가장 큰 ID 다음 값을 회원가입 ID로 계산한다."""
-    max_user_id = 0
-    for row in rows:
-        parsed_user_id = _parse_int(_pick_csv_value(row, _USER_SEED_COLUMN_ALIASES["id"]))
-        if parsed_user_id is not None:
-            max_user_id = max(max_user_id, parsed_user_id)
-    return max_user_id + 1
+def _get_next_sqlite_user_id(config: Settings) -> int:
+    """SQLite users 테이블에서 가장 큰 ID 다음 값을 회원가입 ID로 계산한다."""
+    with session_scope(config) as session:
+        max_user_id = session.scalar(select(func.max(UserModel.id))) or 0
+    return int(max_user_id) + 1
 
 
-def _build_user_registration_csv_row(
+def _build_user_registration_db_row(
     payload: UserRegistrationInput,
     *,
     user_id: int,
-) -> dict[str, str]:
-    """회원가입 입력값을 users_v3.csv에 쓸 문자열 행으로 변환한다."""
+) -> dict[str, SeedCellValue]:
+    """회원가입 입력값을 SQLite users 테이블에 저장할 행으로 변환한다."""
     age = _validate_int_range(payload.age, field_label="나이", minimum=0, maximum=130)
     annual_income = _validate_int_range(
         payload.annual_income,
@@ -324,12 +325,12 @@ def _build_user_registration_csv_row(
     )
 
     return {
-        "id": str(user_id),
+        "id": user_id,
         "name": _normalize_required_text(payload.name, field_label="이름"),
-        "age": str(age),
-        "occupation": _normalize_required_text(payload.occupation, field_label="직업"),
+        "age": age,
+        "job": _normalize_required_text(payload.occupation, field_label="직업"),
         "gender": _normalize_required_text(payload.gender, field_label="성별"),
-        "annual_income": str(annual_income),
+        "income": str(annual_income),
         "region": _normalize_required_text(payload.region, field_label="지역"),
         "persona": _normalize_required_text(payload.persona, field_label="페르소나"),
         "personal_score": "0",
@@ -339,27 +340,6 @@ def _build_user_registration_csv_row(
         ),
         "target_max_spending_amount": str(target_max_spending_amount),
     }
-
-
-def _csv_needs_leading_newline(path: Path) -> bool:
-    """CSV 끝에 줄바꿈이 없으면 append 전에 줄바꿈이 필요한지 판단한다."""
-    if not path.exists() or path.stat().st_size == 0:
-        return False
-
-    with path.open("rb") as handle:
-        handle.seek(-1, 2)
-        return handle.read(1) not in {b"\n", b"\r"}
-
-
-def _append_csv_row(path: Path, *, fieldnames: Sequence[str], row: dict[str, str]) -> None:
-    """기존 CSV 헤더 순서를 유지해 회원가입 행을 파일 끝에 추가한다."""
-    if _csv_needs_leading_newline(path):
-        with path.open("a", encoding="utf-8", newline="") as handle:
-            handle.write("\n")
-
-    with path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(fieldnames), lineterminator="\n")
-        writer.writerow({column_name: row.get(column_name, "") for column_name in fieldnames})
 
 
 def _quote_sqlite_identifier(identifier: str) -> str:
@@ -694,19 +674,23 @@ def register_user(
     *,
     settings: Settings | None = None,
 ) -> UserRegistrationResult:
-    """회원가입 입력값을 사용자 CSV에 추가하고 SQLite 프로필 DB를 갱신한다."""
+    """회원가입 입력값을 SQLite users 테이블에 새 사용자로 저장한다."""
     config = settings or get_settings()
-    fieldnames = get_user_registration_columns(settings=config)
-    rows = _iter_csv_rows(config.members_csv_path)
-    user_id = _get_next_user_id(rows)
-    csv_row = _build_user_registration_csv_row(payload, user_id=user_id)
-
-    _append_csv_row(config.members_csv_path, fieldnames=fieldnames, row=csv_row)
     ensure_user_database(settings=config)
+    user_id = _get_next_sqlite_user_id(config)
+    db_row = _build_user_registration_db_row(payload, user_id=user_id)
+    _ensure_dynamic_sqlite_columns(
+        config,
+        table_name=UserModel.__tablename__,
+        column_names=_USER_REGISTRATION_DYNAMIC_COLUMN_NAMES,
+    )
+    users_table = _reflect_sqlite_table(config, table_name=UserModel.__tablename__)
+    with session_scope(config) as session:
+        session.execute(users_table.insert(), [db_row])
 
     return UserRegistrationResult(
         user_id=user_id,
-        name=csv_row["name"],
+        name=str(db_row["name"]),
         sqlite_db_path=str(config.sqlite_db_path),
     )
 

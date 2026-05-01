@@ -1042,6 +1042,16 @@ def test_signup_page_uses_korean_labels_and_grouped_layout() -> None:
     assert 'st.markdown("#### 상세 프로필")' in page_source
 
 
+def test_csv_upload_page_saves_uploaded_transactions_to_sqlite() -> None:
+    """CSV 업로드 페이지가 업로드 데이터를 transactions 테이블 저장 서비스로 전달하는지 검증한다."""
+    page_source = Path("pages/01_csv_upload.py").read_text(encoding="utf-8")
+
+    assert "upload_transactions_dataframe" in page_source
+    assert "감지된 컬럼 매핑" in page_source
+    assert "거래 내역 DB 저장" in page_source
+    assert "st.session_state.user_id" in page_source
+
+
 def test_daily_feedback_reaction_button_opens_reason_input_and_saves_reaction() -> None:
     """일일 피드백 반응 버튼을 누르면 반응 저장 후 사유 입력 UI가 열리는지 검증한다."""
     cached_session = SessionModel(

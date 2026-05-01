@@ -384,10 +384,11 @@ def test_get_user_registration_columns_reads_users_v3_header(tmp_path: Path) -> 
     ]
 
 
-def test_register_user_appends_csv_and_rebuilds_sqlite(tmp_path: Path) -> None:
-    """회원가입 입력값과 기본 개인 점수 0을 users_v3.csv와 SQLite에 반영하는지 검증한다."""
+def test_register_user_saves_sqlite_without_mutating_csv(tmp_path: Path) -> None:
+    """회원가입 입력값과 기본 개인 점수 0을 SQLite에 저장하고 CSV는 변경하지 않는지 검증한다."""
     settings = _make_settings(tmp_path)
     ensure_user_database(settings=settings)
+    original_members_csv = settings.members_csv_path.read_text(encoding="utf-8")
 
     result = register_user(
         UserRegistrationInput(
@@ -422,10 +423,8 @@ def test_register_user_appends_csv_and_rebuilds_sqlite(tmp_path: Path) -> None:
         )
         == "2100000"
     )
-    assert settings.members_csv_path.read_text(encoding="utf-8").splitlines()[-1] == (
-        "3,신규가입,35,데이터 분석가,Female,72000000,서울 서울-마포구,"
-        "지출 패턴을 꼼꼼히 기록하는 직장인입니다.,0,전세 보증금 마련하기,2100000"
-    )
+    assert ensure_user_database(settings=settings).user_count == 3
+    assert settings.members_csv_path.read_text(encoding="utf-8") == original_members_csv
 
 
 def test_register_user_rejects_empty_name(tmp_path: Path) -> None:
