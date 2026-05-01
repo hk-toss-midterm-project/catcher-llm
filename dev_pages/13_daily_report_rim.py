@@ -35,10 +35,10 @@ def clean_text(value) -> str:
     if value is None:
         return ""
     text = str(value)
-    text = html.unescape(text)           # &lt;/div&gt; → </div>
+    text = html.unescape(text)  # &lt;/div&gt; → </div>
     text = re.sub(r"<[^>]*>", "", text)  # HTML 태그 제거
     text = re.sub(r"\s+", " ", text).strip()
-    text = html.escape(text)             # 남은 < > & 문자가 태그로 오해되지 않도록
+    text = html.escape(text)  # 남은 < > & 문자가 태그로 오해되지 않도록
     return text
 
 
@@ -776,9 +776,7 @@ with bottom1:
         f"""
         <div class="problem-box">
             <div class="problem-title">{llm_summary_title}</div>
-            <div class="problem-text">
-                {llm_feedback_message}
-            </div>
+            <div class="problem-text">{llm_feedback_message}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -793,10 +791,7 @@ with bottom2:
                 <span class="num">01</span>
                 <span class="action-main">{llm_tomorrow_mission}</span>
             </div>
-            <div class="action-detail">
-                {action_title}<br>
-                {action_detail}
-            </div>
+            <div class="action-detail">{action_title}<br>{action_detail}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -807,13 +802,8 @@ with bottom3:
         f"""
         <div class="effect">
             <div class="effect-title">기대 효과</div>
-            <div>
-                내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.
-            </div>
-            <div class="saving-box">
-                {saving_box_title}<br>
-                약 {money(saving_amount)}
-            </div>
+            <div>내일 이 행동 하나만 지켜도 소비 패턴을 바꾸는 시작점이 됩니다.</div>
+            <div class="saving-box">{saving_box_title}<br>약 {money(saving_amount)}</div>
         </div>
         """,
         unsafe_allow_html=True,
