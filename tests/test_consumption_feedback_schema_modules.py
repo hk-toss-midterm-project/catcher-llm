@@ -7,6 +7,7 @@ def test_consumption_feedback_schema_modules_group_related_models() -> None:
     from catcher_llm.schemas.consumption_feedback import (
         ActionAnalysisResult,
         DailyFeedbackServiceResult,
+        InterventionTarget,
         JsonObject,
         MonthlyFeedbackServiceResult,
         RetrievedAdviceContext,
@@ -23,6 +24,7 @@ def test_consumption_feedback_schema_modules_group_related_models() -> None:
     assert JsonObject is base.JsonObject
     assert RetrievedAdviceContext is base.RetrievedAdviceContext
     assert ActionAnalysisResult is analysis_outputs.ActionAnalysisResult
+    assert InterventionTarget is analysis_outputs.InterventionTarget
     assert UserSpendingData is daily.UserSpendingData
     assert DailyFeedbackServiceResult is daily.DailyFeedbackServiceResult
     assert WeeklyFeedbackServiceResult is weekly.WeeklyFeedbackServiceResult

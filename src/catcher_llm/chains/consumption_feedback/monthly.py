@@ -7,9 +7,9 @@ from catcher_llm.chains.consumption_feedback.analysis import (
     _extract_indicator_json,
     _extract_raw_json,
     _extract_user_profile_json,
-    prepare_action_payload,
     prepare_cause_payload,
 )
+from catcher_llm.chains.consumption_feedback.sanitization import sanitize_spending_analysis_payload
 from catcher_llm.config.settings import Settings
 from catcher_llm.llm.models import get_chat_model
 from catcher_llm.prompts.consumption_feedback.monthly import (
@@ -56,7 +56,7 @@ def build_monthly_consumption_cause_chain(
 def build_monthly_consumption_action_chain(
     llm: BaseChatModel,
 ) -> Runnable[dict[str, str], ActionAnalysisResult]:
-    """월간 행동 개선 포인트 프롬프트와 구조화 출력 모델을 연결한 체인을 생성한다."""
+    """월간 개선 후보·개입 타겟 프롬프트와 구조화 출력 모델을 연결한 체인을 생성한다."""
     return build_monthly_consumption_action_prompt() | llm.with_structured_output(
         ActionAnalysisResult
     )  # type: ignore[return-value]
@@ -68,7 +68,7 @@ def build_monthly_spending_analysis_chain(
     *,
     temperature: float = 0.0,
 ) -> Runnable[dict[str, str], dict[str, object]]:
-    """월간 JSON 지표 기반 소비 패턴, 문제 소비, 원인, 행동 포인트 체인을 생성한다."""
+    """월간 JSON 지표 기반 소비 패턴, 문제 소비, 원인·개입 타겟 체인을 생성한다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
     diagnosis_chain = RunnableParallel(
         raw_json=RunnableLambda(_extract_raw_json),
@@ -83,10 +83,7 @@ def build_monthly_spending_analysis_chain(
             cause_result=RunnableLambda(prepare_cause_payload)
             | build_monthly_consumption_cause_chain(chat_model)
         )
-        | RunnablePassthrough.assign(
-            action_result=RunnableLambda(prepare_action_payload)
-            | build_monthly_consumption_action_chain(chat_model)
-        )
+        | RunnableLambda(sanitize_spending_analysis_payload)
     )
 
 

@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 from catcher_llm.config.settings import Settings
 from catcher_llm.prompts.consumption_feedback import build_weekly_feedback_prompt
 from catcher_llm.schemas.consumption_feedback import (
-    ActionAnalysisResult,
-    ActionMission,
+    CauseAnalysisResult,
+    InterventionTarget,
     RetrievedAdviceContext,
     UserProfileContext,
     WeeklyFeedbackAction,
@@ -187,7 +187,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         rendered = prompt.invoke(
             {
                 "weekly_json": '{"weekly_summary": {"this_week_total": 112000}}',
-                "interpretation_json": '{"action_result": {"next_week_missions": []}}',
+                "interpretation_json": '{"cause_result": {"intervention_targets": []}}',
                 "retrieved_contexts": '[{"source": "guide.pdf", "content": "배달비 절약"}]',
                 "user_profile_json": '{"saving_goal_text": "비상금"}',
                 "memory_context_json": "{}",
@@ -199,6 +199,12 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("배달비 절약", content)
         self.assertIn("비상금", content)
         self.assertIn("JSON 수치 근거", content)
+        self.assertIn("cause_result.intervention_targets는 RAG 검색용 중간 후보", content)
+        self.assertIn("action_result가 포함된 경우에도 최종 행동이 아니므로", content)
+        self.assertIn("RAG 문서 근거와 사용자 메모리", content)
+        self.assertIn("그대로 복사하지 마라", content)
+        self.assertIn("feedback_message", content)
+        self.assertNotIn("scolding_message", content)
 
     def test_make_weekly_feedback_input_serializes_contexts(self) -> None:
         """주간 피드백 체인 입력이 주간 분석, 해석, RAG, 프로필을 JSON 문자열로 직렬화하는지 검증한다."""
@@ -220,7 +226,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
 
         payload = make_weekly_feedback_input(
             weekly_data=weekly_data,
-            interpretation_result={"action_result": ActionAnalysisResult()},
+            interpretation_result={"cause_result": CauseAnalysisResult()},
             advice_contexts=[context],
             user_profile=UserProfileContext(
                 user_id=1,
@@ -240,7 +246,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             },
         )
         self.assertIn("weekly_summary", payload["weekly_json"])
-        self.assertIn("action_result", payload["interpretation_json"])
+        self.assertIn("cause_result", payload["interpretation_json"])
         self.assertIn("배달 소비 절약 방법", payload["retrieved_contexts"])
         self.assertIn("비상금 300만원 만들기", payload["user_profile_json"])
         self.assertIn("{}", payload["memory_context_json"])
@@ -250,15 +256,15 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
     ) -> None:
         """주간 분석, 해석, RAG 검색, 최종 피드백 체인이 순서대로 실행되는지 검증한다."""
         interpretation_result = {
-            "action_result": ActionAnalysisResult(
-                next_week_missions=[
-                    ActionMission(
-                        action_type="weekly_cut",
-                        title="배달 주문 1회 줄이기",
-                        detail="다음 주 배달 주문을 한 번 줄인다.",
-                        target_json_path="repeat_patterns.delivery",
-                        expected_effect="배달비 절감",
-                        urgency="this_week",
+            "cause_result": CauseAnalysisResult(
+                intervention_targets=[
+                    InterventionTarget(
+                        target_type="delivery_frequency_review",
+                        title="배달 주문 빈도 점검 타겟",
+                        linked_cause="반복 배달 소비 가능성",
+                        target_json_path="repeat_patterns.delivery.transaction_count",
+                        reason="배달 주문 반복성이 주간 지출에 영향을 줄 수 있음",
+                        query_hint="배달 주문 빈도 점검",
                     )
                 ]
             )
@@ -347,7 +353,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             interpretation_payload["indicator_json"],
         )
         self.assertIn("비상금 300만원 만들기", interpretation_payload["user_profile_json"])
-        self.assertIn("배달 주문 1회 줄이기", retrieval_query_text)
+        self.assertIn("배달 주문 빈도 점검", retrieval_query_text)
         self.assertIn("weekly_json", feedback_payload)
         self.assertIn("interpretation_json", feedback_payload)
         self.assertIn("retrieved_contexts", feedback_payload)
@@ -368,15 +374,15 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         queries = build_weekly_feedback_retrieval_queries(
             weekly_data,
             interpretation_result={
-                "action_result": ActionAnalysisResult(
-                    next_week_missions=[
-                        ActionMission(
-                            action_type="weekly_cut",
-                            title="카페 결제 절반 줄이기",
-                            detail="카페 결제를 줄인다.",
-                            target_json_path="repeat_patterns.cafe",
-                            expected_effect="소액 반복 소비 절감",
-                            urgency="this_week",
+                "cause_result": CauseAnalysisResult(
+                    intervention_targets=[
+                        InterventionTarget(
+                            target_type="cafe_micro_spending_review",
+                            title="카페 소액 반복 결제 점검 타겟",
+                            linked_cause="소액 반복 소비 가능성",
+                            target_json_path="waste_detection.micro_spending.count",
+                            reason="소액 결제 누적이 주간 소비에 영향을 줄 수 있음",
+                            query_hint="카페 소액 반복 결제 점검",
                         )
                     ]
                 )
@@ -392,7 +398,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertEqual(len(queries), len(set(queries)))
         self.assertTrue(any("식비" in query or "생활" in query for query in queries))
         self.assertTrue(any("SKT통신비" in query for query in queries))
-        self.assertTrue(any("카페 결제 절반 줄이기" in query for query in queries))
+        self.assertTrue(any("카페 소액 반복 결제 점검" in query for query in queries))
         self.assertTrue(any("비상금" in query for query in queries))
 
 

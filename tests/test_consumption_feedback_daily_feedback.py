@@ -11,11 +11,11 @@ from catcher_llm.db.models import SessionModel, UserMemoryModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.prompts.consumption_feedback import build_daily_feedback_prompt
 from catcher_llm.schemas.consumption_feedback import (
-    ActionAnalysisResult,
-    ActionMission,
+    CauseAnalysisResult,
     DailyFeedbackAction,
     DailyFeedbackEvidence,
     DailyFeedbackResult,
+    InterventionTarget,
     RetrievedAdviceContext,
     UserProfileContext,
 )
@@ -80,8 +80,10 @@ def _make_feedback_settings(root: Path) -> Settings:
 
 
 class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
-    def test_build_feedback_retrieval_queries_uses_spending_and_action_signals(self) -> None:
-        """소비 분석, 해석 결과, 사용자 프로필에서 RAG 검색 질의를 생성하는지 검증한다."""
+    def test_build_feedback_retrieval_queries_uses_spending_and_intervention_targets(
+        self,
+    ) -> None:
+        """소비 분석, 원인 개입 타겟, 사용자 프로필에서 RAG 검색 질의를 생성하는지 검증한다."""
         user_data = load_user_spending_data(Path("notebook/team02/02_Layer4/user_data.json"))
         user_profile = UserProfileContext(
             user_id=1,
@@ -90,15 +92,15 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
             saving_goal_text="비상금 300만원 만들기",
         )
         interpretation_result = {
-            "action_result": ActionAnalysisResult(
-                immediate_cuts=[
-                    ActionMission(
-                        action_type="fixed_cost_cut",
-                        title="통신비 자동이체 점검",
-                        detail="오늘 결제된 통신비 요금제를 확인한다.",
-                        target_json_path="anomaly_detection.high_spending_items",
-                        expected_effect="고정비 절감",
-                        urgency="immediate",
+            "cause_result": CauseAnalysisResult(
+                intervention_targets=[
+                    InterventionTarget(
+                        target_type="fixed_cost_review",
+                        title="통신비 자동이체 점검 타겟",
+                        linked_cause="고정비 고액 결제 점검 가능성",
+                        target_json_path="anomaly_detection.high_spending_items[0].amount",
+                        reason="통신비 결제가 고액 지출 항목으로 관찰됨",
+                        query_hint="통신비 자동이체 점검",
                     )
                 ]
             )
@@ -136,7 +138,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         rendered = prompt.invoke(
             {
                 "daily_json": '{"stable_metrics": {"today_total": 133044}}',
-                "interpretation_json": '{"action_result": {"immediate_cuts": []}}',
+                "interpretation_json": '{"cause_result": {"intervention_targets": []}}',
                 "retrieved_contexts": '[{"source": "guide.pdf", "content": "통신비 절약"}]',
                 "user_profile_json": '{"job": "개발자", "saving_goal_text": "비상금"}',
                 "memory_context_json": '{"memory_summary": "식비가 반복적으로 높다"}',
@@ -152,6 +154,10 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("JSON 수치 근거", content)
         self.assertIn("scolding_message", content)
         self.assertIn("비워두지 마라", content)
+        self.assertIn("cause_result.intervention_targets는 RAG 검색용 중간 후보", content)
+        self.assertIn("action_result가 포함된 경우에도 최종 행동이 아니므로", content)
+        self.assertIn("RAG 문서 근거와 사용자 메모리", content)
+        self.assertIn("그대로 복사하지 마라", content)
 
     def test_daily_feedback_result_expands_blank_scolding_message(self) -> None:
         """최종 일일 피드백 본문이 비어 있으면 근거와 미션으로 저장 가능한 본문을 보강하는지 검증한다."""
@@ -214,7 +220,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
 
         payload = make_daily_feedback_input(
             user_data=user_data,
-            interpretation_result={"action_result": ActionAnalysisResult()},
+            interpretation_result={"cause_result": CauseAnalysisResult()},
             advice_contexts=[context],
             user_profile={"user_id": 1, "job": "개발자", "saving_goal_text": "비상금"},
             memory_context={"memory_summary": "식비가 반복적으로 높다", "recent_sessions": []},
@@ -231,7 +237,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
             },
         )
         self.assertIn("stable_metrics", payload["daily_json"])
-        self.assertIn("action_result", payload["interpretation_json"])
+        self.assertIn("cause_result", payload["interpretation_json"])
         self.assertIn("통신비 절약 방법", payload["retrieved_contexts"])
         self.assertIn("비상금", payload["user_profile_json"])
         self.assertIn("식비가 반복적으로 높다", payload["memory_context_json"])
@@ -367,7 +373,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self,
     ) -> None:
         """사용자·메모리·세션 컨텍스트를 최종 피드백에 넣고 실행 결과를 세션에 저장하는지 검증한다."""
-        interpretation_result = {"action_result": ActionAnalysisResult()}
+        interpretation_result = {"cause_result": CauseAnalysisResult()}
         advice_context = RetrievedAdviceContext(
             query="생활 소비 절약 방법",
             source="saving.pdf",
@@ -525,7 +531,7 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
 
     def test_generate_daily_feedback_selects_interpretation_mode_builder(self) -> None:
         """일일 피드백 생성 서비스가 요청한 해석 모드에 맞는 체인 빌더를 사용하는지 검증한다."""
-        interpretation_result = {"action_result": ActionAnalysisResult()}
+        interpretation_result = {"cause_result": CauseAnalysisResult()}
         advice_context = RetrievedAdviceContext(
             query="생활 소비 절약 방법",
             source="saving.pdf",

@@ -26,10 +26,12 @@ from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
     ActionMission,
+    CauseAnalysisResult,
     DailyFeedbackMemoryContext,
     DailyFeedbackResult,
     DailyFeedbackServiceResult,
     DailyFeedbackSessionContext,
+    InterventionTarget,
     JsonObject,
     JsonScalar,
     JsonValue,
@@ -628,7 +630,7 @@ def _record_to_advice_context(
 
 
 def _iter_action_missions(action_result: object) -> list[ActionMission]:
-    """해석 결과의 행동 개선 모델 또는 dict에서 실행 미션 목록을 추출한다."""
+    """해석 결과의 개선 후보 모델 또는 dict에서 RAG 검색 후보 목록을 추출한다."""
     if isinstance(action_result, ActionAnalysisResult):
         return [
             *action_result.immediate_cuts,
@@ -657,6 +659,31 @@ def _iter_action_missions(action_result: object) -> list[ActionMission]:
     return missions
 
 
+def _iter_intervention_targets(cause_result: object) -> list[InterventionTarget]:
+    """원인 해석 모델 또는 dict에서 RAG 검색용 개입 타겟 후보를 추출한다."""
+    if isinstance(cause_result, CauseAnalysisResult):
+        return list(cause_result.intervention_targets)
+    if not isinstance(cause_result, dict):
+        return []
+
+    raw_items = cause_result.get("intervention_targets")
+    if not isinstance(raw_items, list):
+        return []
+
+    targets: list[InterventionTarget] = []
+    for raw_item in raw_items:
+        try:
+            targets.append(InterventionTarget.model_validate(raw_item))
+        except ValueError:
+            continue
+    return targets
+
+
+def _intervention_target_query_text(target: InterventionTarget) -> str:
+    """개입 타겟 후보에서 RAG 검색에 사용할 질의 문구를 선택한다."""
+    return target.query_hint or target.title
+
+
 def build_feedback_retrieval_queries(
     user_data: UserSpendingData,
     *,
@@ -682,6 +709,10 @@ def build_feedback_retrieval_queries(
     current_category = indicators.main_category_shift.current_category
     if current_category:
         _append_unique_query(queries, f"{current_category} 과소비 줄이는 방법")
+
+    cause_result = (interpretation_result or {}).get("cause_result")
+    for target in _iter_intervention_targets(cause_result):
+        _append_unique_query(queries, f"{_intervention_target_query_text(target)} 절약 방법")
 
     action_result = (interpretation_result or {}).get("action_result")
     for mission in _iter_action_missions(action_result):

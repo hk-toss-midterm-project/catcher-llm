@@ -3,6 +3,7 @@ from __future__ import annotations
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import Runnable, RunnableLambda, RunnableParallel, RunnablePassthrough
 
+from catcher_llm.chains.consumption_feedback.sanitization import sanitize_spending_analysis_payload
 from catcher_llm.config.settings import Settings
 from catcher_llm.llm.models import get_chat_model
 from catcher_llm.prompts.consumption_feedback.analysis import (
@@ -62,14 +63,14 @@ def build_consumption_cause_chain(
 def build_consumption_action_chain(
     llm: BaseChatModel,
 ) -> Runnable[dict[str, str], ActionAnalysisResult]:
-    """행동 개선 포인트 프롬프트와 구조화 출력 모델을 연결한 체인을 생성한다."""
+    """개선 후보·개입 타겟 프롬프트와 구조화 출력 모델을 연결한 체인을 생성한다."""
     return build_consumption_action_prompt() | llm.with_structured_output(ActionAnalysisResult)  # type: ignore[return-value]
 
 
 def build_consumption_cause_action_chain(
     llm: BaseChatModel,
 ) -> Runnable[dict[str, str], CauseActionAnalysisResult]:
-    """소비 원인과 행동 개선 포인트를 하나의 구조화 출력으로 생성하는 체인을 생성한다."""
+    """소비 원인과 개선 후보·개입 타겟을 하나의 구조화 출력으로 생성하는 체인을 생성한다."""
     return build_consumption_cause_action_prompt() | llm.with_structured_output(
         CauseActionAnalysisResult
     )  # type: ignore[return-value]
@@ -102,7 +103,7 @@ def prepare_cause_payload(payload: dict[str, object]) -> dict[str, str]:
 
 
 def prepare_action_payload(payload: dict[str, object]) -> dict[str, str]:
-    """행동 개선 체인에 필요한 JSON 입력 페이로드를 생성한다."""
+    """개선 후보·개입 타겟 체인에 필요한 JSON 입력 페이로드를 생성한다."""
     pattern_result = payload["pattern_result"]
     problem_result = payload["problem_result"]
     cause_result = payload["cause_result"]
@@ -170,13 +171,24 @@ def flatten_spending_analysis_result(result: object) -> dict[str, object]:
     }
 
 
+def flatten_spending_analysis_payload(payload: dict[str, object]) -> dict[str, object]:
+    """통합 해석 출력과 원본 입력 JSON을 후처리 가능한 페이로드로 합친다."""
+    flattened_result = flatten_spending_analysis_result(payload["analysis_result"])
+    return {
+        "raw_json": payload["raw_json"],
+        "indicator_json": payload["indicator_json"],
+        "user_profile_json": payload["user_profile_json"],
+        **flattened_result,
+    }
+
+
 def build_spending_analysis_chain(
     settings: Settings | None = None,
     llm: BaseChatModel | None = None,
     *,
     temperature: float = 0.0,
 ) -> Runnable[dict[str, str], dict[str, object]]:
-    """JSON 지표 기반 소비 패턴, 문제 소비, 원인, 행동 포인트 체인을 생성한다."""
+    """JSON 지표 기반 소비 패턴, 문제 소비, 원인·개입 타겟 체인을 생성한다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
     diagnosis_chain = RunnableParallel(
         raw_json=RunnableLambda(_extract_raw_json),
@@ -191,10 +203,7 @@ def build_spending_analysis_chain(
             cause_result=RunnableLambda(prepare_cause_payload)
             | build_consumption_cause_chain(chat_model)
         )
-        | RunnablePassthrough.assign(
-            action_result=RunnableLambda(prepare_action_payload)
-            | build_consumption_action_chain(chat_model)
-        )
+        | RunnableLambda(sanitize_spending_analysis_payload)
     )
 
 
@@ -204,7 +213,7 @@ def build_balanced_spending_analysis_chain(
     *,
     temperature: float = 0.0,
 ) -> Runnable[dict[str, str], dict[str, object]]:
-    """패턴·문제는 분리하고 원인·행동은 통합한 일일 소비 해석 체인을 생성한다."""
+    """패턴·문제는 분리하고 원인·개입 후보는 통합한 일일 소비 해석 체인을 생성한다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
     diagnosis_chain = RunnableParallel(
         raw_json=RunnableLambda(_extract_raw_json),
@@ -220,6 +229,7 @@ def build_balanced_spending_analysis_chain(
             | build_consumption_cause_action_chain(chat_model)
         )
         | RunnableLambda(flatten_cause_action_payload)
+        | RunnableLambda(sanitize_spending_analysis_payload)
     )
 
 
@@ -229,10 +239,18 @@ def build_unified_spending_analysis_chain(
     *,
     temperature: float = 0.0,
 ) -> Runnable[dict[str, str], dict[str, object]]:
-    """패턴·문제·원인·행동을 한 번의 구조화 출력으로 생성하는 일일 소비 해석 체인을 생성한다."""
+    """패턴·문제·원인·개입 후보를 한 번의 구조화 출력으로 생성하는 일일 소비 해석 체인을 생성한다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
-    return build_consumption_unified_analysis_chain(chat_model) | RunnableLambda(
-        flatten_spending_analysis_result
+    unified_chain = RunnableParallel(
+        raw_json=RunnableLambda(_extract_raw_json),
+        indicator_json=RunnableLambda(_extract_indicator_json),
+        user_profile_json=RunnableLambda(_extract_user_profile_json),
+        analysis_result=build_consumption_unified_analysis_chain(chat_model),
+    )
+    return (
+        unified_chain
+        | RunnableLambda(flatten_spending_analysis_payload)
+        | RunnableLambda(sanitize_spending_analysis_payload)
     )
 
 
@@ -248,6 +266,7 @@ __all__ = [
     "prepare_cause_action_payload",
     "flatten_cause_action_payload",
     "flatten_spending_analysis_result",
+    "flatten_spending_analysis_payload",
     "build_spending_analysis_chain",
     "build_balanced_spending_analysis_chain",
     "build_unified_spending_analysis_chain",

@@ -412,7 +412,7 @@ def prepare_cause_payload(payload: dict[str, object]) -> dict[str, str]:
 
 
 def prepare_action_payload(payload: dict[str, object]) -> dict[str, str]:
-    """행동 개선 체인에 필요한 JSON 입력 페이로드를 생성한다."""
+    """개선 후보·개입 타겟 체인에 필요한 JSON 입력 페이로드를 생성한다."""
     pattern_result = payload["pattern_result"]
     problem_result = payload["problem_result"]
     cause_result = payload["cause_result"]

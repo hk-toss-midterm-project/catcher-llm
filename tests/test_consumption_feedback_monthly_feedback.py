@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 from catcher_llm.config.settings import Settings
 from catcher_llm.prompts.consumption_feedback import build_monthly_feedback_prompt
 from catcher_llm.schemas.consumption_feedback import (
-    ActionAnalysisResult,
-    ActionMission,
+    CauseAnalysisResult,
+    InterventionTarget,
     MonthlyFeedbackAction,
     MonthlyFeedbackEvidence,
     MonthlyFeedbackResult,
@@ -128,7 +128,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         rendered = prompt.invoke(
             {
                 "monthly_json": '{"monthly_summary": {"this_month_total": 242500}}',
-                "interpretation_json": '{"action_result": {"next_week_missions": []}}',
+                "interpretation_json": '{"cause_result": {"intervention_targets": []}}',
                 "retrieved_contexts": '[{"source": "guide.pdf", "content": "고정비 점검"}]',
                 "user_profile_json": '{"saving_goal_text": "비상금"}',
                 "memory_context_json": "{}",
@@ -140,6 +140,12 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertIn("고정비 점검", content)
         self.assertIn("비상금", content)
         self.assertIn("JSON 수치 근거", content)
+        self.assertIn("cause_result.intervention_targets는 RAG 검색용 중간 후보", content)
+        self.assertIn("action_result가 포함된 경우에도 최종 행동이 아니므로", content)
+        self.assertIn("RAG 문서 근거와 사용자 메모리", content)
+        self.assertIn("그대로 복사하지 마라", content)
+        self.assertIn("feedback_message", content)
+        self.assertNotIn("scolding_message", content)
 
     def test_make_monthly_feedback_input_serializes_contexts(self) -> None:
         """월간 피드백 체인 입력이 월간 분석, 해석, RAG, 프로필을 JSON 문자열로 직렬화하는지 검증한다."""
@@ -160,7 +166,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
 
         payload = make_monthly_feedback_input(
             monthly_data=monthly_data,
-            interpretation_result={"action_result": ActionAnalysisResult()},
+            interpretation_result={"cause_result": CauseAnalysisResult()},
             advice_contexts=[context],
             user_profile=UserProfileContext(
                 user_id=1,
@@ -180,7 +186,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
             },
         )
         self.assertIn("monthly_summary", payload["monthly_json"])
-        self.assertIn("action_result", payload["interpretation_json"])
+        self.assertIn("cause_result", payload["interpretation_json"])
         self.assertIn("고정비 절약 방법", payload["retrieved_contexts"])
         self.assertIn("비상금 300만원 만들기", payload["user_profile_json"])
         self.assertIn("{}", payload["memory_context_json"])
@@ -190,15 +196,15 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
     ) -> None:
         """월간 분석, 해석, RAG 검색, 최종 피드백 체인이 순서대로 실행되는지 검증한다."""
         interpretation_result = {
-            "action_result": ActionAnalysisResult(
-                next_week_missions=[
-                    ActionMission(
-                        action_type="monthly_cut",
-                        title="자동이체 항목 점검",
-                        detail="다음 달 시작 전 자동이체 항목을 점검한다.",
-                        target_json_path="fixed_variable.fixed_items",
-                        expected_effect="고정비 절감",
-                        urgency="this_month",
+            "cause_result": CauseAnalysisResult(
+                intervention_targets=[
+                    InterventionTarget(
+                        target_type="fixed_transfer_review",
+                        title="자동이체 항목 점검 타겟",
+                        linked_cause="고정비 반복 지출 가능성",
+                        target_json_path="fixed_variable.fixed_items[0].total_amount",
+                        reason="고정비 항목이 월간 소비에 반복적으로 반영됨",
+                        query_hint="자동이체 항목 점검",
                     )
                 ]
             )
@@ -310,15 +316,15 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         queries = build_monthly_feedback_retrieval_queries(
             monthly_data,
             interpretation_result={
-                "action_result": ActionAnalysisResult(
-                    next_week_missions=[
-                        ActionMission(
-                            action_type="monthly_cut",
-                            title="카페 결제 절반 줄이기",
-                            detail="카페 결제를 줄인다.",
-                            target_json_path="repeat_patterns.cafe",
-                            expected_effect="소액 반복 소비 절감",
-                            urgency="this_month",
+                "cause_result": CauseAnalysisResult(
+                    intervention_targets=[
+                        InterventionTarget(
+                            target_type="cafe_micro_spending_review",
+                            title="카페 소액 반복 결제 점검 타겟",
+                            linked_cause="소액 반복 소비 가능성",
+                            target_json_path="monthly_micro_spending.count",
+                            reason="소액 결제 누적이 월간 소비에 영향을 줄 수 있음",
+                            query_hint="카페 소액 반복 결제 점검",
                         )
                     ]
                 )
@@ -334,7 +340,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertEqual(len(queries), len(set(queries)))
         self.assertTrue(any("식비" in query or "생활" in query for query in queries))
         self.assertTrue(any("SKT통신비" in query for query in queries))
-        self.assertTrue(any("카페 결제 절반 줄이기" in query for query in queries))
+        self.assertTrue(any("카페 소액 반복 결제 점검" in query for query in queries))
         self.assertTrue(any("비상금" in query for query in queries))
 
 
