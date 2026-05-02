@@ -639,12 +639,12 @@ def render_vote_buttons():
     like_col, dislike_col = st.columns(2)
 
     with like_col:
-        if st.button("👍 좋아요", use_container_width=True, key=like_key):
+        if st.button("👍 좋아요", width="stretch", key=like_key):
             st.session_state.weekly_report_feedback = "like"
             st.rerun()
 
     with dislike_col:
-        if st.button("👎 아쉬워요", use_container_width=True, key=dislike_key):
+        if st.button("👎 아쉬워요", width="stretch", key=dislike_key):
             st.session_state.weekly_report_feedback = "dislike"
             st.rerun()
 
@@ -681,18 +681,8 @@ def render_weekly_report(result):
     action_title, action_detail = get_action_text(feedback)
 
     summary_title = _html_text(getattr(feedback, "summary_title", "LLM 소비 코멘트"))
-    feedback_message = _html_text(
-        getattr(
-            feedback,
-            "feedback_message",
-            getattr(
-                feedback,
-                "scolding_message",
-                "이번 주 소비에서 반복되는 패턴을 줄이는 것이 중요합니다.",
-            ),
-        )
-    )
-    next_week_mission = _html_text(getattr(feedback, "next_week_mission", ""))
+    feedback_message = _html_text(feedback.feedback_message)
+    next_week_mission = _html_text(feedback.next_week_mission)
 
     if top_visit_count >= 2 and top_merchant != "-":
         hero_main = (
@@ -706,8 +696,7 @@ def render_weekly_report(result):
         )
     else:
         hero_main = (
-            f"이번 주 소비는<br>"
-            f"<strong>{_html_text(peak_weekday)}요일</strong>에 가장 몰렸어요."
+            f"이번 주 소비는<br><strong>{_html_text(peak_weekday)}요일</strong>에 가장 몰렸어요."
         )
         hero_desc = (
             f"{_html_text(peak_weekday)}요일에 {money(peak_weekday_amount)}을 사용했습니다. "
@@ -782,10 +771,18 @@ def render_weekly_report(result):
         metric_card("이번 주 총 소비", money(total_amount), f"전주 대비 {prev_rate:.1f}%")
 
     with m2:
-        metric_card("TOP 가맹점", _html_text(top_merchant), f"{top_visit_count}회 · {money(top_merchant_amount)}")
+        metric_card(
+            "TOP 가맹점",
+            _html_text(top_merchant),
+            f"{top_visit_count}회 · {money(top_merchant_amount)}",
+        )
 
     with m3:
-        metric_card("TOP 카테고리", _html_text(top_category), f"{top_category_count}건 · {money(top_category_amount)}")
+        metric_card(
+            "TOP 카테고리",
+            _html_text(top_category),
+            f"{top_category_count}건 · {money(top_category_amount)}",
+        )
 
     with m4:
         metric_card("소비 집중 요일", f"{_html_text(peak_weekday)}요일", money(peak_weekday_amount))
@@ -797,19 +794,19 @@ def render_weekly_report(result):
     with d1:
         with st.container(border=True):
             st.markdown("### 요일별 소비 흐름")
-            st.plotly_chart(make_weekday_chart(weekly_data), use_container_width=True)
+            st.plotly_chart(make_weekday_chart(weekly_data), width="stretch")
 
     with d2:
         with st.container(border=True):
             st.markdown("### TOP 5 가맹점")
-            st.plotly_chart(make_top_merchant_chart(weekly_data), use_container_width=True)
+            st.plotly_chart(make_top_merchant_chart(weekly_data), width="stretch")
 
     d3, d4 = st.columns([1.1, 1])
 
     with d3:
         with st.container(border=True):
             st.markdown("### TOP 5 카테고리")
-            st.plotly_chart(make_top_category_chart(weekly_data), use_container_width=True)
+            st.plotly_chart(make_top_category_chart(weekly_data), width="stretch")
 
     with d4:
         st.markdown(
@@ -847,7 +844,7 @@ def render_weekly_report(result):
 
     with i2:
         st.markdown(
-            f"""
+            """
             <div class="insight-card">
                 <div class="insight-title">왜 이 지점을 봐야 할까?</div>
                 <div class="insight-body">
@@ -918,7 +915,7 @@ def render_weekly_report(result):
             key="weekly_feedback_reason_input",
         )
 
-        if st.button("의견 제출", use_container_width=True, key="weekly_reason_submit_btn"):
+        if st.button("의견 제출", width="stretch", key="weekly_reason_submit_btn"):
             st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
 
     with st.expander("상세 분석 데이터 보기"):
@@ -928,8 +925,8 @@ def render_weekly_report(result):
         st.subheader("주간 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
 
-        feedback_evidences = getattr(feedback, "key_evidences", []) or []
-        feedback_action_items = getattr(feedback, "action_items", []) or []
+        feedback_evidences = feedback.key_evidences or []
+        feedback_action_items = feedback.action_items or []
 
         st.subheader("피드백 근거")
         if feedback_evidences:
@@ -938,7 +935,7 @@ def render_weekly_report(result):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_evidences
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -951,7 +948,7 @@ def render_weekly_report(result):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_action_items
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -1003,7 +1000,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", use_container_width=True)
+        run = st.button("생성", width="stretch")
 
 if run:
     st.session_state.weekly_report_generated = True

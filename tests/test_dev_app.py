@@ -344,8 +344,8 @@ def test_consumption_dev_pages_use_2026_april_calendar_defaults() -> None:
     assert DEFAULT_CALENDAR_DATE == date(2026, 4, 1)
     assert DEFAULT_CALENDAR_MONTH == "2026-04"
     assert _coerce_week_range(DEFAULT_CALENDAR_DATE, DEFAULT_CALENDAR_DATE) == (
-        date(2026, 3, 30),
-        date(2026, 4, 5),
+        date(2026, 3, 29),
+        date(2026, 4, 4),
     )
 
     daily_analysis_source = Path("dev_pages/04_daily_analysis.py").read_text(encoding="utf-8")
@@ -443,16 +443,16 @@ def test_date_picker_value_coercion() -> None:
     assert _coerce_date(datetime(2024, 4, 3, 12, 0), default) == date(2024, 4, 3)
     assert _coerce_date("2024-04-03", default) == date(2024, 4, 3)
     assert _coerce_week_range("2024-04-03", default) == (
-        date(2024, 4, 1),
-        date(2024, 4, 7),
+        date(2024, 3, 31),
+        date(2024, 4, 6),
     )
     assert _coerce_week_range("2024-14th", default) == (
-        date(2024, 4, 1),
-        date(2024, 4, 7),
+        date(2024, 3, 31),
+        date(2024, 4, 6),
     )
     assert _coerce_month("2024-04-18", default) == "2024-04"
     assert _coerce_month("2024-04", default) == "2024-04"
-    assert _coerce_picker_date(PickerType.week, "2024-14th", default) == date(2024, 4, 1)
+    assert _coerce_picker_date(PickerType.week, "2024-14th", default) == date(2024, 3, 31)
     assert _coerce_picker_date(PickerType.month, "2024-04", default) == date(2024, 4, 1)
 
 
@@ -596,6 +596,21 @@ def test_weekly_pages_remove_duplicated_end_date_control() -> None:
         assert "select_week_range" in page_source
         assert "render_readonly_control" not in page_source
         assert "분석 주 종료일" not in page_source
+
+
+def test_weekly_range_picker_uses_week_selection_and_sunday_range() -> None:
+    """주간 선택 헬퍼가 week picker를 유지하고 UI와 같은 일~토 범위를 계산하는지 검증한다."""
+    from catcher_llm.ui import date_picker as date_picker_module
+
+    helper_source = Path(date_picker_module.__file__).read_text(encoding="utf-8")
+
+    assert "def select_week_range" in helper_source
+    select_week_range_source = helper_source.split("def select_week_range", maxsplit=1)[1].split(
+        "def select_month",
+        maxsplit=1,
+    )[0]
+    assert "picker_type=PickerType.week" in select_week_range_source
+    assert "picker_type=PickerType.date" not in select_week_range_source
 
 
 def test_date_picker_bundle_height_patch_source() -> None:
@@ -917,7 +932,7 @@ def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
     """저장된 주간 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
     cached_session = SessionModel(
         user_id=1,
-        analysis_date="2026-03-30",
+        analysis_date="2026-03-29",
         period_type="weekly",
         feedback_message="기존 저장 주간 피드백입니다.",
         feedback_reason="[]",
@@ -925,8 +940,8 @@ def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
     )
     fake_result = WeeklyFeedbackServiceResult(
         member_id=1,
-        week_start="2026-03-30",
-        week_end="2026-04-05",
+        week_start="2026-03-29",
+        week_end="2026-04-04",
         feedback=WeeklyFeedbackResult(
             summary_title="재생성된 주간 피드백",
             feedback_message="새로 생성한 주간 피드백입니다.",
@@ -961,8 +976,8 @@ def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
         _click_button_by_label(app, "주간 피드백 재생성")
 
     assert len(app.exception) == 0
-    assert call_kwargs["week_start"].isoformat() == "2026-03-30"
-    assert call_kwargs["week_end"].isoformat() == "2026-04-05"
+    assert call_kwargs["week_start"].isoformat() == "2026-03-29"
+    assert call_kwargs["week_end"].isoformat() == "2026-04-04"
     assert any(subheader.value == "재생성된 주간 피드백" for subheader in app.subheader)
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
@@ -971,7 +986,7 @@ def test_weekly_feedback_dev_page_loads_partial_cached_session() -> None:
     """피드백 본문이 비어 있어도 저장된 주간 산출물이 있으면 캐시 세션으로 불러오는지 검증한다."""
     cached_session = SessionModel(
         user_id=1,
-        analysis_date="2026-03-30",
+        analysis_date="2026-03-29",
         period_type="weekly",
         analysis_result='{"weekly_summary": {"this_week_total": 1000}}',
         feedback_message="",

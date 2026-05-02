@@ -190,7 +190,7 @@ def _parse_iso_date(value: object) -> date | None:
 
 
 def _parse_picker_week(value: object) -> date | None:
-    """streamlit-date-picker week 반환 문자열에서 해당 주의 월요일 날짜를 추출한다."""
+    """streamlit-date-picker week 반환 문자열에서 UI 주간의 일요일 날짜를 추출한다."""
     if not isinstance(value, str):
         return None
 
@@ -199,13 +199,20 @@ def _parse_picker_week(value: object) -> date | None:
         return None
 
     try:
-        return date.fromisocalendar(
-            int(week_match.group("year")),
-            int(week_match.group("week")),
-            1,
-        )
+        return _start_of_sunday_week(int(week_match.group("year")), int(week_match.group("week")))
     except ValueError:
         return None
+
+
+def _start_of_sunday_week(year: int, week_number: int) -> date:
+    """일요일 시작 달력에서 특정 연도·주차의 시작일을 계산한다."""
+    if week_number < 1:
+        msg = "week_number must be positive"
+        raise ValueError(msg)
+
+    first_day = date(year, 1, 1)
+    first_week_start = first_day - timedelta(days=(first_day.weekday() + 1) % 7)
+    return first_week_start + timedelta(weeks=week_number - 1)
 
 
 def _coerce_date(value: object, default: date) -> date:
@@ -220,9 +227,9 @@ def _coerce_month(value: object, default: date) -> str:
 
 
 def _coerce_week_range(value: object, default_start: date) -> tuple[date, date]:
-    """streamlit-date-picker 반환값을 월요일 시작 주간 범위로 변환한다."""
+    """streamlit-date-picker 반환값을 일요일 시작 주간 범위로 변환한다."""
     picked_date = _parse_picker_week(value) or _coerce_date(value, default_start)
-    week_start = picked_date - timedelta(days=picked_date.weekday())
+    week_start = picked_date - timedelta(days=(picked_date.weekday() + 1) % 7)
     return week_start, week_start + timedelta(days=6)
 
 
@@ -383,7 +390,7 @@ def select_daily_date(label: str, *, default: date, key: str) -> date:
 
 
 def select_week_range(label: str, *, default_start: date, key: str) -> tuple[date, date]:
-    """주간 분석용 주차를 popover week picker에서 선택하고 시작·종료일을 반환한다."""
+    """주간 분석용 주차를 popover week picker에서 선택하고 일~토 범위를 반환한다."""
     selected_date = _get_state_date(key, default_start)
     week_start, week_end = _coerce_week_range(selected_date, default_start)
     _render_picker_popover(
