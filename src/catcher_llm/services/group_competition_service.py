@@ -261,6 +261,11 @@ def share_transaction_to_group(
         session.add(shared_transaction)
         session.flush()
 
+        user = session.get(UserModel, payload.shared_by_user_id)
+        if user is None:
+            raise ValueError(f"사용자 {payload.shared_by_user_id}번을 찾을 수 없습니다.")
+        user.personal_score = int(user.personal_score or 0) + _DEFAULT_SHARE_POINTS
+
         ledger_entry = GroupPointLedgerModel(
             group_id=payload.group_id,
             user_id=payload.shared_by_user_id,
@@ -387,24 +392,23 @@ def get_group_leaderboard(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str]]:
-    """대회별 그룹 포인트를 합산해 점수순 리더보드를 반환한다."""
+    """대회가 속한 그룹 멤버를 현재 personal_score 기준 점수순으로 정렬해 반환한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
-    _get_competition_or_raise(config, competition_id=competition_id)
+    competition = _get_competition_or_raise(config, competition_id=competition_id)
 
     with session_scope(config) as session:
         rows = session.execute(
             select(
-                GroupPointLedgerModel.user_id,
+                GroupMembershipModel.user_id,
                 UserModel.name,
-                func.coalesce(func.sum(GroupPointLedgerModel.points), 0).label("total_points"),
+                func.coalesce(UserModel.personal_score, 0).label("total_points"),
             )
-            .join(UserModel, UserModel.id == GroupPointLedgerModel.user_id)
-            .where(GroupPointLedgerModel.competition_id == competition_id)
-            .group_by(GroupPointLedgerModel.user_id, UserModel.name)
+            .join(UserModel, UserModel.id == GroupMembershipModel.user_id)
+            .where(GroupMembershipModel.group_id == competition.group_id)
             .order_by(
-                func.coalesce(func.sum(GroupPointLedgerModel.points), 0).desc(),
-                GroupPointLedgerModel.user_id.asc(),
+                func.coalesce(UserModel.personal_score, 0).desc(),
+                GroupMembershipModel.user_id.asc(),
             )
         ).all()
 

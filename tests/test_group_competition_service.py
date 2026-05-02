@@ -4,6 +4,8 @@ from datetime import date
 from pathlib import Path
 
 from catcher_llm.config.settings import Settings
+from catcher_llm.db.models import UserModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.services.group_competition_service import (
     CompetitionCreateInput,
     GroupCreateInput,
@@ -78,7 +80,7 @@ def test_create_group_creates_owner_membership(tmp_path: Path) -> None:
 
 
 def test_share_transaction_to_group_records_feed_and_points(tmp_path: Path) -> None:
-    """그룹 멤버가 자신의 소비를 공유하면 피드와 포인트 적립 이력이 함께 생성되는지 검증한다."""
+    """그룹 멤버가 자신의 소비를 공유하면 피드가 생성되고 personal_score가 증가하는지 검증한다."""
     settings = _make_settings(tmp_path)
     ensure_user_database(settings=settings)
     group = create_group(
@@ -112,17 +114,21 @@ def test_share_transaction_to_group_records_feed_and_points(tmp_path: Path) -> N
     )
     feed_items = get_group_feed(group.group_id, settings=settings)
     leaderboard = get_group_leaderboard(competition.competition_id, settings=settings)
+    with session_scope(settings) as session:
+        user = session.get(UserModel, 1)
 
     assert share_result.awarded_points == 10
+    assert user is not None
+    assert user.personal_score == 63
     assert len(feed_items) == 1
     assert feed_items[0]["transaction_id"] == 100
     assert feed_items[0]["shared_by_user_id"] == 1
     assert leaderboard[0]["user_id"] == 1
-    assert leaderboard[0]["points"] == 10
+    assert leaderboard[0]["points"] == 63
 
 
 def test_group_leaderboard_aggregates_points_per_competition(tmp_path: Path) -> None:
-    """같은 대회 안에서 누적된 포인트만 합산해 점수순 리더보드를 반환하는지 검증한다."""
+    """대회 리더보드가 그룹 멤버의 현재 personal_score를 기준으로 정렬되는지 검증한다."""
     settings = _make_settings(tmp_path)
     ensure_user_database(settings=settings)
     group = create_group(
@@ -167,7 +173,7 @@ def test_group_leaderboard_aggregates_points_per_competition(tmp_path: Path) -> 
 
     leaderboard = get_group_leaderboard(competition.competition_id, settings=settings)
 
-    assert [item["user_id"] for item in leaderboard] == [1, 2]
-    assert [item["points"] for item in leaderboard] == [10, 10]
+    assert [item["user_id"] for item in leaderboard] == [2, 1]
+    assert [item["points"] for item in leaderboard] == [67, 63]
     assert leaderboard[0]["rank"] == 1
     assert leaderboard[1]["rank"] == 2
