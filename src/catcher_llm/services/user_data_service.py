@@ -580,6 +580,7 @@ def _build_user_profile(user: UserModel) -> dict[str, int | str | None]:
         "region": user.region,
         "card_grade": user.card_grade,
         "persona": user.persona,
+        "personal_score": user.personal_score,
         "saving_goal_text": user.saving_goal_text,
     }
 

@@ -74,6 +74,17 @@ def profile_page() -> None:
     profile = st.session_state.user_profile
     assert profile is not None
 
+    current_user_id = st.session_state.user_id
+    if current_user_id is not None:
+        refreshed_profile = authenticate_user(
+            int(current_user_id),
+            str(profile["name"]),
+            settings=settings,
+        )
+        if refreshed_profile is not None:
+            st.session_state.user_profile = refreshed_profile
+            profile = refreshed_profile
+
     st.title("🙀 사용자 프로필")
 
     col1, col2 = st.columns(2)
@@ -87,6 +98,7 @@ def profile_page() -> None:
         st.metric("직업", profile["job"])
         st.metric("지역", profile["region"])
         st.metric("연소득", profile["income"])
+        st.metric("personal_score", profile.get("personal_score") or 0)
 
     st.markdown("---")
     persona_text = profile.get("persona")
