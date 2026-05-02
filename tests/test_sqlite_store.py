@@ -413,7 +413,7 @@ def test_register_user_saves_sqlite_without_mutating_csv(tmp_path: Path) -> None
     assert profile["job"] == "데이터 분석가"
     assert profile["income"] == "72000000"
     assert profile["saving_goal_text"] == "전세 보증금 마련하기"
-    assert _fetch_sqlite_cell(settings.sqlite_db_path, "users", "personal_score", row_id=3) == "0"
+    assert _fetch_sqlite_cell(settings.sqlite_db_path, "users", "personal_score", row_id=3) == 0
     assert (
         _fetch_sqlite_cell(
             settings.sqlite_db_path,
@@ -421,7 +421,7 @@ def test_register_user_saves_sqlite_without_mutating_csv(tmp_path: Path) -> None
             "target_max_spending_amount",
             row_id=3,
         )
-        == "2100000"
+        == 2_100_000
     )
     assert ensure_user_database(settings=settings).user_count == 3
     assert settings.members_csv_path.read_text(encoding="utf-8") == original_members_csv

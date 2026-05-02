@@ -14,6 +14,7 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_week_range,
 )
+from catcher_llm.ui.report_auth import get_logged_in_user_id_from_session
 
 st.set_page_config(
     page_title="이번 주 소비 습관 리포트",
@@ -991,12 +992,12 @@ def render_vote_buttons():
     like_col, dislike_col = st.columns(2)
 
     with like_col:
-        if st.button("👍 좋아요", use_container_width=True, key=like_key):
+        if st.button("👍 좋아요", width="stretch", key=like_key):
             st.session_state.weekly_report_feedback = "like"
             st.rerun()
 
     with dislike_col:
-        if st.button("👎 아쉬워요", use_container_width=True, key=dislike_key):
+        if st.button("👎 아쉬워요", width="stretch", key=dislike_key):
             st.session_state.weekly_report_feedback = "dislike"
             st.rerun()
 
@@ -1072,19 +1073,9 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
 
     previous_plan_check = check_previous_plan_success(member_id, start_date, end_date)
 
-    summary_title = _html_text(getattr(feedback, "summary_title", "LLM 소비 코멘트"))
-    feedback_message = _html_text(
-        getattr(
-            feedback,
-            "feedback_message",
-            getattr(
-                feedback,
-                "scolding_message",
-                "이번 주 소비에서 반복되는 패턴을 줄이는 것이 중요합니다.",
-            ),
-        )
-    )
-    next_week_mission = _html_text(getattr(feedback, "next_week_mission", ""))
+    summary_title = _html_text(feedback.summary_title)
+    feedback_message = _html_text(feedback.feedback_message)
+    next_week_mission = _html_text(feedback.next_week_mission)
 
     if top_visit_count >= 2 and top_merchant != "-":
         hero_main = (
@@ -1210,19 +1201,19 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
     with d1:
         with st.container(border=True):
             st.markdown("### 요일별 소비 흐름")
-            st.plotly_chart(make_weekday_chart(weekly_data), use_container_width=True)
+            st.plotly_chart(make_weekday_chart(weekly_data), width="stretch")
 
     with d2:
         with st.container(border=True):
             st.markdown("### TOP 5 가맹점")
-            st.plotly_chart(make_top_merchant_chart(weekly_data), use_container_width=True)
+            st.plotly_chart(make_top_merchant_chart(weekly_data), width="stretch")
 
     d3, d4 = st.columns([1.1, 1])
 
     with d3:
         with st.container(border=True):
             st.markdown("### TOP 5 카테고리")
-            st.plotly_chart(make_top_category_chart(weekly_data), use_container_width=True)
+            st.plotly_chart(make_top_category_chart(weekly_data), width="stretch")
 
     with d4:
         st.markdown(
@@ -1260,7 +1251,7 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
 
     with i2:
         st.markdown(
-            f"""
+            """
             <div class="insight-card">
                 <div class="insight-title">왜 이 지점을 봐야 할까?</div>
                 <div class="insight-body">
@@ -1381,7 +1372,7 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
             key="weekly_feedback_reason_input",
         )
 
-        if st.button("의견 제출", use_container_width=True, key="weekly_reason_submit_btn"):
+        if st.button("의견 제출", width="stretch", key="weekly_reason_submit_btn"):
             st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
 
     with st.expander("상세 분석 데이터 보기"):
@@ -1409,8 +1400,8 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
             }
         )
 
-        feedback_evidences = getattr(feedback, "key_evidences", []) or []
-        feedback_action_items = getattr(feedback, "action_items", []) or []
+        feedback_evidences = feedback.key_evidences or []
+        feedback_action_items = feedback.action_items or []
 
         st.subheader("피드백 근거")
         if feedback_evidences:
@@ -1419,7 +1410,7 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_evidences
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -1432,7 +1423,7 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_action_items
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -1465,6 +1456,7 @@ if "weekly_feedback_reason" not in st.session_state:
 if "weekly_report_params" not in st.session_state:
     st.session_state.weekly_report_params = None
 
+logged_in_member_id = get_logged_in_user_id_from_session()
 top1, top2 = st.columns([1.35, 1])
 
 with top1:
@@ -1478,10 +1470,14 @@ with top1:
     )
 
 with top2:
-    f1, f2, f3 = st.columns([1, 1.35, 0.9])
+    if logged_in_member_id is None:
+        f1, f2, f3 = st.columns([1, 1.35, 0.9])
 
-    with f1:
-        member_id = st.text_input("Member ID", value="1")
+        with f1:
+            member_id = int(st.number_input("Member ID", min_value=1, value=1, step=1))
+    else:
+        member_id = logged_in_member_id
+        f2, f3 = st.columns([1.35, 0.9])
 
     with f2:
         start_date, end_date = select_week_range(
@@ -1492,7 +1488,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", use_container_width=True)
+        run = st.button("생성", width="stretch")
 
 if run:
     st.session_state.weekly_report_generated = True
@@ -1516,7 +1512,7 @@ if st.session_state.weekly_report_generated:
     if st.session_state.weekly_result is None:
         with st.spinner("이번 주 소비 습관을 분석하고 있어요..."):
             st.session_state.weekly_result = generate_weekly_feedback(
-                member_id=int(member_id),
+                member_id=member_id,
                 week_start=start_date,
                 week_end=end_date,
                 settings=settings,
@@ -1527,7 +1523,7 @@ if st.session_state.weekly_report_generated:
             )
 
     params = st.session_state.weekly_report_params or {
-        "member_id": int(member_id),
+        "member_id": member_id,
         "start_date": start_date,
         "end_date": end_date,
     }
@@ -1540,4 +1536,7 @@ if st.session_state.weekly_report_generated:
     )
 
 else:
-    st.info("Member ID와 분석 기간을 선택한 뒤, 생성을 눌러주세요.")
+    if logged_in_member_id is None:
+        st.info("Member ID와 분석 기간을 선택한 뒤, 생성을 눌러주세요.")
+    else:
+        st.info("분석 기간을 선택한 뒤, 생성을 눌러주세요.")

@@ -149,6 +149,24 @@ signup_pg = st.Page("pages/00_user_signup.py", title="회원 가입", icon="🧾
 profile_pg = st.Page(profile_page, title="프로필", icon="🙀", url_path="profile", default=True)
 upload_pg = st.Page("pages/01_csv_upload.py", title="CSV 업로드", icon="📥", url_path="upload")
 report_pg = st.Page("pages/02_report.py", title="리포트 조회", icon="📫", url_path="report")
+daily_report_pg = st.Page(
+    "pages/04_daily_report.py",
+    title="일간 레포트",
+    icon="📝",
+    url_path="daily-report",
+)
+weekly_report_pg = st.Page(
+    "pages/05_weekly_report.py",
+    title="주간 레포트",
+    icon="🗓️",
+    url_path="weekly-report",
+)
+monthly_report_pg = st.Page(
+    "pages/06_monthly_report.py",
+    title="월간 레포트",
+    icon="📈",
+    url_path="monthly-report",
+)
 group_pg = st.Page(
     "pages/03_group_competition.py",
     title="그룹 경쟁",
@@ -159,7 +177,18 @@ group_pg = st.Page(
 if not st.session_state.logged_in:
     pg = st.navigation([login_pg, signup_pg], position="hidden")
 else:
-    pg = st.navigation([profile_pg, upload_pg, report_pg, group_pg], position="hidden")
+    pg = st.navigation(
+        [
+            profile_pg,
+            upload_pg,
+            report_pg,
+            daily_report_pg,
+            weekly_report_pg,
+            monthly_report_pg,
+            group_pg,
+        ],
+        position="hidden",
+    )
 
 with st.sidebar:
     st.title("💯 Catcher")

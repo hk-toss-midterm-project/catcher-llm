@@ -18,6 +18,7 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_daily_date,
 )
+from catcher_llm.ui.report_auth import get_logged_in_user_id_from_session
 
 _USER_SCORE_COLUMN = "personal_score"
 
@@ -766,16 +767,23 @@ st.markdown(
 )
 
 default_selection = get_default_daily_report_selection()
+logged_in_member_id = get_logged_in_user_id_from_session()
 
-col1, col2, col3 = st.columns(3)
+if logged_in_member_id is None:
+    col1, col2, col3 = st.columns(3)
 
-with col1:
-    member_id = st.number_input(
-        "Member ID",
-        min_value=1,
-        value=default_selection.member_id,
-        step=1,
-    )
+    with col1:
+        member_id = int(
+            st.number_input(
+                "Member ID",
+                min_value=1,
+                value=default_selection.member_id,
+                step=1,
+            )
+        )
+else:
+    member_id = logged_in_member_id
+    col2, col3 = st.columns(2)
 
 with col2:
     analysis_date = select_daily_date(
@@ -801,7 +809,7 @@ with col3:
 
 run = st.button("오늘의 소비 알림장 생성", width="stretch")
 
-st.session_state.member_id = int(member_id)
+st.session_state.member_id = member_id
 
 if run:
     from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
@@ -810,7 +818,7 @@ if run:
 
     with st.spinner("오늘의 소비 알림장을 생성하고 있어요..."):
         result = generate_daily_feedback(
-            member_id=int(member_id),
+            member_id=member_id,
             analysis_date=analysis_date,
             previous_date=previous_date,
             settings=settings,
@@ -828,7 +836,10 @@ if run:
 result = st.session_state.get("daily_report_result")
 
 if result is None:
-    st.info("Member ID와 날짜를 선택한 뒤, 오늘의 소비 알림장 생성을 눌러주세요.")
+    if logged_in_member_id is None:
+        st.info("Member ID와 날짜를 선택한 뒤, 오늘의 소비 알림장 생성을 눌러주세요.")
+    else:
+        st.info("날짜를 선택한 뒤, 오늘의 소비 알림장 생성을 눌러주세요.")
     st.stop()
 
 if result.error:
@@ -851,7 +862,7 @@ today_amount = safe_int(daily_analysis.stable_metrics.today_total)
 past_average = safe_int(daily_analysis.stable_metrics.past_daily_stable_average)
 
 previous_amount = get_daily_total_from_sqlite(
-    int(member_id),
+    member_id,
     analysis_date - timedelta(days=1),
 )
 
@@ -866,12 +877,12 @@ change_rate = calc_diff_rate(today_amount, previous_amount)
 
 last_week_same_weekday_date = analysis_date - timedelta(days=7)
 last_week_same_weekday_amount = get_daily_total_from_sqlite(
-    int(member_id),
+    member_id,
     last_week_same_weekday_date,
 )
 
 recent_4_same_weekday_average = get_recent_4_same_weekday_average(
-    int(member_id),
+    member_id,
     analysis_date,
 )
 

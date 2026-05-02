@@ -16,6 +16,7 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_month,
 )
+from catcher_llm.ui.report_auth import get_logged_in_user_id_from_session
 
 st.set_page_config(page_title="월간 소비 리포트", page_icon="🏆", layout="wide")
 
@@ -1009,7 +1010,7 @@ def render_vote_buttons(member_id: str, month: str):
     v1, v2 = st.columns(2)
 
     with v1:
-        if st.button("👍 좋아요", use_container_width=True, type=like_type):
+        if st.button("👍 좋아요", width="stretch", type=like_type):
             st.session_state.monthly_report_vote = "like"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -1019,7 +1020,7 @@ def render_vote_buttons(member_id: str, month: str):
             st.rerun()
 
     with v2:
-        if st.button("👎 아쉬워요", use_container_width=True, type=dislike_type):
+        if st.button("👎 아쉬워요", width="stretch", type=dislike_type):
             st.session_state.monthly_report_vote = "dislike"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -1043,17 +1044,16 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
 
-    feedback_message = _html_text(getattr(feedback, "feedback_message", ""))
-    next_month_mission = _html_text(getattr(feedback, "next_month_mission", ""))
+    feedback_message = _html_text(feedback.feedback_message)
+    next_month_mission = _html_text(feedback.next_month_mission)
 
-    feedback_evidences = getattr(feedback, "key_evidences", []) or []
-    feedback_action_items = getattr(feedback, "action_items", []) or []
+    feedback_evidences = feedback.key_evidences or []
+    feedback_action_items = feedback.action_items or []
 
     member_id_int = int(member_id)
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
-    transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
 
     sqlite_this_month_total = get_month_total_from_sqlite(member_id_int, month)
     if total_amount <= 0 and sqlite_this_month_total > 0:
@@ -1066,7 +1066,6 @@ def render_monthly_report(result, member_id: str, month: str):
     recent_3_month_average = get_recent_3_month_average(member_id_int, month)
     saving_rate, reward_point = calc_saving_rate_and_point(recent_3_month_average, total_amount)
 
-    saved_amount = prev_amount - total_amount
     diff_amount = total_amount - prev_amount
     diff_rate = calc_diff_rate(total_amount, prev_amount)
 
@@ -1198,12 +1197,12 @@ def render_monthly_report(result, member_id: str, month: str):
     with d1:
         with st.container(border=True):
             st.markdown("### 주차별 소비 흐름")
-            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), use_container_width=True)
+            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), width="stretch")
 
     with d2:
         with st.container(border=True):
             st.markdown("### 전월 대비 카테고리 증감")
-            st.plotly_chart(make_category_change_chart(monthly_data), use_container_width=True)
+            st.plotly_chart(make_category_change_chart(monthly_data), width="stretch")
 
     with d3:
         with st.container(border=True):
@@ -1212,7 +1211,7 @@ def render_monthly_report(result, member_id: str, month: str):
             top5_merchant_fig = make_top5_merchant_chart_from_sqlite(member_id_int, month)
 
             if top5_merchant_fig is not None:
-                st.plotly_chart(top5_merchant_fig, use_container_width=True)
+                st.plotly_chart(top5_merchant_fig, width="stretch")
             else:
                 st.info("가맹점 데이터가 없습니다.")
 
@@ -1337,7 +1336,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_evidences
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -1350,7 +1349,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_action_items
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
         else:
@@ -1372,10 +1371,11 @@ if "monthly_report_result" not in st.session_state:
 
 if "monthly_report_params" not in st.session_state:
     st.session_state.monthly_report_params = {
-        "member_id": "1",
+        "member_id": 1,
         "month": DEFAULT_CALENDAR_MONTH,
     }
 
+logged_in_member_id = get_logged_in_user_id_from_session()
 top1, top2 = st.columns([1.3, 1])
 
 with top1:
@@ -1386,13 +1386,21 @@ with top1:
     )
 
 with top2:
-    f1, f2, f3 = st.columns([1, 1, 0.9])
+    if logged_in_member_id is None:
+        f1, f2, f3 = st.columns([1, 1, 0.9])
 
-    with f1:
-        member_id = st.text_input(
-            "Member ID",
-            value=st.session_state.monthly_report_params["member_id"],
-        )
+        with f1:
+            member_id = int(
+                st.number_input(
+                    "Member ID",
+                    min_value=1,
+                    value=safe_int(st.session_state.monthly_report_params["member_id"], 1),
+                    step=1,
+                )
+            )
+    else:
+        member_id = logged_in_member_id
+        f2, f3 = st.columns([1, 0.9])
 
     with f2:
         month = select_month(
@@ -1403,7 +1411,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", use_container_width=True)
+        run = st.button("생성", width="stretch")
 
 if run:
     st.session_state.monthly_report_vote = None
@@ -1436,4 +1444,7 @@ if st.session_state.monthly_report_result is not None:
         st.session_state.monthly_report_params["month"],
     )
 else:
-    st.info("Member ID와 분석 월을 입력한 뒤, 생성을 눌러주세요.")
+    if logged_in_member_id is None:
+        st.info("Member ID와 분석 월을 입력한 뒤, 생성을 눌러주세요.")
+    else:
+        st.info("분석 월을 선택한 뒤, 생성을 눌러주세요.")
