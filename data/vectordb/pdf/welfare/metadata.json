@@ -1,13 +1,13 @@
 {
-  "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/welfare",
+  "raw_data_dir": "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\welfare",
   "embedding_provider": "openai",
   "embedding_model": "text-embedding-3-small",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/welfare/2026_hope_ladder_selected.pdf",
-      1776931207127039840,
+      "C:\\Users\\user\\catcher\\catcher-llm\\data\\raw\\pdf\\welfare\\2026_hope_ladder_selected.pdf",
+      1777005013985523500,
       1939687
     ]
   ]

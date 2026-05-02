@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-import re
 
 import pandas as pd
 import plotly.express as px
@@ -29,9 +28,7 @@ def _to_dict(value):
 
 
 def _html_text(value) -> str:
-    text = str(value or "")
-    text = re.sub(r"<[^>]*>", "", text)  # LLM 출력에 포함된 HTML 태그 제거
-    return html.escape(text).replace("\n", "<br>")
+    return html.escape(str(value or "")).replace("\n", "<br>")
 
 
 def safe_int(value, default: int = 0) -> int:
@@ -569,53 +566,11 @@ def make_top_category_chart(weekly_data: dict):
         text="amount",
     )
 
-
-def get_peak_weekday(weekly_data):
-    pattern = weekly_data.get("weekday_pattern", {})
-    peak = pattern.get("peak_weekday")
-    rows = pattern.get("weekday_breakdown", [])
-
-    if peak:
-        peak_amount = 0
-        for row in rows:
-            if row.get("weekday") == peak:
-                peak_amount = safe_int(row.get("total_amount", 0))
-        return peak, peak_amount
-
-    if not rows:
-        return "-", 0
-
-    top = max(rows, key=lambda x: safe_int(x.get("total_amount", 0)))
-    return top.get("weekday", "-"), safe_int(top.get("total_amount", 0))
-
-
-def get_top_category(weekly_data):
-    rows = weekly_data.get("category_summary", [])
-
-    if not rows:
-        return "-", 0
-
-    top = max(rows, key=lambda x: safe_int(x.get("total_amount", 0)))
-
-    return top.get("category", "-"), safe_int(top.get("total_amount", 0))
-
-
-def get_action_text(feedback):
-    action_items = feedback.action_items or []
-
-    if action_items:
-        first = action_items[0]
-        title = getattr(first, "title", "다음 주 소비 규칙 정하기")
-        detail = (
-            getattr(first, "detail", None)
-            or getattr(first, "description", None)
-            or "반복 소비를 줄일 수 있는 행동을 하나 정해보세요."
-        )
-        return _html_text(title), _html_text(detail)
-
-    return (
-        "반복 가맹점 방문 횟수 줄이기",
-        "가장 자주 방문한 가맹점의 이용 횟수를 다음 주에 1회 줄여보세요.",
+    fig.update_traces(
+        texttemplate="%{text:,.0f}",
+        textposition="outside",
+        marker_color="#3182f6",
+        hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<extra></extra>",
     )
 
     fig.update_layout(
@@ -684,16 +639,12 @@ def render_vote_buttons():
     like_col, dislike_col = st.columns(2)
 
     with like_col:
-        if st.button("👍 좋아요", width="stretch", key=like_key):
+        if st.button("👍 좋아요", use_container_width=True, key=like_key):
             st.session_state.weekly_report_feedback = "like"
             st.rerun()
 
     with dislike_col:
-<<<<<<< Updated upstream
-        if st.button("👎 싫어요", width="stretch", key=dislike_key):
-=======
         if st.button("👎 아쉬워요", use_container_width=True, key=dislike_key):
->>>>>>> Stashed changes
             st.session_state.weekly_report_feedback = "dislike"
             st.rerun()
 
@@ -729,14 +680,6 @@ def render_weekly_report(result):
 
     action_title, action_detail = get_action_text(feedback)
 
-<<<<<<< Updated upstream
-    feedback_message = _html_text(feedback.feedback_message)
-
-    next_week_mission = _html_text(feedback.next_week_mission)
-
-    feedback_evidences = feedback.key_evidences or []
-    feedback_action_items = feedback.action_items or []
-=======
     summary_title = _html_text(getattr(feedback, "summary_title", "LLM 소비 코멘트"))
     feedback_message = _html_text(
         getattr(
@@ -770,7 +713,6 @@ def render_weekly_report(result):
             f"{_html_text(peak_weekday)}요일에 {money(peak_weekday_amount)}을 사용했습니다. "
             "반복 가맹점이 뚜렷하지 않을 때는 특정 요일과 카테고리 집중도를 중심으로 해석합니다."
         )
->>>>>>> Stashed changes
 
     if top_visit_count and top_merchant_amount:
         expected_saving = round(top_merchant_amount / max(top_visit_count, 1))
@@ -840,20 +782,7 @@ def render_weekly_report(result):
         metric_card("이번 주 총 소비", money(total_amount), f"전주 대비 {prev_rate:.1f}%")
 
     with m2:
-<<<<<<< Updated upstream
-        if top_visit_count >= 2 and top_merchant != "-":
-            metric_card(
-                "반복 소비 TOP",
-                _html_text(top_merchant),
-                f"{top_visit_count}회 · {money(top_merchant_amount)}",
-            )
-        else:
-            metric_card(
-                "소비 집중 요일", f"{_html_text(peak_weekday)}요일", money(peak_weekday_amount)
-            )
-=======
         metric_card("TOP 가맹점", _html_text(top_merchant), f"{top_visit_count}회 · {money(top_merchant_amount)}")
->>>>>>> Stashed changes
 
     with m3:
         metric_card("TOP 카테고리", _html_text(top_category), f"{top_category_count}건 · {money(top_category_amount)}")
@@ -868,11 +797,7 @@ def render_weekly_report(result):
     with d1:
         with st.container(border=True):
             st.markdown("### 요일별 소비 흐름")
-<<<<<<< Updated upstream
-            st.plotly_chart(make_weekday_chart(weekly_analysis), width="stretch")
-=======
             st.plotly_chart(make_weekday_chart(weekly_data), use_container_width=True)
->>>>>>> Stashed changes
 
     with d2:
         with st.container(border=True):
@@ -993,7 +918,7 @@ def render_weekly_report(result):
             key="weekly_feedback_reason_input",
         )
 
-        if st.button("의견 제출", width="stretch", key="weekly_reason_submit_btn"):
+        if st.button("의견 제출", use_container_width=True, key="weekly_reason_submit_btn"):
             st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
 
     with st.expander("상세 분석 데이터 보기"):
@@ -1078,7 +1003,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", width="stretch")
+        run = st.button("생성", use_container_width=True)
 
 if run:
     st.session_state.weekly_report_generated = True
