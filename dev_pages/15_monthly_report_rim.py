@@ -19,6 +19,8 @@ from catcher_llm.ui.date_picker import (
 
 st.set_page_config(page_title="월간 소비 리포트", page_icon="🏆", layout="wide")
 
+USER_SCORE_COLUMN = "personal_score"
+
 
 def money(value: int | float) -> str:
     return f"{value:,.0f}원"
@@ -116,11 +118,7 @@ def get_month_total_from_sqlite(member_id: int, month: str) -> int:
               AND date(substr(used_at, 1, 10)) >= date(?)
               AND date(substr(used_at, 1, 10)) < date(?)
             """
-            df = pd.read_sql_query(
-                query,
-                conn,
-                params=[member_id, start_date, end_date],
-            )
+            df = pd.read_sql_query(query, conn, params=[member_id, start_date, end_date])
             return safe_int(df.iloc[0]["total"])
     except Exception:
         return 0
@@ -132,7 +130,6 @@ def get_recent_3_month_average(member_id: int, month: str) -> int:
     for i in range(1, 4):
         target_month = shift_month(month, -i)
         total = get_month_total_from_sqlite(member_id, target_month)
-
         if total > 0:
             values.append(total)
 
@@ -140,6 +137,105 @@ def get_recent_3_month_average(member_id: int, month: str) -> int:
         return 0
 
     return round(sum(values) / len(values))
+
+
+def calc_saving_rate_and_point(recent_3_month_average: int, total_amount: int) -> tuple[float, int]:
+    if recent_3_month_average <= 0:
+        return 0.0, 0
+
+    saving_rate = (recent_3_month_average - total_amount) / recent_3_month_average * 100
+
+    if saving_rate <= 0:
+        return saving_rate, 0
+
+    point = int(saving_rate * 20)
+    point = min(point, 1000)
+
+    return saving_rate, point
+
+
+def ensure_monthly_saving_reward_table() -> None:
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monthly_saving_rewards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                month TEXT NOT NULL,
+                recent_3_month_average INTEGER NOT NULL,
+                this_month_total INTEGER NOT NULL,
+                saving_rate REAL NOT NULL,
+                reward_point INTEGER NOT NULL,
+                reward_given INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, month)
+            )
+            """
+        )
+        conn.commit()
+
+
+def give_monthly_saving_reward(
+    member_id: int,
+    month: str,
+    recent_3_month_average: int,
+    total_amount: int,
+    saving_rate: float,
+    reward_point: int,
+) -> bool:
+    if reward_point <= 0:
+        return False
+
+    ensure_monthly_saving_reward_table()
+
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+        already = conn.execute(
+            """
+            SELECT id
+            FROM monthly_saving_rewards
+            WHERE user_id = ?
+              AND month = ?
+            """,
+            (member_id, month),
+        ).fetchone()
+
+        if already:
+            return False
+
+        user_cols = pd.read_sql_query("PRAGMA table_info(users)", conn)["name"].tolist()
+
+        if USER_SCORE_COLUMN in user_cols:
+            conn.execute(
+                f"""
+                UPDATE users
+                SET {quote_col(USER_SCORE_COLUMN)} =
+                    CAST(COALESCE(NULLIF({quote_col(USER_SCORE_COLUMN)}, ''), '0') AS INTEGER) + ?
+                WHERE id = ?
+                """,
+                (reward_point, member_id),
+            )
+
+        conn.execute(
+            """
+            INSERT INTO monthly_saving_rewards (
+                user_id, month, recent_3_month_average,
+                this_month_total, saving_rate, reward_point, reward_given
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                member_id,
+                month,
+                recent_3_month_average,
+                total_amount,
+                saving_rate,
+                reward_point,
+            ),
+        )
+
+        conn.commit()
+
+    return True
 
 
 def inject_css():
@@ -317,6 +413,73 @@ def inject_css():
             font-weight:650;
         }
 
+        .saving-point-card {
+            padding:24px;
+            border-radius:28px;
+            background:#ecfdf5;
+            border:1px solid #86efac;
+            color:#166534;
+            box-shadow:0 16px 38px rgba(34,197,94,0.12);
+        }
+
+        .saving-point-title {
+            font-size:22px;
+            font-weight:950;
+            color:#047857;
+            margin-bottom:12px;
+        }
+
+        .saving-point-value {
+            font-size:36px;
+            font-weight:950;
+            color:#16a34a;
+            letter-spacing:-0.8px;
+            margin:8px 0;
+        }
+
+        .saving-point-desc {
+            font-size:14px;
+            line-height:1.65;
+            font-weight:750;
+            color:#166534;
+        }
+
+        .point-wrap {
+            margin-top:16px;
+            text-align:center;
+        }
+
+        .point-pop {
+            display:inline-block;
+            padding:16px 30px;
+            border-radius:999px;
+            background:linear-gradient(135deg, #22c55e, #16a34a);
+            color:white;
+            font-size:34px;
+            font-weight:950;
+            box-shadow:0 18px 42px rgba(34,197,94,0.35);
+            animation:pointPop 1.15s ease-out;
+        }
+
+        .point-sub {
+            margin-top:10px;
+            color:#166534;
+            font-weight:850;
+            animation:fadeIn 1.25s ease-out;
+        }
+
+        @keyframes pointPop {
+            0% { opacity:0; transform:translateY(24px) scale(0.55) rotate(-8deg); }
+            45% { opacity:1; transform:translateY(-10px) scale(1.18) rotate(4deg); }
+            72% { transform:translateY(3px) scale(0.96) rotate(-2deg); }
+            100% { opacity:1; transform:translateY(0) scale(1) rotate(0deg); }
+        }
+
+        @keyframes fadeIn {
+            0% { opacity:0; transform:translateY(8px); }
+            100% { opacity:1; transform:translateY(0); }
+        }
+
         .score-card {
             padding:22px;
             border-radius:26px;
@@ -453,6 +616,76 @@ def compare_card(label: str, current: int, base: int):
     )
 
 
+def render_saving_point_card(
+    member_id: int,
+    month: str,
+    total_amount: int,
+    recent_3_month_average: int,
+    saving_rate: float,
+    reward_point: int,
+):
+    rewarded = give_monthly_saving_reward(
+        member_id=member_id,
+        month=month,
+        recent_3_month_average=recent_3_month_average,
+        total_amount=total_amount,
+        saving_rate=saving_rate,
+        reward_point=reward_point,
+    )
+
+    st.markdown('<div class="section">월간 절약 포인트</div>', unsafe_allow_html=True)
+
+    if recent_3_month_average <= 0:
+        st.info("최근 3개월 평균 데이터가 부족해서 절약 포인트를 계산할 수 없습니다.")
+        return
+
+    if reward_point <= 0:
+        st.markdown(
+            f"""
+            <div class="saving-point-card" style="background:#ffffff; border:1px solid #e5e7eb; color:#475569;">
+                <div class="saving-point-title" style="color:#475569;">이번 달 절약 포인트 없음</div>
+                <div class="saving-point-desc">
+                    최근 3개월 평균은 <b>{money(recent_3_month_average)}</b>이고,
+                    이번 달 실제 지출은 <b>{money(total_amount)}</b>입니다.<br>
+                    절약률은 <b>{saving_rate:.1f}%</b>로, 포인트 적립 기준에 도달하지 못했습니다.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown(
+        f"""
+        <div class="saving-point-card">
+            <div class="saving-point-title">이번 달 절약 보상</div>
+            <div class="saving-point-desc">
+                최근 3개월 평균 <b>{money(recent_3_month_average)}</b> 대비
+                이번 달 지출은 <b>{money(total_amount)}</b>입니다.
+            </div>
+            <div class="saving-point-value">{saving_rate:.1f}% 절약 · {reward_point:,}P</div>
+            <div class="saving-point-desc">
+                포인트 산식: 절약률 × 20, 최대 1,000P까지 적립됩니다.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if rewarded:
+        st.markdown(
+            f"""
+            <div class="point-wrap">
+                <div class="point-pop">+{reward_point:,}P 🎉</div>
+                <div class="point-sub">월간 절약 보상이 적립되었습니다</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("이번 달 절약 포인트는 이미 지급되었습니다.")
+
+
 def get_category_rows(monthly_data):
     return (
         monthly_data.get("category_deep", [])
@@ -464,10 +697,8 @@ def get_category_rows(monthly_data):
 
 def get_top_category(monthly_data):
     rows = get_category_rows(monthly_data)
-
     if not rows:
         return "-", 0
-
     top = max(rows, key=lambda x: safe_int(x.get("total_amount", x.get("amount", 0))))
     return top.get("category", "-"), safe_int(top.get("total_amount", top.get("amount", 0)))
 
@@ -478,7 +709,6 @@ def get_improved_category(monthly_data):
 
     for row in rows:
         diff_amount = row.get("diff_amount")
-
         if diff_amount is None:
             total = safe_int(row.get("total_amount", 0))
             prev = safe_int(row.get("prev_month_amount", 0))
@@ -500,7 +730,6 @@ def get_worst_category(monthly_data):
 
     for row in rows:
         diff_amount = row.get("diff_amount")
-
         if diff_amount is None:
             total = safe_int(row.get("total_amount", 0))
             prev = safe_int(row.get("prev_month_amount", 0))
@@ -590,7 +819,6 @@ def make_weekly_trend_chart(monthly_analysis):
         ]
 
     df = pd.DataFrame(parsed_rows)
-
     fig = px.bar(df, x="week", y="amount", text="amount")
 
     fig.update_traces(
@@ -664,11 +892,9 @@ def make_category_change_chart(monthly_data):
 
 
 def get_top5_merchants_from_sqlite(member_id: int, month: str) -> pd.DataFrame:
-    db_path = str(APP_SQLITE_PATH)
-
     start_date, end_date = month_range(month)
 
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
         query = """
         SELECT
             merchant_name AS merchant_name,
@@ -685,7 +911,6 @@ def get_top5_merchants_from_sqlite(member_id: int, month: str) -> pd.DataFrame:
         ORDER BY total_amount DESC
         LIMIT 5
         """
-
         return pd.read_sql_query(query, conn, params=[member_id, start_date, end_date])
 
 
@@ -828,7 +1053,6 @@ def render_monthly_report(result, member_id: str, month: str):
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
-    diff_rate = safe_float(monthly_summary.get("diff_rate_percent", 0))
     transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
 
     sqlite_this_month_total = get_month_total_from_sqlite(member_id_int, month)
@@ -840,6 +1064,7 @@ def render_monthly_report(result, member_id: str, month: str):
         prev_amount = sqlite_prev_month_total
 
     recent_3_month_average = get_recent_3_month_average(member_id_int, month)
+    saving_rate, reward_point = calc_saving_rate_and_point(recent_3_month_average, total_amount)
 
     saved_amount = prev_amount - total_amount
     diff_amount = total_amount - prev_amount
@@ -901,13 +1126,13 @@ def render_monthly_report(result, member_id: str, month: str):
                     {status_text}입니다.
                 </div>
                 <div class="hero-desc">
-                    단순 총액이 아니라 전월 대비, 최근 3개월 평균, 반복 가맹점을 함께 비교해
-                    다음 달에 조정할 소비 지점을 찾았습니다.
+                    최근 3개월 평균 대비 절약률을 계산해 월간 절약 포인트를 산정했습니다.
+                    절약률이 높을수록 더 많은 포인트가 적립됩니다.
                 </div>
                 <div class="hero-chip-wrap">
                     <div class="hero-chip">최다 소비 · {_html_text(top_category)}</div>
-                    <div class="hero-chip">전월 대비 · {diff_rate:.1f}%</div>
-                    <div class="hero-chip">결제 건수 · {transaction_count}건</div>
+                    <div class="hero-chip">절약률 · {saving_rate:.1f}%</div>
+                    <div class="hero-chip">예상 포인트 · {reward_point:,}P</div>
                 </div>
             </div>
             """,
@@ -942,33 +1167,10 @@ def render_monthly_report(result, member_id: str, month: str):
         metric_card("총 소비", money(total_amount), f"전월 대비 {diff_rate:.1f}%")
 
     with m2:
-        if saved_amount > 0:
-            st.markdown(
-                f"""
-                <div class="metric-card" style="background:#ecfdf5; border:1px solid #bbf7d0;">
-                    <div class="metric-label">절약 금액</div>
-                    <div class="metric-value" style="color:#166534;">{money(saved_amount)}</div>
-                    <div class="metric-desc">이번 달 소비 절감 👍</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        elif saved_amount < 0:
-            st.markdown(
-                f"""
-                <div class="metric-card" style="background:#fef2f2; border:1px solid #fecaca;">
-                    <div class="metric-label">초과 소비</div>
-                    <div class="metric-value" style="color:#dc2626;">{money(abs(saved_amount))}</div>
-                    <div class="metric-desc">전월 대비 지출 증가 ⚠️</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            metric_card("전월 대비", "변화 없음", "지난달과 같은 수준입니다.")
+        metric_card("최근 3개월 평균", money(recent_3_month_average), f"절약률 {saving_rate:.1f}%")
 
     with m3:
-        metric_card("최대 소비 카테고리", _html_text(top_category), money(top_category_amount))
+        metric_card("이번 달 적립 포인트", f"{reward_point:,}P", "절약률 × 20, 최대 1,000P")
 
     st.markdown('<div class="section">비교 기준으로 보기</div>', unsafe_allow_html=True)
 
@@ -979,6 +1181,15 @@ def render_monthly_report(result, member_id: str, month: str):
 
     with c2:
         compare_card("최근 3개월 평균 대비", total_amount, recent_3_month_average)
+
+    render_saving_point_card(
+        member_id=member_id_int,
+        month=month,
+        total_amount=total_amount,
+        recent_3_month_average=recent_3_month_average,
+        saving_rate=saving_rate,
+        reward_point=reward_point,
+    )
 
     st.markdown('<div class="section">월간 소비 대시보드</div>', unsafe_allow_html=True)
 
@@ -1106,14 +1317,16 @@ def render_monthly_report(result, member_id: str, month: str):
         st.subheader("월간 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
 
-        st.subheader("비교 데이터 디버그")
+        st.subheader("절약 포인트 디버그")
         st.json(
             {
                 "db_path": str(APP_SQLITE_PATH),
                 "month": month,
                 "this_month_total": total_amount,
-                "prev_month_total": prev_amount,
                 "recent_3_month_average": recent_3_month_average,
+                "saving_rate": saving_rate,
+                "reward_point": reward_point,
+                "formula": "(최근 3개월 평균 - 이달 실제 지출) / 최근 3개월 평균 × 100, 포인트 = 절약률 × 20, 최대 1000P",
             }
         )
 
@@ -1152,6 +1365,7 @@ def render_monthly_report(result, member_id: str, month: str):
 
 inject_css()
 render_date_picker_styles()
+ensure_monthly_saving_reward_table()
 
 if "monthly_report_result" not in st.session_state:
     st.session_state.monthly_report_result = None
@@ -1167,7 +1381,7 @@ top1, top2 = st.columns([1.3, 1])
 with top1:
     st.markdown('<div class="page-title">🏆 월간 소비 리포트</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="page-subtitle">한 달 소비를 전월과 최근 3개월 평균과 비교해 LLM이 절약 포인트를 해석합니다.</div>',
+        '<div class="page-subtitle">최근 3개월 평균 대비 절약률을 계산해 월간 절약 포인트를 적립합니다.</div>',
         unsafe_allow_html=True,
     )
 
