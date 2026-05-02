@@ -42,6 +42,9 @@ from catcher_llm.schemas.consumption_feedback import (
 from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
 )
+from catcher_llm.services.consumption_feedback.financial_context import (
+    load_user_financial_context,
+)
 from catcher_llm.services.consumption_feedback.interpretation import (
     extract_feedback_reason_summary,
     extract_spending_indicators,
@@ -261,6 +264,8 @@ def load_user_profile_context(
     if user is None:
         raise ValueError(f"멤버 {member_id}번 사용자를 찾을 수 없습니다.")
 
+    financial_context = load_user_financial_context(member_id=member_id, settings=config)
+
     return UserProfileContext(
         user_id=user.id,
         name=user.name,
@@ -272,6 +277,9 @@ def load_user_profile_context(
         card_grade=user.card_grade,
         persona=user.persona,
         saving_goal_text=user.saving_goal_text,
+        annual_income=financial_context.annual_income,
+        monthly_income=financial_context.monthly_income,
+        target_max_spending_amount=financial_context.target_max_spending_amount,
     )
 
 

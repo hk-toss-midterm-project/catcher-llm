@@ -97,6 +97,9 @@ class UserProfileContext(BaseModel):
     card_grade: str | None = None
     persona: str | None = None
     saving_goal_text: str | None = None
+    annual_income: float | None = None
+    monthly_income: float | None = None
+    target_max_spending_amount: float | None = None
 
 
 __all__ = [

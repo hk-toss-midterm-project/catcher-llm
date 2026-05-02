@@ -1343,6 +1343,186 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
             [target.linked_cause for target in sanitized_cause.intervention_targets],
         )
 
+    def test_sanitize_monthly_problem_result_uses_budget_and_fixed_cost_context(self) -> None:
+        """월간 문제 결과가 목표 예산 지표와 고정비 문제를 월간 JSON 근거로 보강하는지 검증한다."""
+        raw_json = """
+        {
+          "monthly_summary": {"this_month_total": 3608900},
+          "monthly_metrics": {
+            "monthly_budget_usage_rate_percent": 292.98,
+            "monthly_overspend_amount": 2048900,
+            "monthly_income_usage_rate_percent": 72.18,
+            "target_spending_to_income_rate_percent": 31.2,
+            "fixed_cost_burden_rate_percent": 21.49
+          },
+          "category_deep": [
+            {"category": "쇼핑", "type": "variable", "total_amount": 1461500, "ratio_percent": 40.5, "prev_month_amount": 508800, "diff_amount": 952700, "diff_rate_percent": 187.2445},
+            {"category": "납부", "type": "fixed", "total_amount": 1074700, "ratio_percent": 29.8, "prev_month_amount": 766700, "diff_amount": 308000, "diff_rate_percent": 40.1722}
+          ],
+          "high_spending": {
+            "items": [
+              {"used_at": "2026-04-05 21:24:57", "merchant": "하이마트", "amount": 1164600, "category": "쇼핑"},
+              {"used_at": "2026-04-05 09:20:29", "merchant": "도시가스", "amount": 278400, "category": "납부"},
+              {"used_at": "2026-04-05 11:21:05", "merchant": "아파트관리비", "amount": 191700, "category": "납부"}
+            ]
+          }
+        }
+        """
+        problem_result = ProblemAnalysisResult(
+            money_leaks=[
+                SpendingFinding(
+                    subcategory="쇼핑",
+                    title="쇼핑 지출 증가",
+                    detail="쇼핑 카테고리에서 전월 대비 크게 증가",
+                    confidence="high",
+                    evidences=[
+                        EvidenceItem(
+                            json_path="category_deep[0]",
+                            supporting_value='{"category":"쇼핑","diff_amount":952700}',
+                            reason="전월 대비 쇼핑 지출 증가",
+                        )
+                    ],
+                ),
+                SpendingFinding(
+                    subcategory="납부",
+                    title="납부 지출 증가",
+                    detail="납부 카테고리에서 전월 대비 증가",
+                    confidence="high",
+                    evidences=[
+                        EvidenceItem(
+                            json_path="category_deep[1]",
+                            supporting_value='{"category":"납부","diff_amount":308000}',
+                            reason="전월 대비 납부 지출 증가",
+                        )
+                    ],
+                ),
+            ],
+            saving_blockers=[],
+            fixed_cost_issues=[],
+        )
+
+        sanitized = sanitize_spending_analysis_payload(
+            {
+                "raw_json": raw_json,
+                "indicator_json": "{}",
+                "problem_result": problem_result,
+            }
+        )
+
+        sanitized_problem = sanitized["problem_result"]
+        assert isinstance(sanitized_problem, ProblemAnalysisResult)
+
+        self.assertEqual(
+            [finding.subcategory for finding in sanitized_problem.money_leaks],
+            ["쇼핑"],
+        )
+        self.assertEqual(
+            sanitized_problem.money_leaks[0].evidences[0].json_path,
+            "category_deep[0].diff_amount",
+        )
+        self.assertTrue(sanitized_problem.saving_blockers)
+        budget_paths = {
+            evidence.json_path
+            for finding in sanitized_problem.saving_blockers
+            for evidence in finding.evidences
+        }
+        self.assertIn("monthly_metrics.monthly_budget_usage_rate_percent", budget_paths)
+        self.assertIn("monthly_metrics.monthly_overspend_amount", budget_paths)
+        self.assertTrue(sanitized_problem.fixed_cost_issues)
+        fixed_paths = {
+            evidence.json_path
+            for finding in sanitized_problem.fixed_cost_issues
+            for evidence in finding.evidences
+        }
+        self.assertIn("high_spending.items[1].amount", fixed_paths)
+        self.assertIn("monthly_metrics.fixed_cost_burden_rate_percent", fixed_paths)
+
+    def test_sanitize_monthly_cause_result_builds_intervention_targets(self) -> None:
+        """월간 원인 결과가 고액·고정비 개입 타겟을 자동 보강하고 amount 경로로 좁히는지 검증한다."""
+        raw_json = """
+        {
+          "monthly_summary": {"this_month_total": 3608900},
+          "monthly_metrics": {
+            "monthly_budget_usage_rate_percent": 292.98,
+            "monthly_overspend_amount": 2048900
+          },
+          "high_spending": {
+            "items": [
+              {"used_at": "2026-04-05 21:24:57", "merchant": "하이마트", "amount": 1164600, "category": "쇼핑"},
+              {"used_at": "2026-04-06 10:20:00", "merchant": "캠핑장", "amount": 362100, "category": "여가"},
+              {"used_at": "2026-04-05 09:20:29", "merchant": "도시가스", "amount": 278400, "category": "납부"},
+              {"used_at": "2026-04-05 11:21:05", "merchant": "아파트관리비", "amount": 191700, "category": "납부"}
+            ]
+          }
+        }
+        """
+        cause_result = CauseAnalysisResult(
+            one_off_high_spending_causes=[
+                SpendingFinding(
+                    subcategory="쇼핑",
+                    title="하이마트",
+                    detail="하이마트에서 1164600원 결제",
+                    confidence="high",
+                    evidences=[
+                        EvidenceItem(
+                            json_path="high_spending.items[0]",
+                            supporting_value='{"merchant":"하이마트","amount":1164600}',
+                            reason="고액 결제",
+                        )
+                    ],
+                ),
+                SpendingFinding(
+                    subcategory="납부",
+                    title="도시가스",
+                    detail="도시가스에서 278400원 결제",
+                    confidence="high",
+                    evidences=[
+                        EvidenceItem(
+                            json_path="high_spending.items[2]",
+                            supporting_value='{"merchant":"도시가스","amount":278400}',
+                            reason="고액 납부 결제",
+                        )
+                    ],
+                ),
+            ],
+            fixed_cost_timing_causes=[],
+            intervention_targets=[],
+        )
+
+        sanitized = sanitize_spending_analysis_payload(
+            {
+                "raw_json": raw_json,
+                "indicator_json": "{}",
+                "cause_result": cause_result,
+            }
+        )
+
+        sanitized_cause = sanitized["cause_result"]
+        assert isinstance(sanitized_cause, CauseAnalysisResult)
+
+        self.assertEqual(len(sanitized_cause.one_off_high_spending_causes), 1)
+        self.assertEqual(
+            sanitized_cause.one_off_high_spending_causes[0].evidences[0].json_path,
+            "high_spending.items[0].amount",
+        )
+        self.assertTrue(sanitized_cause.fixed_cost_timing_causes)
+        self.assertNotIn(
+            "납부",
+            {finding.subcategory for finding in sanitized_cause.one_off_high_spending_causes},
+        )
+        target_titles = [target.title for target in sanitized_cause.intervention_targets]
+        self.assertIn("하이마트 쇼핑 고액 단일 결제 점검 타겟", target_titles)
+        self.assertIn("캠핑장 여가 고액 단일 결제 점검 타겟", target_titles)
+        self.assertIn("도시가스 고정비 점검 타겟", target_titles)
+        self.assertIn("아파트관리비 고정비 점검 타겟", target_titles)
+        self.assertTrue(
+            all(
+                target.target_json_path.startswith("high_spending.items[")
+                and target.target_json_path.endswith("].amount")
+                for target in sanitized_cause.intervention_targets
+            )
+        )
+
     def test_period_analysis_prompts_name_extended_comparison_baselines(self) -> None:
         """일·주·월 해석 프롬프트가 새 비교 기준을 명시적으로 안내하는지 검증한다."""
         base_input = {
@@ -1405,12 +1585,91 @@ class ConsumptionFeedbackInterpretationTests(unittest.TestCase):
         self.assertIn("daily_metrics", analysis_input["raw_json"])
         self.assertIn("daily_comparisons", analysis_input["raw_json"])
         self.assertIn("daily_metrics.late_night_ratio_percent", analysis_input["indicator_json"])
+        self.assertIn(
+            "daily_metrics.daily_budget_usage_rate_percent",
+            analysis_input["indicator_json"],
+        )
+        self.assertIn(
+            "daily_metrics.daily_income_usage_rate_percent",
+            analysis_input["indicator_json"],
+        )
+        self.assertIn(
+            "daily_metrics.projected_monthly_budget_usage_rate_percent",
+            analysis_input["indicator_json"],
+        )
         self.assertIn("지난주 같은 요일 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("최근 4주 같은 요일 평균 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("충동소비 점수", analysis_input["indicator_json"])
         self.assertIn("payment_behavior_analysis", analysis_input["raw_json"])
         self.assertIn("마찰력 없는 지출 비중", analysis_input["indicator_json"])
         self.assertEqual(analysis_input["user_profile_json"], "{}")
+
+    def test_period_analysis_prompts_name_income_and_target_budget_metrics(self) -> None:
+        """일·주·월 해석 프롬프트가 연소득과 월 목표 소비 한도 지표를 명시하는지 검증한다."""
+        base_input = {
+            "raw_json": "{}",
+            "indicator_json": "{}",
+            "user_profile_json": "{}",
+        }
+        cause_input = {
+            **base_input,
+            "pattern_text": "{}",
+            "problem_text": "{}",
+        }
+        action_input = {
+            **cause_input,
+            "cause_text": "{}",
+        }
+
+        prompt_contents = [
+            build_consumption_pattern_prompt().invoke(base_input),
+            build_consumption_problem_prompt().invoke(base_input),
+            build_consumption_cause_prompt().invoke(cause_input),
+            build_consumption_action_prompt().invoke(action_input),
+            build_consumption_cause_action_prompt().invoke(cause_input),
+            build_consumption_unified_analysis_prompt().invoke(base_input),
+            build_weekly_consumption_pattern_prompt().invoke(base_input),
+            build_weekly_consumption_problem_prompt().invoke(base_input),
+            build_weekly_consumption_cause_prompt().invoke(cause_input),
+            build_weekly_consumption_action_prompt().invoke(action_input),
+            build_monthly_consumption_pattern_prompt().invoke(base_input),
+            build_monthly_consumption_problem_prompt().invoke(base_input),
+            build_monthly_consumption_cause_prompt().invoke(cause_input),
+            build_monthly_consumption_action_prompt().invoke(action_input),
+        ]
+
+        for rendered_prompt in prompt_contents:
+            content = "\n".join(str(message.content) for message in rendered_prompt.messages)
+            self.assertIn("연소득", content)
+            self.assertIn("월 목표 소비 한도", content)
+
+    def test_monthly_prompts_require_budget_evidence_and_intervention_targets(self) -> None:
+        """월간 해석 프롬프트가 예산 근거와 고액·고정비 개입 타겟 생성을 요구하는지 검증한다."""
+        base_input = {
+            "raw_json": "{}",
+            "indicator_json": "{}",
+            "user_profile_json": "{}",
+        }
+        cause_input = {
+            **base_input,
+            "pattern_text": "{}",
+            "problem_text": "{}",
+        }
+
+        problem_prompt = build_monthly_consumption_problem_prompt().invoke(base_input)
+        cause_prompt = build_monthly_consumption_cause_prompt().invoke(cause_input)
+        problem_content = "\n".join(str(message.content) for message in problem_prompt.messages)
+        cause_content = "\n".join(str(message.content) for message in cause_prompt.messages)
+
+        self.assertIn("monthly_metrics.monthly_budget_usage_rate_percent", problem_content)
+        self.assertIn("monthly_metrics.monthly_overspend_amount", problem_content)
+        self.assertIn("monthly_metrics.monthly_income_usage_rate_percent", problem_content)
+        self.assertIn("fixed_cost_issues", problem_content)
+        self.assertIn("category_deep[n].diff_amount", problem_content)
+        self.assertIn("납부 카테고리", problem_content)
+        self.assertIn("intervention_targets", cause_content)
+        self.assertIn("high_spending.items[n].amount", cause_content)
+        self.assertIn("월 목표 초과", cause_content)
 
 
 if __name__ == "__main__":

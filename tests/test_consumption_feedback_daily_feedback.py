@@ -26,6 +26,7 @@ from catcher_llm.services.consumption_feedback.daily_feedback import (
     DailyFeedbackTimingRecord,
     build_feedback_retrieval_queries,
     generate_daily_feedback,
+    load_user_profile_context,
     make_daily_feedback_input,
     retrieve_feedback_contexts,
     serialize_advice_contexts,
@@ -43,8 +44,8 @@ def _write_feedback_seed_csvs(csv_dir: Path) -> None:
     (csv_dir / "users_v3.csv").write_text(
         "\n".join(
             [
-                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text",
-                "1,김토스,29,개발자,남성,7000,서울,Gold,절약형,비상금 300만원 만들기",
+                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text,target_max_spending_amount",
+                "1,김토스,29,개발자,남성,36000000,서울,Gold,절약형,비상금 300만원 만들기,300000",
             ]
         ),
         encoding="utf-8-sig",
@@ -80,6 +81,17 @@ def _make_feedback_settings(root: Path) -> Settings:
 
 
 class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
+    def test_load_user_profile_context_includes_financial_target_fields(self) -> None:
+        """사용자 프로필 컨텍스트가 연소득과 월 목표 소비 한도를 함께 제공하는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+            user_profile = load_user_profile_context(member_id=1, settings=settings)
+
+        self.assertEqual(user_profile.income, "36000000")
+        self.assertEqual(user_profile.annual_income, 36_000_000)
+        self.assertEqual(user_profile.monthly_income, 3_000_000)
+        self.assertEqual(user_profile.target_max_spending_amount, 300_000)
+
     def test_build_feedback_retrieval_queries_uses_spending_and_intervention_targets(
         self,
     ) -> None:

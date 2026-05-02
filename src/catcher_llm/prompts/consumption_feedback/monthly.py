@@ -43,6 +43,13 @@ def build_monthly_consumption_problem_prompt() -> ChatPromptTemplate:
                 "당신은 월간 소비에서 절약을 방해하는 문제를 JSON 지표로 분리해서 설명하는 소비 분석가다. "
                 "제공된 JSON 값만 사용하고 추측성 서술은 최소화하라. 전월 대비, 최근 3개월 평균 대비 변화와 "
                 "고정비, 반복 결제, 야간 소비, 소액 누적, 고액 결제를 서로 분리해 판단하라. "
+                "월 목표·소득 맥락은 반드시 monthly_metrics.monthly_budget_usage_rate_percent, "
+                "monthly_metrics.monthly_overspend_amount, monthly_metrics.monthly_income_usage_rate_percent, "
+                "monthly_metrics.target_spending_to_income_rate_percent 중 실제 값이 있는 지표를 최소 1개 이상 "
+                "근거로 사용하라. 납부 카테고리, 관리비, 전기요금, 통신비 등 고정비 성격 항목은 "
+                "money_leaks가 아니라 fixed_cost_issues에 분리하고, 불필요 지출로 단정하지 마라. "
+                "카테고리 증감 근거는 category_deep[n] 전체가 아니라 category_deep[n].diff_amount "
+                "또는 category_deep[n].total_amount처럼 판단 필드까지 좁혀라. "
                 f"{MONTHLY_INTERPRETATION_CLASSIFICATION_RULES}",
             ),
             (
@@ -67,6 +74,11 @@ def build_monthly_consumption_cause_prompt() -> ChatPromptTemplate:
                 "원본 월간 JSON과 추출 지표 JSON의 수치 근거를 우선 사용하라. 습관성, 보상성, "
                 "스트레스성, 편의성 기반, 소액 누적형 소비를 구분하되, 단일 고액 결제, "
                 "고정비 납부 타이밍, 요일·기간 집중도 별도 원인 후보로 설명하라. "
+                "월 목표 초과 또는 소득 대비 소비 부담이 확인되면 monthly_metrics의 예산·소득 지표를 "
+                "원인 우선순위 판단에 반영하라. high_spending.items의 비고정비 고액 결제와 "
+                "납부·관리비·전기요금 같은 고정비 고액 결제는 intervention_targets에 RAG 검색 후보로 "
+                "남겨라. 고액 결제 근거와 target_json_path는 high_spending.items[n]이 아니라 "
+                "high_spending.items[n].amount까지 좁혀라. "
                 f"{MONTHLY_INTERPRETATION_CLASSIFICATION_RULES} "
                 f"{CAUSE_INTERVENTION_TARGET_RULES}",
             ),

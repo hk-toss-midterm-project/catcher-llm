@@ -206,6 +206,18 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             "weekly_metrics.weekend_spending_ratio_percent",
             analysis_input["indicator_json"],
         )
+        self.assertIn(
+            "weekly_metrics.weekly_budget_usage_rate_percent",
+            analysis_input["indicator_json"],
+        )
+        self.assertIn(
+            "weekly_metrics.weekly_income_usage_rate_percent",
+            analysis_input["indicator_json"],
+        )
+        self.assertIn(
+            "weekly_metrics.month_to_date_budget_usage_rate_percent",
+            analysis_input["indicator_json"],
+        )
         self.assertIn("최근 4주 평균 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("지난달 같은 주차 대비 지출 증감률", analysis_input["indicator_json"])
         self.assertIn("주말 과소비 지수", analysis_input["indicator_json"])

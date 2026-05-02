@@ -45,7 +45,9 @@ _FIELD_CAUSE_NAMES = {
     "long_term_problem_spending",
 }
 _CATEGORY_SUMMARY_INDEX_PATTERN = re.compile(r"category_summary\[(\d+)\]")
+_MONTHLY_CATEGORY_DEEP_INDEX_PATTERN = re.compile(r"category_deep\[(\d+)\]")
 _HIGH_SPENDING_ITEM_INDEX_PATTERN = re.compile(r"waste_detection\.high_spending\.items\[(\d+)\]")
+_MONTHLY_HIGH_SPENDING_ITEM_INDEX_PATTERN = re.compile(r"high_spending\.items\[(\d+)\]")
 _WEEKDAY_LABELS = {
     "월": "월요일",
     "화": "화요일",
@@ -74,6 +76,7 @@ def sanitize_spending_analysis_payload(payload: dict[str, object]) -> dict[str, 
     indicator_json = _load_json_object(payload.get("indicator_json"))
     sanitized = dict(payload)
     use_candidate_rebuild = _has_weekly_candidate_inputs(raw_json)
+    use_monthly_sanitization = _has_monthly_candidate_inputs(raw_json)
 
     pattern_result = _coerce_model(payload.get("pattern_result"), PatternAnalysisResult)
     if pattern_result is not None:
@@ -85,7 +88,7 @@ def sanitize_spending_analysis_payload(payload: dict[str, object]) -> dict[str, 
 
     problem_result = _coerce_model(payload.get("problem_result"), ProblemAnalysisResult)
     if problem_result is not None:
-        sanitized["problem_result"] = (
+        sanitized_problem_result = (
             _build_weekly_problem_result_from_candidates(raw_json)
             if use_candidate_rebuild
             else _sanitize_problem_result(
@@ -94,14 +97,29 @@ def sanitize_spending_analysis_payload(payload: dict[str, object]) -> dict[str, 
                 indicator_json,
             )
         )
+        if use_monthly_sanitization:
+            sanitized_problem_result = _sanitize_monthly_problem_result(
+                sanitized_problem_result,
+                raw_json,
+                indicator_json,
+            )
+        sanitized["problem_result"] = sanitized_problem_result
 
     cause_result = _coerce_model(payload.get("cause_result"), CauseAnalysisResult)
     if cause_result is not None:
-        sanitized["cause_result"] = _sanitize_cause_result(
-            cause_result,
-            raw_json,
-            indicator_json,
-        )
+        if use_monthly_sanitization:
+            sanitized_cause_result = _sanitize_monthly_cause_result(
+                cause_result,
+                raw_json,
+                indicator_json,
+            )
+        else:
+            sanitized_cause_result = _sanitize_cause_result(
+                cause_result,
+                raw_json,
+                indicator_json,
+            )
+        sanitized["cause_result"] = sanitized_cause_result
 
     return sanitized
 
@@ -112,6 +130,18 @@ def _has_weekly_candidate_inputs(raw_json: Mapping[str, object]) -> bool:
         _lookup_path(raw_json, "weekly_summary") is not None
         and _lookup_path(raw_json, "category_summary") is not None
         and _lookup_path(raw_json, "waste_detection.high_spending.items") is not None
+    )
+
+
+def _has_monthly_candidate_inputs(raw_json: Mapping[str, object]) -> bool:
+    """월간 원본 JSON이 월간 후처리에 필요한 핵심 필드를 갖는지 확인한다."""
+    return (
+        _lookup_path(raw_json, "monthly_summary") is not None
+        and _lookup_path(raw_json, "monthly_metrics") is not None
+        and (
+            _lookup_path(raw_json, "category_deep") is not None
+            or _lookup_path(raw_json, "high_spending.items") is not None
+        )
     )
 
 
@@ -737,6 +767,303 @@ def _sanitize_problem_result(
     )
 
 
+def _monthly_category_entry_for_name(
+    raw_json: Mapping[str, object],
+    category: str,
+) -> tuple[Mapping[str, object], int] | None:
+    """월간 category_deep에서 지정한 카테고리 항목과 인덱스를 찾는다."""
+    categories_value = _lookup_path(raw_json, "category_deep")
+    if not isinstance(categories_value, Sequence) or isinstance(categories_value, str):
+        return None
+
+    for index, item in enumerate(categories_value):
+        item_map = _as_mapping(item)
+        if item_map is None:
+            continue
+        if str(item_map.get("category") or "") == category:
+            return item_map, index
+    return None
+
+
+def _monthly_category_diff_evidence(
+    category_entry: Mapping[str, object],
+    index: int,
+) -> EvidenceItem | None:
+    """월간 카테고리 증감 문제에 직접 연결되는 diff_amount evidence를 만든다."""
+    diff_amount = _as_number(category_entry.get("diff_amount"))
+    if diff_amount is None:
+        return None
+
+    category = str(category_entry.get("category") or "카테고리")
+    return EvidenceItem(
+        json_path=f"category_deep[{index}].diff_amount",
+        supporting_value=_format_amount(diff_amount),
+        reason=f"{category} 카테고리 전월 대비 증감액",
+    )
+
+
+def _sanitize_monthly_problem_finding(
+    finding: SpendingFinding,
+    raw_json: Mapping[str, object],
+) -> SpendingFinding:
+    """월간 카테고리 문제 결과의 근거를 category_deep 판단 필드로 보정한다."""
+    category_result = _monthly_category_entry_for_name(raw_json, finding.subcategory)
+    if category_result is None:
+        return finding
+
+    if not any(
+        _MONTHLY_CATEGORY_DEEP_INDEX_PATTERN.search(evidence.json_path)
+        for evidence in finding.evidences
+    ):
+        return finding
+
+    category_entry, index = category_result
+    evidence = _monthly_category_diff_evidence(category_entry, index)
+    if evidence is None:
+        return finding
+    return finding.model_copy(update={"evidences": [evidence]})
+
+
+def _is_monthly_fixed_cost_finding(finding: SpendingFinding) -> bool:
+    """월간 문제 항목이 납부·관리비 등 고정비 성격인지 확인한다."""
+    return finding.subcategory == "납부" or _is_fixed_cost_finding(finding)
+
+
+def _sanitize_monthly_problem_findings(
+    findings: list[SpendingFinding],
+    raw_json: Mapping[str, object],
+    indicator_json: Mapping[str, object],
+    *,
+    drop_fixed_cost: bool,
+) -> list[SpendingFinding]:
+    """월간 문제 소비 목록에서 고정비 분리와 category_deep 경로 보정을 적용한다."""
+    sanitized_findings: list[SpendingFinding] = []
+    for finding in findings:
+        if drop_fixed_cost and _is_monthly_fixed_cost_finding(finding):
+            continue
+        sanitized_finding = _sanitize_monthly_problem_finding(finding, raw_json)
+        if _is_decrease_problem(sanitized_finding, raw_json, indicator_json):
+            continue
+        if _is_unsupported_long_term_problem(sanitized_finding):
+            continue
+        sanitized_findings.append(sanitized_finding)
+    return sanitized_findings
+
+
+def _has_monthly_budget_evidence(findings: list[SpendingFinding]) -> bool:
+    """문제 결과에 월간 예산·소득 지표 근거가 이미 있는지 확인한다."""
+    return any(
+        evidence.json_path.startswith("monthly_metrics.")
+        and (
+            "budget" in evidence.json_path
+            or "income" in evidence.json_path
+            or "saving" in evidence.json_path
+        )
+        for finding in findings
+        for evidence in finding.evidences
+    )
+
+
+def _build_monthly_budget_blocker(raw_json: Mapping[str, object]) -> SpendingFinding | None:
+    """월 목표 소비 한도 초과와 소득 대비 소비율을 절약 방해 요소로 만든다."""
+    budget_usage = _as_number(
+        _lookup_path(raw_json, "monthly_metrics.monthly_budget_usage_rate_percent")
+    )
+    overspend = _as_number(_lookup_path(raw_json, "monthly_metrics.monthly_overspend_amount"))
+    if (budget_usage is None or budget_usage <= 100) and (overspend is None or overspend <= 0):
+        return None
+
+    evidences = [
+        evidence
+        for evidence in [
+            _evidence_for_numeric_path(
+                raw_json,
+                "monthly_metrics.monthly_budget_usage_rate_percent",
+                "월 목표 소비 한도 대비 사용률",
+                percent=True,
+            ),
+            _evidence_for_numeric_path(
+                raw_json,
+                "monthly_metrics.monthly_overspend_amount",
+                "월 목표 소비 한도 초과액",
+            ),
+            _evidence_for_numeric_path(
+                raw_json,
+                "monthly_metrics.monthly_income_usage_rate_percent",
+                "월소득 대비 총소비율",
+                percent=True,
+            ),
+            _evidence_for_numeric_path(
+                raw_json,
+                "monthly_metrics.target_spending_to_income_rate_percent",
+                "목표 소비 한도 소득 비중",
+                percent=True,
+            ),
+        ]
+        if evidence is not None
+    ]
+    if not evidences:
+        return None
+
+    usage_text = f"{_format_percent(budget_usage)}%" if budget_usage is not None else "확인됨"
+    overspend_text = _format_amount(overspend) if overspend is not None else "0"
+    return SpendingFinding(
+        subcategory="월 목표 소비 한도",
+        title="월 목표 소비 한도 초과",
+        detail=(
+            f"월 목표 소비 한도 대비 사용률이 {usage_text}이고 초과액이 "
+            f"{overspend_text}원으로, 카테고리 증감보다 예산 기준 우선순위가 필요합니다."
+        ),
+        confidence="high",
+        evidences=evidences,
+    )
+
+
+def _iter_monthly_high_spending_items(
+    raw_json: Mapping[str, object],
+) -> list[tuple[Mapping[str, object], int, float]]:
+    """월간 원본 JSON의 고액 결제 항목을 금액과 인덱스가 포함된 목록으로 반환한다."""
+    items_value = _lookup_path(raw_json, "high_spending.items")
+    if not isinstance(items_value, Sequence) or isinstance(items_value, str):
+        return []
+
+    items: list[tuple[Mapping[str, object], int, float]] = []
+    for index, item in enumerate(items_value):
+        item_map = _as_mapping(item)
+        if item_map is None:
+            continue
+        amount = _as_number(item_map.get("amount")) or 0.0
+        items.append((item_map, index, amount))
+    return items
+
+
+def _monthly_high_spending_evidence(item: Mapping[str, object], index: int) -> EvidenceItem:
+    """월간 고액 결제 항목을 직접 가리키는 evidence 객체를 만든다."""
+    merchant = str(item.get("merchant") or "고액 결제")
+    amount = _format_amount(item.get("amount"))
+    return EvidenceItem(
+        json_path=f"high_spending.items[{index}].amount",
+        supporting_value=amount,
+        reason=f"{merchant} 월간 고액 결제 금액",
+    )
+
+
+def _build_monthly_fixed_cost_issue_candidates(
+    raw_json: Mapping[str, object],
+) -> list[SpendingFinding]:
+    """월간 고액 납부 항목을 고정비 점검 후보로 묶어 만든다."""
+    fixed_items = [
+        item_result
+        for item_result in _iter_monthly_high_spending_items(raw_json)
+        if _is_fixed_cost_item(item_result[0])
+    ]
+    if not fixed_items:
+        return []
+
+    sorted_items = sorted(fixed_items, key=lambda item_result: item_result[2], reverse=True)[:3]
+    evidences = [
+        *[_monthly_high_spending_evidence(item, index) for item, index, _amount in sorted_items],
+        *[
+            evidence
+            for evidence in [
+                _evidence_for_numeric_path(
+                    raw_json,
+                    "monthly_metrics.fixed_cost_burden_rate_percent",
+                    "월소득 대비 고정비 부담률",
+                    percent=True,
+                )
+            ]
+            if evidence is not None
+        ],
+    ]
+    item_descriptions = [
+        f"{str(item.get('merchant') or '고정비')} {_format_amount(item.get('amount'))}원"
+        for item, _index, _amount in sorted_items
+    ]
+    return [
+        SpendingFinding(
+            subcategory="납부",
+            title="월간 고정비 점검 대상",
+            detail=(
+                f"{', '.join(item_descriptions)} 납부 결제가 월간 지출에 반영되었습니다. "
+                "불필요 지출 단정이 아니라 납부 일정과 고정비 부담률 점검 후보입니다."
+            ),
+            confidence="high",
+            evidences=_dedupe_evidences(evidences),
+        )
+    ]
+
+
+def _append_missing_monthly_budget_blocker(
+    findings: list[SpendingFinding],
+    raw_json: Mapping[str, object],
+) -> list[SpendingFinding]:
+    """월간 절약 방해 요소에 예산·소득 지표 근거가 없으면 자동 보강한다."""
+    if _has_monthly_budget_evidence(findings):
+        return findings
+
+    budget_blocker = _build_monthly_budget_blocker(raw_json)
+    if budget_blocker is None:
+        return findings
+    return [*findings, budget_blocker]
+
+
+def _sanitize_monthly_problem_result(
+    problem_result: ProblemAnalysisResult,
+    raw_json: Mapping[str, object],
+    indicator_json: Mapping[str, object],
+) -> ProblemAnalysisResult:
+    """월간 문제 결과에 목표 예산, 소득, 고정비 분리 규칙을 적용한다."""
+    money_leaks = _sanitize_monthly_problem_findings(
+        problem_result.money_leaks,
+        raw_json,
+        indicator_json,
+        drop_fixed_cost=True,
+    )
+    saving_blockers = _sanitize_monthly_problem_findings(
+        problem_result.saving_blockers,
+        raw_json,
+        indicator_json,
+        drop_fixed_cost=True,
+    )
+    fixed_cost_issues = _sanitize_monthly_problem_findings(
+        problem_result.fixed_cost_issues,
+        raw_json,
+        indicator_json,
+        drop_fixed_cost=False,
+    )
+    fixed_cost_issues = [*fixed_cost_issues, *_build_monthly_fixed_cost_issue_candidates(raw_json)]
+
+    return problem_result.model_copy(
+        update={
+            "money_leaks": money_leaks,
+            "saving_blockers": _append_missing_monthly_budget_blocker(
+                saving_blockers,
+                raw_json,
+            ),
+            "fixed_cost_issues": fixed_cost_issues,
+            "variable_cost_issues": _sanitize_monthly_problem_findings(
+                problem_result.variable_cost_issues,
+                raw_json,
+                indicator_json,
+                drop_fixed_cost=True,
+            ),
+            "short_term_problem_spending": _sanitize_monthly_problem_findings(
+                problem_result.short_term_problem_spending,
+                raw_json,
+                indicator_json,
+                drop_fixed_cost=True,
+            ),
+            "long_term_problem_spending": _sanitize_monthly_problem_findings(
+                problem_result.long_term_problem_spending,
+                raw_json,
+                indicator_json,
+                drop_fixed_cost=True,
+            ),
+        }
+    )
+
+
 def _build_weekly_problem_result_from_candidates(
     raw_json: Mapping[str, object],
 ) -> ProblemAnalysisResult:
@@ -1291,6 +1618,313 @@ def _sanitize_cause_result(
                 indicator_json,
             ),
             "intervention_targets": _sanitize_intervention_targets(
+                cause_result.intervention_targets,
+                raw_json,
+            ),
+        }
+    )
+
+
+def _monthly_high_spending_item_for_evidence(
+    raw_json: Mapping[str, object],
+    evidence: EvidenceItem,
+) -> tuple[Mapping[str, object], int] | None:
+    """월간 근거 경로가 가리키는 고액 결제 항목을 원본 JSON에서 찾는다."""
+    index_match = _MONTHLY_HIGH_SPENDING_ITEM_INDEX_PATTERN.search(evidence.json_path)
+    if index_match is None:
+        return None
+
+    index = int(index_match.group(1))
+    value = _lookup_path(raw_json, f"high_spending.items[{index}]")
+    item = _as_mapping(value)
+    if item is None:
+        return None
+    return item, index
+
+
+def _monthly_high_spending_item_for_finding(
+    raw_json: Mapping[str, object],
+    finding: SpendingFinding,
+) -> tuple[Mapping[str, object], int] | None:
+    """월간 탐지 결과의 가맹점명 또는 카테고리로 연결되는 고액 결제 항목을 찾는다."""
+    text = _finding_text(finding)
+    for item, index, _amount in _iter_monthly_high_spending_items(raw_json):
+        merchant = str(item.get("merchant") or "")
+        if merchant and merchant in text:
+            return item, index
+
+    matched_items = [
+        (item, index, amount)
+        for item, index, amount in _iter_monthly_high_spending_items(raw_json)
+        if str(item.get("category") or "") == finding.subcategory
+    ]
+    if not matched_items:
+        return None
+    item, index, _amount = max(matched_items, key=lambda item_result: item_result[2])
+    return item, index
+
+
+def _monthly_high_spending_items_for_finding(
+    raw_json: Mapping[str, object],
+    finding: SpendingFinding,
+) -> list[tuple[Mapping[str, object], int]]:
+    """월간 탐지 결과의 근거·문구와 연결되는 고액 결제 항목 목록을 찾는다."""
+    item_results: list[tuple[Mapping[str, object], int]] = []
+    seen_indexes: set[int] = set()
+    for evidence in finding.evidences:
+        item_result = _monthly_high_spending_item_for_evidence(raw_json, evidence)
+        if item_result is None:
+            continue
+        item, index = item_result
+        if index in seen_indexes:
+            continue
+        seen_indexes.add(index)
+        item_results.append((item, index))
+
+    if item_results:
+        return item_results
+
+    fallback_item = _monthly_high_spending_item_for_finding(raw_json, finding)
+    if fallback_item is None:
+        return []
+    item, index = fallback_item
+    return [(item, index)]
+
+
+def _sanitize_monthly_one_off_high_spending_causes(
+    findings: list[SpendingFinding],
+    raw_json: Mapping[str, object],
+    indicator_json: Mapping[str, object],
+) -> list[SpendingFinding]:
+    """월간 단일 고액 원인에서 고정비를 제거하고 근거 경로를 amount 필드로 좁힌다."""
+    sanitized_findings: list[SpendingFinding] = []
+    seen_paths: set[str] = set()
+    for finding in findings:
+        if not _has_supported_cause_direction(finding, raw_json, indicator_json):
+            continue
+
+        item_results = _monthly_high_spending_items_for_finding(raw_json, finding)
+        variable_items = [
+            (item, index) for item, index in item_results if not _is_fixed_cost_item(item)
+        ]
+        if item_results and not variable_items:
+            continue
+        if not item_results and _is_fixed_cost_finding(finding):
+            continue
+
+        evidences = (
+            [_monthly_high_spending_evidence(item, index) for item, index in variable_items]
+            if variable_items
+            else finding.evidences
+        )
+        normalized = finding.model_copy(update={"evidences": evidences})
+        dedupe_key = "|".join(evidence.json_path for evidence in normalized.evidences)
+        if dedupe_key in seen_paths:
+            continue
+        seen_paths.add(dedupe_key)
+        sanitized_findings.append(normalized)
+    return sanitized_findings
+
+
+def _monthly_fixed_cost_item_results_from_findings(
+    findings: list[SpendingFinding],
+    raw_json: Mapping[str, object],
+) -> list[tuple[Mapping[str, object], int]]:
+    """월간 원인 항목들에서 고정비 고액 결제 항목을 모은다."""
+    item_results: list[tuple[Mapping[str, object], int]] = []
+    seen_indexes: set[int] = set()
+    for finding in findings:
+        for item, index in _monthly_high_spending_items_for_finding(raw_json, finding):
+            if not _is_fixed_cost_item(item) or index in seen_indexes:
+                continue
+            seen_indexes.add(index)
+            item_results.append((item, index))
+    return item_results
+
+
+def _build_monthly_fixed_cost_timing_cause(
+    raw_json: Mapping[str, object],
+    item_results: list[tuple[Mapping[str, object], int]],
+) -> SpendingFinding:
+    """월간 고정비 고액 결제 항목들을 하나의 납부 타이밍 원인으로 묶는다."""
+    item_descriptions = [
+        f"{str(item.get('merchant') or '고정비')} {_format_amount(item.get('amount'))}원"
+        for item, _index in item_results
+    ]
+    evidences = [
+        *[_monthly_high_spending_evidence(item, index) for item, index in item_results],
+        *[
+            evidence
+            for evidence in [
+                _evidence_for_numeric_path(
+                    raw_json,
+                    "monthly_metrics.fixed_cost_burden_rate_percent",
+                    "월소득 대비 고정비 부담률",
+                    percent=True,
+                ),
+                _evidence_for_numeric_path(
+                    raw_json,
+                    "monthly_metrics.monthly_overspend_amount",
+                    "월 목표 소비 한도 초과액",
+                ),
+            ]
+            if evidence is not None
+        ],
+    ]
+    return SpendingFinding(
+        subcategory="납부",
+        title="월간 고정비 납부 타이밍 집중",
+        detail=(
+            f"{', '.join(item_descriptions)} 납부가 분석 월 총액과 목표 한도 초과에 함께 "
+            "반영된 고정비 납부 타이밍 후보입니다."
+        ),
+        confidence="high",
+        evidences=_dedupe_evidences(evidences),
+    )
+
+
+def _sanitize_monthly_fixed_cost_timing_causes(
+    cause_result: CauseAnalysisResult,
+    raw_json: Mapping[str, object],
+) -> list[SpendingFinding]:
+    """월간 원인의 고정비 납부 항목을 중복 없이 묶어 보정한다."""
+    fixed_item_results = _monthly_fixed_cost_item_results_from_findings(
+        [
+            *cause_result.one_off_high_spending_causes,
+            *cause_result.fixed_cost_timing_causes,
+        ],
+        raw_json,
+    )
+    if fixed_item_results:
+        return [_build_monthly_fixed_cost_timing_cause(raw_json, fixed_item_results)]
+    return [
+        finding
+        for finding in cause_result.fixed_cost_timing_causes
+        if _is_fixed_cost_finding(finding)
+    ]
+
+
+def _monthly_high_spending_query_hint(category: str, merchant: str) -> str:
+    """월간 고액 결제 항목의 RAG 검색 질의 힌트를 생성한다."""
+    if category == "쇼핑" and "하이마트" in merchant:
+        return "가전 쇼핑 고액 결제 예산 점검"
+    if category == "여가":
+        return f"{merchant} 여가 고액 결제 예산 점검"
+    return f"{category} 월간 고액 결제 예산 점검"
+
+
+def _normalize_monthly_high_spending_item(
+    item: Mapping[str, object],
+    index: int,
+) -> InterventionTarget:
+    """월간 고액 결제 항목 하나를 RAG 검색용 개입 타겟으로 정규화한다."""
+    merchant = str(item.get("merchant") or "고액 결제")
+    category = str(item.get("category") or "")
+    amount = _format_amount(item.get("amount"))
+
+    if _is_fixed_cost_item(item):
+        return InterventionTarget(
+            target_type="fixed_cost_review",
+            title=f"{merchant} 고정비 점검 타겟",
+            linked_cause=f"{merchant} {amount}원 월간 납부 지출",
+            target_json_path=f"high_spending.items[{index}].amount",
+            reason=(
+                f"고정비 성격의 {merchant} 결제가 월간 지출과 목표 한도 초과에 반영되어 "
+                "RAG 검색 후보로 넘김"
+            ),
+            query_hint=f"{merchant} 고정비 점검",
+        )
+
+    prefix = _CATEGORY_PREFIX.get(category, "category")
+    return InterventionTarget(
+        target_type=f"{prefix}_high_spending_review",
+        title=f"{merchant} {category} 고액 단일 결제 점검 타겟",
+        linked_cause=f"{merchant} {amount}원 월간 단일 고액 결제",
+        target_json_path=f"high_spending.items[{index}].amount",
+        reason=(
+            f"{category} 지출 증가와 월 목표 초과의 주요 원인이 {merchant} 단일 고액 결제인지 "
+            "확인하기 위해 RAG 검색 후보로 넘김"
+        ),
+        query_hint=_monthly_high_spending_query_hint(category, merchant),
+    )
+
+
+def _auto_monthly_high_spending_targets(
+    raw_json: Mapping[str, object],
+) -> list[InterventionTarget]:
+    """월간 고액·고정비 결제 타겟을 LLM 누락 시 자동 보강한다."""
+    high_spending_items = _iter_monthly_high_spending_items(raw_json)
+    if not high_spending_items:
+        return []
+
+    variable_candidates = [
+        item_result
+        for item_result in high_spending_items
+        if not _is_fixed_cost_item(item_result[0])
+    ]
+    fixed_candidates = [
+        item_result for item_result in high_spending_items if _is_fixed_cost_item(item_result[0])
+    ]
+    selected_items = [
+        *sorted(variable_candidates, key=lambda item_result: item_result[2], reverse=True)[:2],
+        *sorted(fixed_candidates, key=lambda item_result: item_result[2], reverse=True)[:2],
+    ]
+    return [
+        _normalize_monthly_high_spending_item(item, index)
+        for item, index, _amount in selected_items
+    ]
+
+
+def _normalize_monthly_intervention_target(
+    raw_json: Mapping[str, object],
+    target: InterventionTarget,
+) -> InterventionTarget | None:
+    """월간 개입 타겟을 high_spending.items[n].amount 중심으로 정규화한다."""
+    index_match = _MONTHLY_HIGH_SPENDING_ITEM_INDEX_PATTERN.search(target.target_json_path)
+    if index_match is not None:
+        index = int(index_match.group(1))
+        item = _as_mapping(_lookup_path(raw_json, f"high_spending.items[{index}]"))
+        if item is not None:
+            return _normalize_monthly_high_spending_item(item, index)
+
+    for item, index, _amount in _iter_monthly_high_spending_items(raw_json):
+        merchant = str(item.get("merchant") or "")
+        if merchant and merchant in target.title:
+            return _normalize_monthly_high_spending_item(item, index)
+    return None
+
+
+def _sanitize_monthly_intervention_targets(
+    targets: list[InterventionTarget],
+    raw_json: Mapping[str, object],
+) -> list[InterventionTarget]:
+    """월간 개입 타겟 후보를 RAG 검색에 적합한 고액·고정비 후보로 보강한다."""
+    auto_targets = _auto_monthly_high_spending_targets(raw_json)
+    sanitized_targets: list[InterventionTarget] = []
+    for target in [*auto_targets, *targets]:
+        normalized_target = _normalize_monthly_intervention_target(raw_json, target)
+        sanitized_targets.append(normalized_target or target)
+    return _dedupe_intervention_targets(sanitized_targets)
+
+
+def _sanitize_monthly_cause_result(
+    cause_result: CauseAnalysisResult,
+    raw_json: Mapping[str, object],
+    indicator_json: Mapping[str, object],
+) -> CauseAnalysisResult:
+    """월간 원인 결과에 고액·고정비 분리와 개입 타겟 자동 보강을 적용한다."""
+    return cause_result.model_copy(
+        update={
+            "one_off_high_spending_causes": _sanitize_monthly_one_off_high_spending_causes(
+                cause_result.one_off_high_spending_causes,
+                raw_json,
+                indicator_json,
+            ),
+            "fixed_cost_timing_causes": _sanitize_monthly_fixed_cost_timing_causes(
+                cause_result,
+                raw_json,
+            ),
+            "intervention_targets": _sanitize_monthly_intervention_targets(
                 cause_result.intervention_targets,
                 raw_json,
             ),

@@ -9,6 +9,7 @@ ACTION_CANDIDATE_OUTPUT_RULES = (
     "쓰고, 가능하면 _candidate로 끝내라. "
     "target_json_path는 배열 인덱스만 단독으로 쓰지 말고 total_amount, diff_amount, amount, "
     "ratio_percent 같은 실제 판단 필드까지 좁혀라. "
+    "예산 통제 후보는 연소득·월소득·월 목표 소비 한도와 예산 사용률 지표를 함께 근거로 삼아라. "
     "expected_effect는 확정 절약액이 아니라 가능성 검토, 원인 확인, 리스크 완화 가능성처럼 낮춰 써라. "
     "group_competition_metrics는 소비 총액 같은 결과 지표를 우선 제안하지 말고 주문 횟수, "
     "예산 초과 카테고리 수, 사전 점검률 같은 행동 기반 지표로 작성하라."
@@ -38,6 +39,8 @@ COMMON_INTERPRETATION_CLASSIFICATION_RULES = (
     "감소한 카테고리나 diff_amount 또는 diff_point가 0 이하인 항목은 절약 관점의 문제 소비로 분류하지 마라. "
     "지속 증가나 장기 문제는 기간별 비교 기준 또는 추이 데이터가 있을 때만 작성하라. "
     "납부·관리비·전기요금 같은 고정비는 stress_causes나 reward_causes가 아니라 fixed_cost 점검 타겟으로만 다뤄라. "
+    "사용자 프로필 JSON의 연소득·월소득·월 목표 소비 한도와 추출 지표 JSON의 예산·소득 지표를 함께 고려하되, "
+    "연소득이나 월 목표 소비 한도만으로 소비 이유를 단정하지 마라. "
     "방문이라고 쓰지 말고 카드 데이터 기준의 결제라고 써라. "
 )
 
