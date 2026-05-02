@@ -29,7 +29,7 @@ def to_dict(value):
 
 def _html_text(value) -> str:
     text = str(value or "")
-    text = re.sub(r"<[^>]*>", "", text)  # LLM 출력에 포함된 HTML 태그 제거
+    text = re.sub(r"<[^>]*>", "", text)
     return html.escape(text).replace("\n", "<br>")
 
 
@@ -37,7 +37,16 @@ def safe_int(value, default: int = 0) -> int:
     try:
         if value is None:
             return default
-        return int(value)
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
     except Exception:
         return default
 
@@ -51,16 +60,34 @@ def inject_css():
         """
         <style>
         .stApp { background:#f8fafc; }
-        .block-container { max-width: 1500px; padding-top: 1.3rem; padding-bottom: 2rem; }
 
-        .page-title { font-size:30px; font-weight:950; color:#0f172a; letter-spacing:-0.7px; margin-bottom:4px; }
-        .page-subtitle { color:#64748b; font-size:14px; margin-bottom:16px; }
+        .block-container {
+            max-width:1500px;
+            padding-top:1.3rem;
+            padding-bottom:2rem;
+        }
+
+        .page-title {
+            font-size:30px;
+            font-weight:950;
+            color:#0f172a;
+            letter-spacing:-0.7px;
+            margin-bottom:4px;
+        }
+
+        .page-subtitle {
+            color:#64748b;
+            font-size:14px;
+            margin-bottom:16px;
+            font-weight:650;
+        }
 
         .hero {
             padding:28px 32px;
             border-radius:30px;
-            background:radial-gradient(circle at 88% 18%, rgba(255,255,255,0.24), transparent 28%),
-                       linear-gradient(135deg, #0f172a 0%, #059669 48%, #2563eb 100%);
+            background:
+                radial-gradient(circle at 88% 18%, rgba(255,255,255,0.24), transparent 28%),
+                linear-gradient(135deg, #0f172a 0%, #059669 48%, #2563eb 100%);
             color:white;
             box-shadow:0 26px 70px rgba(5,150,105,0.22);
             min-height:218px;
@@ -77,12 +104,30 @@ def inject_css():
             margin-bottom:18px;
         }
 
-        .hero-main { font-size:32px; font-weight:950; line-height:1.45; letter-spacing:-0.7px; }
+        .hero-main {
+            font-size:32px;
+            font-weight:950;
+            line-height:1.45;
+            letter-spacing:-0.7px;
+        }
+
         .hero-main strong { color:#fde68a; }
 
-        .hero-desc { margin-top:16px; color:rgba(255,255,255,0.88); font-size:15px; line-height:1.65; font-weight:650; }
+        .hero-desc {
+            margin-top:16px;
+            color:rgba(255,255,255,0.88);
+            font-size:15px;
+            line-height:1.65;
+            font-weight:650;
+        }
 
-        .hero-chip-wrap { display:flex; gap:10px; flex-wrap:wrap; margin-top:20px; }
+        .hero-chip-wrap {
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            margin-top:20px;
+        }
+
         .hero-chip {
             padding:10px 13px;
             border-radius:999px;
@@ -92,7 +137,25 @@ def inject_css():
             font-weight:850;
         }
 
-        .side-panel {
+        .side-panel-up {
+            padding:24px;
+            border-radius:30px;
+            background:#fff5f5;
+            border:1px solid #fecaca;
+            box-shadow:0 18px 46px rgba(239,68,68,0.10);
+            min-height:218px;
+        }
+
+        .side-panel-down {
+            padding:24px;
+            border-radius:30px;
+            background:#eff6ff;
+            border:1px solid #bfdbfe;
+            box-shadow:0 18px 46px rgba(59,130,246,0.10);
+            min-height:218px;
+        }
+
+        .side-panel-neutral {
             padding:24px;
             border-radius:30px;
             background:#ffffff;
@@ -101,9 +164,31 @@ def inject_css():
             min-height:218px;
         }
 
-        .side-label { font-size:13px; font-weight:900; color:#64748b; margin-bottom:10px; }
-        .side-value { font-size:32px; font-weight:950; color:#0f172a; line-height:1.2; letter-spacing:-0.7px; }
-        .side-desc { margin-top:14px; color:#64748b; font-size:14px; line-height:1.65; font-weight:650; }
+        .side-label {
+            font-size:13px;
+            font-weight:900;
+            color:#64748b;
+            margin-bottom:10px;
+        }
+
+        .side-value {
+            font-size:34px;
+            font-weight:950;
+            line-height:1.2;
+            letter-spacing:-0.7px;
+        }
+
+        .side-desc {
+            margin-top:14px;
+            color:#475569;
+            font-size:14px;
+            line-height:1.65;
+            font-weight:700;
+        }
+
+        .up-color { color:#dc2626; }
+        .down-color { color:#2563eb; }
+        .neutral-color { color:#475569; }
 
         .section {
             font-size:19px;
@@ -122,9 +207,28 @@ def inject_css():
             min-height:120px;
         }
 
-        .metric-label { color:#64748b; font-weight:850; font-size:13px; }
-        .metric-value { color:#0f172a; font-weight:950; font-size:24px; margin-top:10px; line-height:1.25; letter-spacing:-0.5px; }
-        .metric-desc { color:#94a3b8; font-size:12.5px; margin-top:8px; line-height:1.45; font-weight:650; }
+        .metric-label {
+            color:#64748b;
+            font-weight:850;
+            font-size:13px;
+        }
+
+        .metric-value {
+            color:#0f172a;
+            font-weight:950;
+            font-size:24px;
+            margin-top:10px;
+            line-height:1.25;
+            letter-spacing:-0.5px;
+        }
+
+        .metric-desc {
+            color:#94a3b8;
+            font-size:12.5px;
+            margin-top:8px;
+            line-height:1.45;
+            font-weight:650;
+        }
 
         .score-card {
             padding:22px;
@@ -174,7 +278,7 @@ def inject_css():
             width:36px;
             height:36px;
             border-radius:50%;
-            background:#3182f6;
+            background:#10b981;
             color:white;
             align-items:center;
             justify-content:center;
@@ -219,7 +323,7 @@ def metric_card(label: str, value: str, desc: str = ""):
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-label">{label}</div>
+            <div class="metric-label">{_html_text(label)}</div>
             <div class="metric-value">{value}</div>
             <div class="metric-desc">{desc}</div>
         </div>
@@ -233,6 +337,7 @@ def get_category_rows(monthly_data):
         monthly_data.get("category_deep", [])
         or monthly_data.get("category_summary", [])
         or monthly_data.get("category_changes", [])
+        or []
     )
 
 
@@ -242,8 +347,8 @@ def get_top_category(monthly_data):
     if not rows:
         return "-", 0
 
-    top = max(rows, key=lambda x: safe_int(x.get("total_amount", 0)))
-    return top.get("category", "-"), safe_int(top.get("total_amount", 0))
+    top = max(rows, key=lambda x: safe_int(x.get("total_amount", x.get("amount", 0))))
+    return top.get("category", "-"), safe_int(top.get("total_amount", top.get("amount", 0)))
 
 
 def get_improved_category(monthly_data):
@@ -429,7 +534,7 @@ def make_category_change_chart(monthly_data):
     fig.update_traces(
         texttemplate="%{text:,.0f}",
         textposition="outside",
-        marker_color="#60a5fa",
+        marker_color="#22c55e",
         marker_line_width=0,
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<extra></extra>",
     )
@@ -563,7 +668,7 @@ def make_top5_merchant_chart_from_sqlite(member_id: int, month: str):
     fig.update_traces(
         texttemplate="%{text:,.0f}원",
         textposition="outside",
-        marker_color="#60a5fa",
+        marker_color="#16a34a",
         marker_line_width=0,
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<br>%{customdata}회<extra></extra>",
         customdata=df["payment_count"],
@@ -613,7 +718,7 @@ def call_monthly_feedback(generate_monthly_feedback, *, member_id, month, settin
 
 
 def get_action_text(feedback):
-    action_items = feedback.action_items or []
+    action_items = getattr(feedback, "action_items", []) or []
 
     if action_items:
         first = action_items[0]
@@ -643,7 +748,7 @@ def render_vote_buttons(member_id: str, month: str):
     v1, v2 = st.columns(2)
 
     with v1:
-        if st.button("👍 좋아요", width="stretch", type=like_type):
+        if st.button("👍 좋아요", use_container_width=True, type=like_type):
             st.session_state.monthly_report_vote = "like"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -653,7 +758,7 @@ def render_vote_buttons(member_id: str, month: str):
             st.rerun()
 
     with v2:
-        if st.button("👎 싫어요", width="stretch", type=dislike_type):
+        if st.button("👎 아쉬워요", use_container_width=True, type=dislike_type):
             st.session_state.monthly_report_vote = "dislike"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -677,16 +782,19 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
 
-    feedback_message = _html_text(feedback.feedback_message)
-    next_month_mission = _html_text(feedback.next_month_mission)
+    feedback_message = _html_text(getattr(feedback, "feedback_message", ""))
+    next_month_mission = _html_text(getattr(feedback, "next_month_mission", ""))
 
-    feedback_evidences = feedback.key_evidences or []
-    feedback_action_items = feedback.action_items or []
+    feedback_evidences = getattr(feedback, "key_evidences", []) or []
+    feedback_action_items = getattr(feedback, "action_items", []) or []
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
-    diff_rate = float(monthly_summary.get("diff_rate_percent", 0))
+    diff_rate = safe_float(monthly_summary.get("diff_rate_percent", 0))
     transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
+
+    saved_amount = prev_amount - total_amount
+    diff_amount = total_amount - prev_amount
 
     top_category, top_category_amount = get_top_category(monthly_data)
     improved = get_improved_category(monthly_data)
@@ -695,20 +803,32 @@ def render_monthly_report(result, member_id: str, month: str):
 
     action_title, action_detail = get_action_text(feedback)
 
+    if diff_amount > 0:
+        status_text = "전월보다 소비가 늘어난 증가형 흐름"
+        hero_result = "증가형"
+        side_class = "side-panel-up"
+        side_color = "up-color"
+        side_icon = "📈"
+        side_word = "증가"
+    elif diff_amount < 0:
+        status_text = "전월보다 소비가 줄어든 절약형 흐름"
+        hero_result = "절약형"
+        side_class = "side-panel-down"
+        side_color = "down-color"
+        side_icon = "📉"
+        side_word = "감소"
+    else:
+        status_text = "전월과 비슷한 유지형 흐름"
+        hero_result = "유지형"
+        side_class = "side-panel-neutral"
+        side_color = "neutral-color"
+        side_icon = "➖"
+        side_word = "변화 없음"
+
     if repeat_count > 0 and repeat_merchant != "-":
         repeat_text = f"반복 가맹점: {_html_text(repeat_merchant)} · {repeat_count}회"
     else:
         repeat_text = f"우선 점검 카테고리: {_html_text(worst_category)}"
-
-    if diff_rate < 0:
-        status_text = "전월보다 소비가 줄어든 절약형 흐름"
-        hero_result = "절약형"
-    elif diff_rate > 0:
-        status_text = "전월보다 소비가 늘어난 증가형 흐름"
-        hero_result = "증가형"
-    else:
-        status_text = "전월과 비슷한 유지형 흐름"
-        hero_result = "유지형"
 
     expected_saving = getattr(feedback, "expected_saving_amount", 0)
 
@@ -732,12 +852,12 @@ def render_monthly_report(result, member_id: str, month: str):
                     {status_text}입니다.
                 </div>
                 <div class="hero-desc">
-                    단순히 총액만 보는 대신, 전월 대비 증가 카테고리와 줄어든 카테고리를 함께 비교해
-                    다음 달에 가장 먼저 조정할 소비 지점을 찾았습니다.
+                    단순 총액이 아니라 전월 대비 증가 카테고리, 줄어든 카테고리,
+                    반복 가맹점을 함께 비교해 다음 달에 조정할 소비 지점을 찾았습니다.
                 </div>
                 <div class="hero-chip-wrap">
                     <div class="hero-chip">최다 소비 · {_html_text(top_category)}</div>
-                    <div class="hero-chip">전월 대비 · {diff_rate:.2f}%</div>
+                    <div class="hero-chip">전월 대비 · {diff_rate:.1f}%</div>
                     <div class="hero-chip">결제 건수 · {transaction_count}건</div>
                 </div>
             </div>
@@ -748,12 +868,17 @@ def render_monthly_report(result, member_id: str, month: str):
     with h2:
         st.markdown(
             f"""
-            <div class="side-panel">
-                <div class="side-label">이번 달 핵심 신호</div>
-                <div class="side-value">{hero_result}</div>
+            <div class="{side_class}">
+                <div class="side-label">전월 대비 소비 변화</div>
+                <div class="side-value {side_color}">{side_icon} {side_word}</div>
                 <div class="side-desc">
-                    가장 많이 쓴 카테고리는 <b>{_html_text(top_category)}</b>입니다.<br>
-                    해당 카테고리에서 <b>{money(top_category_amount)}</b>을 사용했습니다.
+                    전월 대비
+                    <b class="{side_color}">{money(abs(diff_amount))}</b>
+                    {side_word}했습니다.<br>
+                    변화율은
+                    <b class="{side_color}">{abs(diff_rate):.1f}%</b>
+                    입니다.<br><br>
+                    이번 달은 <b>{_html_text(top_category)}</b> 소비가 가장 컸습니다.
                 </div>
             </div>
             """,
@@ -762,45 +887,36 @@ def render_monthly_report(result, member_id: str, month: str):
 
     st.markdown('<div class="section">월간 핵심 성과</div>', unsafe_allow_html=True)
 
-    saved_amount = prev_amount - total_amount
-    is_saving = saved_amount > 0
-
     m1, m2, m3 = st.columns(3)
 
     with m1:
-        metric_card("총 소비", money(total_amount), f"{diff_rate:.2f}% 변화")
+        metric_card("총 소비", money(total_amount), f"전월 대비 {diff_rate:.1f}%")
 
     with m2:
-        if is_saving:
+        if saved_amount > 0:
             st.markdown(
                 f"""
-                <div class="metric-card" style="
-                    background:#ecfdf5;
-                    border:1px solid #bbf7d0;
-                    color:#166534;
-                ">
+                <div class="metric-card" style="background:#ecfdf5; border:1px solid #bbf7d0;">
                     <div class="metric-label">절약 금액</div>
-                    <div class="metric-value">{money(saved_amount)}</div>
+                    <div class="metric-value" style="color:#166534;">{money(saved_amount)}</div>
                     <div class="metric-desc">이번 달 소비 절감 👍</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-        else:
+        elif saved_amount < 0:
             st.markdown(
                 f"""
-                <div class="metric-card" style="
-                    background:#fef2f2;
-                    border:1px solid #fecaca;
-                    color:#991b1b;
-                ">
+                <div class="metric-card" style="background:#fef2f2; border:1px solid #fecaca;">
                     <div class="metric-label">초과 소비</div>
-                    <div class="metric-value">{money(abs(saved_amount))}</div>
+                    <div class="metric-value" style="color:#dc2626;">{money(abs(saved_amount))}</div>
                     <div class="metric-desc">전월 대비 지출 증가 ⚠️</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+        else:
+            metric_card("전월 대비", "변화 없음", "지난달과 같은 수준입니다.")
 
     with m3:
         metric_card("최대 소비 카테고리", _html_text(top_category), money(top_category_amount))
@@ -812,12 +928,12 @@ def render_monthly_report(result, member_id: str, month: str):
     with d1:
         with st.container(border=True):
             st.markdown("### 주차별 소비 흐름")
-            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), width="stretch")
+            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), use_container_width=True)
 
     with d2:
         with st.container(border=True):
             st.markdown("### 전월 대비 카테고리 증감")
-            st.plotly_chart(make_category_change_chart(monthly_data), width="stretch")
+            st.plotly_chart(make_category_change_chart(monthly_data), use_container_width=True)
 
     with d3:
         with st.container(border=True):
@@ -829,7 +945,7 @@ def render_monthly_report(result, member_id: str, month: str):
             )
 
             if top5_merchant_fig is not None:
-                st.plotly_chart(top5_merchant_fig, width="stretch")
+                st.plotly_chart(top5_merchant_fig, use_container_width=True)
             else:
                 st.info("가맹점 데이터가 없습니다.")
 
@@ -917,7 +1033,10 @@ def render_monthly_report(result, member_id: str, month: str):
         st.markdown(
             """
             <div class="vote-card">
-                <b>이 리포트는 어땠나요?</b>
+                <b>이 리포트는 어땠나요?</b><br><br>
+                <span style="color:#64748b; font-weight:650;">
+                다음 리포트 개선에 반영할게요.
+                </span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -938,7 +1057,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_evidences
                 ],
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -951,7 +1070,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_action_items
                 ],
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -1003,7 +1122,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", width="stretch")
+        run = st.button("생성", use_container_width=True)
 
 if run:
     st.session_state.monthly_report_vote = None
