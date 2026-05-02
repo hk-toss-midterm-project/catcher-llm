@@ -8,6 +8,8 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 from catcher_llm.config.settings import Settings
+from catcher_llm.db.models import SessionModel, UserMemoryModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.prompts.consumption_feedback import build_weekly_feedback_prompt
 from catcher_llm.schemas.consumption_feedback import (
     CauseAnalysisResult,
@@ -28,6 +30,7 @@ from catcher_llm.services.consumption_feedback.weekly_feedback import (
     make_weekly_spending_analysis_input,
     parse_weekly_spending_data,
 )
+from catcher_llm.services.user_data_service import ensure_user_database
 
 
 def _write_weekly_seed_csvs(csv_dir: Path) -> None:
@@ -299,9 +302,32 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         interpretation_chain.invoke.return_value = interpretation_result
         feedback_chain = MagicMock()
         feedback_chain.invoke.return_value = feedback_result
+        memory_summary_chain = MagicMock()
+        memory_summary_chain.invoke.return_value = (
+            "지난주 배달 미션과 이번 주 배달 제한 미션을 함께 요약합니다."
+        )
 
         with TemporaryDirectory() as tmp_dir:
             settings = _make_weekly_settings(Path(tmp_dir))
+            ensure_user_database(settings=settings)
+            with session_scope(settings) as db_session:
+                db_session.add(
+                    UserMemoryModel(
+                        user_id=1,
+                        period_type="weekly",
+                        summary="지난주에는 배달 주문이 반복되었습니다.",
+                    )
+                )
+                db_session.add(
+                    SessionModel(
+                        user_id=1,
+                        analysis_date="2024-03-25",
+                        period_type="weekly",
+                        analysis_result='{"weekly_summary": {"this_week_total": 22000}}',
+                        feedback_reason='[{"title": "지난주 배달 반복"}]',
+                        todo_tomorrow="지난주 배달 주문을 1회 줄입니다.",
+                    )
+                )
             weekly_json = build_weekly_consumption_analysis_json(
                 member_id=1,
                 week_start="2024-04-01",
@@ -330,12 +356,33 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                     "build_weekly_feedback_chain",
                     return_value=feedback_chain,
                 ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.weekly_feedback."
+                    "build_memory_summary_chain",
+                    return_value=memory_summary_chain,
+                ),
             ):
                 result = generate_weekly_feedback(
                     member_id=1,
                     week_start="2024-04-01",
                     week_end="2024-04-07",
                     settings=settings,
+                )
+
+            with session_scope(settings) as db_session:
+                saved_session = (
+                    db_session.query(SessionModel)
+                    .filter_by(
+                        user_id=1,
+                        analysis_date="2024-04-01",
+                        period_type="weekly",
+                    )
+                    .one()
+                )
+                refreshed_memory = (
+                    db_session.query(UserMemoryModel)
+                    .filter_by(user_id=1, period_type="weekly")
+                    .one()
                 )
 
         self.assertIsNone(result.error)
@@ -359,6 +406,18 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("retrieved_contexts", feedback_payload)
         self.assertIn("user_profile_json", feedback_payload)
         self.assertIn("memory_context_json", feedback_payload)
+        self.assertIsNotNone(result.memory_context)
+        assert result.memory_context is not None
+        self.assertEqual(
+            result.memory_context.memory_summary, "지난주에는 배달 주문이 반복되었습니다."
+        )
+        self.assertIn("지난주 배달 주문을 1회 줄입니다", feedback_payload["memory_context_json"])
+        self.assertEqual(saved_session.feedback_message, "배달과 고정비가 주간 지출을 키웠습니다.")
+        self.assertEqual(saved_session.todo_tomorrow, "다음 주 배달 주문은 1회만 허용합니다.")
+        self.assertEqual(
+            refreshed_memory.summary,
+            "지난주 배달 미션과 이번 주 배달 제한 미션을 함께 요약합니다.",
+        )
 
     def test_weekly_feedback_retrieval_queries_use_weekly_signals(self) -> None:
         """주간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""

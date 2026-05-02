@@ -6,6 +6,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from catcher_llm.config.settings import Settings
+from catcher_llm.db.models import SessionModel, UserMemoryModel
+from catcher_llm.db.session import session_scope
 from catcher_llm.prompts.consumption_feedback import build_monthly_feedback_prompt
 from catcher_llm.schemas.consumption_feedback import (
     CauseAnalysisResult,
@@ -26,6 +28,7 @@ from catcher_llm.services.consumption_feedback.monthly_feedback import (
     make_monthly_spending_analysis_input,
     parse_monthly_spending_data,
 )
+from catcher_llm.services.user_data_service import ensure_user_database
 
 
 def _write_monthly_seed_csvs(csv_dir: Path) -> None:
@@ -239,9 +242,32 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         interpretation_chain.invoke.return_value = interpretation_result
         feedback_chain = MagicMock()
         feedback_chain.invoke.return_value = feedback_result
+        memory_summary_chain = MagicMock()
+        memory_summary_chain.invoke.return_value = (
+            "지난달 자동이체 점검과 이번 달 미션을 함께 요약합니다."
+        )
 
         with TemporaryDirectory() as tmp_dir:
             settings = _make_monthly_settings(Path(tmp_dir))
+            ensure_user_database(settings=settings)
+            with session_scope(settings) as db_session:
+                db_session.add(
+                    UserMemoryModel(
+                        user_id=1,
+                        period_type="monthly",
+                        summary="지난달에는 자동이체와 식비 점검이 필요했습니다.",
+                    )
+                )
+                db_session.add(
+                    SessionModel(
+                        user_id=1,
+                        analysis_date="2024-03",
+                        period_type="monthly",
+                        analysis_result='{"monthly_summary": {"this_month_total": 110000}}',
+                        feedback_reason='[{"title": "지난달 자동이체 부담"}]',
+                        todo_tomorrow="지난달 자동이체 목록을 점검합니다.",
+                    )
+                )
             monthly_json = build_monthly_consumption_analysis_json(
                 member_id=1,
                 analysis_month="2024-04",
@@ -269,11 +295,32 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
                     "build_monthly_feedback_chain",
                     return_value=feedback_chain,
                 ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.monthly_feedback."
+                    "build_memory_summary_chain",
+                    return_value=memory_summary_chain,
+                ),
             ):
                 result = generate_monthly_feedback(
                     member_id=1,
                     analysis_month="2024-04",
                     settings=settings,
+                )
+
+            with session_scope(settings) as db_session:
+                saved_session = (
+                    db_session.query(SessionModel)
+                    .filter_by(
+                        user_id=1,
+                        analysis_date="2024-04",
+                        period_type="monthly",
+                    )
+                    .one()
+                )
+                refreshed_memory = (
+                    db_session.query(UserMemoryModel)
+                    .filter_by(user_id=1, period_type="monthly")
+                    .one()
                 )
 
         self.assertIsNone(result.error)
@@ -302,6 +349,22 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertIn("retrieved_contexts", feedback_payload)
         self.assertIn("user_profile_json", feedback_payload)
         self.assertIn("memory_context_json", feedback_payload)
+        self.assertIsNotNone(result.memory_context)
+        assert result.memory_context is not None
+        self.assertEqual(
+            result.memory_context.memory_summary,
+            "지난달에는 자동이체와 식비 점검이 필요했습니다.",
+        )
+        self.assertIn("지난달 자동이체 목록을 점검합니다", feedback_payload["memory_context_json"])
+        self.assertEqual(
+            saved_session.feedback_message,
+            "고정비와 반복 식비가 월간 지출을 키웠습니다.",
+        )
+        self.assertEqual(saved_session.todo_tomorrow, "다음 달 첫날 자동이체 목록을 정리합니다.")
+        self.assertEqual(
+            refreshed_memory.summary,
+            "지난달 자동이체 점검과 이번 달 미션을 함께 요약합니다.",
+        )
 
     def test_monthly_feedback_retrieval_queries_use_monthly_signals(self) -> None:
         """월간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""

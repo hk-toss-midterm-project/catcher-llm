@@ -12,6 +12,7 @@ from catcher_llm.schemas.consumption_feedback.base import (
     UserProfileContext,
     WeeklyFeedbackEvidenceType,
 )
+from catcher_llm.schemas.consumption_feedback.daily import DailyFeedbackMemoryContext
 
 
 class WeeklyOutlierThresholds(BaseModel):
@@ -353,6 +354,7 @@ class WeeklyFeedbackServiceResult(BaseModel):
     weekly_analysis: WeeklySpendingData | None = None
     interpretation_result: JsonObject | None = None
     user_profile: UserProfileContext | None = None
+    memory_context: DailyFeedbackMemoryContext | None = None
     retrieval_queries: list[str] = Field(default_factory=list)
     retrieved_contexts: list[RetrievedAdviceContext] = Field(default_factory=list)
     error: str | None = None

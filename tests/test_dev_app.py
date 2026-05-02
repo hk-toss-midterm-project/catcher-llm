@@ -833,6 +833,40 @@ def test_daily_feedback_dev_page_can_regenerate_cached_session() -> None:
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
 
+def test_daily_feedback_dev_page_loads_partial_cached_session() -> None:
+    """피드백 본문이 비어 있어도 저장된 일일 산출물이 있으면 캐시 세션으로 불러오는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-04-01",
+        period_type="daily",
+        analysis_result='{"stable_metrics": {"today_total": 1000}}',
+        feedback_message="",
+        feedback_reason="[]",
+        todo_tomorrow="저장된 미션입니다.",
+    )
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_daily_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.load_all_daily_sessions",
+            return_value=[cached_session],
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.daily_feedback.generate_daily_feedback",
+        ) as generate_feedback,
+    ):
+        app = AppTest.from_file("dev_pages/06_daily_feedback.py")
+        app.run(timeout=10)
+
+    assert len(app.exception) == 0
+    generate_feedback.assert_not_called()
+    assert any(button.label == "일일 피드백 재생성" for button in app.button)
+    assert not any(button.label == "일일 피드백 생성" for button in app.button)
+
+
 def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
     """저장된 주간 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
     cached_session = SessionModel(
@@ -887,6 +921,36 @@ def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
 
+def test_weekly_feedback_dev_page_loads_partial_cached_session() -> None:
+    """피드백 본문이 비어 있어도 저장된 주간 산출물이 있으면 캐시 세션으로 불러오는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-03-30",
+        period_type="weekly",
+        analysis_result='{"weekly_summary": {"this_week_total": 1000}}',
+        feedback_message="",
+        feedback_reason="[]",
+        todo_tomorrow="저장된 다음 주 미션입니다.",
+    )
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.weekly_feedback.load_weekly_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.weekly_feedback.generate_weekly_feedback",
+        ) as generate_feedback,
+    ):
+        app = AppTest.from_file("dev_pages/09_weekly_feedback.py")
+        app.run(timeout=10)
+
+    assert len(app.exception) == 0
+    generate_feedback.assert_not_called()
+    assert any(button.label == "주간 피드백 재생성" for button in app.button)
+    assert not any(button.label == "주간 피드백 생성" for button in app.button)
+
+
 def test_monthly_feedback_dev_page_can_regenerate_cached_session() -> None:
     """저장된 월간 세션이 있어도 재생성 버튼이 새 피드백 생성을 호출하는지 검증한다."""
     cached_session = SessionModel(
@@ -937,6 +1001,36 @@ def test_monthly_feedback_dev_page_can_regenerate_cached_session() -> None:
     assert call_kwargs["analysis_month"] == "2026-04"
     assert any(subheader.value == "재생성된 월간 피드백" for subheader in app.subheader)
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
+
+
+def test_monthly_feedback_dev_page_loads_partial_cached_session() -> None:
+    """피드백 본문이 비어 있어도 저장된 월간 산출물이 있으면 캐시 세션으로 불러오는지 검증한다."""
+    cached_session = SessionModel(
+        user_id=1,
+        analysis_date="2026-04",
+        period_type="monthly",
+        analysis_result='{"monthly_summary": {"this_month_total": 1000}}',
+        feedback_message="",
+        feedback_reason="[]",
+        todo_tomorrow="저장된 다음 달 미션입니다.",
+    )
+
+    with (
+        patch(
+            "catcher_llm.services.consumption_feedback.monthly_feedback.load_monthly_session_for_date",
+            return_value=cached_session,
+        ),
+        patch(
+            "catcher_llm.services.consumption_feedback.monthly_feedback.generate_monthly_feedback",
+        ) as generate_feedback,
+    ):
+        app = AppTest.from_file("dev_pages/12_monthly_feedback.py")
+        app.run(timeout=10)
+
+    assert len(app.exception) == 0
+    generate_feedback.assert_not_called()
+    assert any(button.label == "월간 피드백 재생성" for button in app.button)
+    assert not any(button.label == "월간 피드백 생성" for button in app.button)
 
 
 def test_feedback_dev_pages_render_feedback_reaction_controls() -> None:

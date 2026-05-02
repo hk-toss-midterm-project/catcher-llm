@@ -27,6 +27,7 @@ from catcher_llm.services.consumption_feedback.daily_feedback import (
     load_daily_session_for_date,
 )
 from catcher_llm.services.consumption_feedback.interpretation import extract_feedback_reason_summary
+from catcher_llm.services.consumption_feedback.session_cache import has_stored_feedback_payload
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -312,9 +313,9 @@ cached_session = load_daily_session_for_date(
     analysis_date=analysis_day,
     settings=settings,
 )
-_has_cache = cached_session is not None and cached_session.feedback_message
+_has_cache = has_stored_feedback_payload(cached_session)
 
-if _has_cache and not _force_regen:
+if cached_session is not None and _has_cache and not _force_regen:
     _render_cached_daily_session(cached_session)
 
     if st.button("일일 피드백 재생성", width="stretch"):

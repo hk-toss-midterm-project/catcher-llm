@@ -12,6 +12,7 @@ from catcher_llm.schemas.consumption_feedback.base import (
     SpendingMetric,
     UserProfileContext,
 )
+from catcher_llm.schemas.consumption_feedback.daily import DailyFeedbackMemoryContext
 
 
 class MonthlyOutlierThresholds(BaseModel):
@@ -418,6 +419,7 @@ class MonthlyFeedbackServiceResult(BaseModel):
     monthly_analysis: MonthlySpendingData | None = None
     interpretation_result: JsonObject | None = None
     user_profile: UserProfileContext | None = None
+    memory_context: DailyFeedbackMemoryContext | None = None
     retrieval_queries: list[str] = Field(default_factory=list)
     retrieved_contexts: list[RetrievedAdviceContext] = Field(default_factory=list)
     error: str | None = None

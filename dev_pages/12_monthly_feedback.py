@@ -11,6 +11,7 @@ from catcher_llm.config.settings import get_settings
 from catcher_llm.db.models import SessionModel
 from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.schemas.consumption_feedback import (
+    DailyFeedbackMemoryContext,
     MonthlyFeedbackAction,
     MonthlyFeedbackEvidence,
     MonthlySpendingData,
@@ -21,6 +22,7 @@ from catcher_llm.services.consumption_feedback.monthly_feedback import (
     generate_monthly_feedback,
     load_monthly_session_for_date,
 )
+from catcher_llm.services.consumption_feedback.session_cache import has_stored_feedback_payload
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_MONTH,
     render_date_picker_styles,
@@ -93,9 +95,16 @@ def _render_monthly_analysis_summary(monthly_analysis: MonthlySpendingData | Non
     )
 
 
-def _render_profile_context(user_profile: UserProfileContext | None) -> None:
+def _render_profile_and_memory_context(
+    *,
+    user_profile: UserProfileContext | None,
+    memory_context: DailyFeedbackMemoryContext | None,
+) -> None:
+    """서비스가 최종 피드백에 전달한 사용자 프로필과 메모리 컨텍스트를 JSON으로 표시한다."""
     with st.expander("사용자 프로필 JSON"):
         st.json(user_profile.model_dump() if user_profile is not None else {})
+    with st.expander("메모리/세션 컨텍스트 JSON"):
+        st.json(memory_context.model_dump() if memory_context is not None else {})
 
 
 def _render_cached_monthly_session(session_row: SessionModel) -> None:
@@ -195,9 +204,9 @@ cached_session = load_monthly_session_for_date(
     analysis_month=analysis_month,
     settings=settings,
 )
-_has_cache = cached_session is not None and cached_session.feedback_message
+_has_cache = has_stored_feedback_payload(cached_session)
 
-if _has_cache and not _force_regen:
+if cached_session is not None and _has_cache and not _force_regen:
     _render_cached_monthly_session(cached_session)
 
     if st.button("월간 피드백 재생성", width="stretch"):
@@ -235,7 +244,10 @@ else:
             if result.interpretation_result:
                 with st.expander("소비 해석 JSON"):
                     st.json(result.interpretation_result)
-            _render_profile_context(result.user_profile)
+            _render_profile_and_memory_context(
+                user_profile=result.user_profile,
+                memory_context=result.memory_context,
+            )
             st.stop()
 
         if result.feedback is None:
@@ -262,7 +274,10 @@ else:
         st.subheader("검색된 문서 근거")
         _render_contexts(result.retrieved_contexts)
 
-        _render_profile_context(result.user_profile)
+        _render_profile_and_memory_context(
+            user_profile=result.user_profile,
+            memory_context=result.memory_context,
+        )
 
         with st.expander("월간 분석 JSON"):
             if result.monthly_analysis is not None:

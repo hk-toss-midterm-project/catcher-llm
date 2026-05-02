@@ -22,6 +22,7 @@ from catcher_llm.schemas.consumption_feedback import (
     CategoryDirection,
     CauseAnalysisResult,
     DailyFeedbackMemoryContext,
+    DailyFeedbackSessionContext,
     InterventionTarget,
     JsonObject,
     JsonScalar,
@@ -586,9 +587,11 @@ def load_monthly_session_for_date(
 def load_monthly_feedback_memory_context(
     *,
     member_id: int,
+    analysis_month: str | None = None,
     settings: Settings | None = None,
+    recent_session_limit: int = _DEFAULT_MONTHLY_MEMORY_SESSION_LIMIT,
 ) -> DailyFeedbackMemoryContext:
-    """SQLite user_memories 테이블에서 월간 피드백용 장기 메모리 요약을 조회한다."""
+    """SQLite user_memories와 최근 월간 session에서 최종 피드백용 과거 맥락을 조회한다."""
     config = settings or get_settings()
     ensure_user_database(config)
 
@@ -599,12 +602,36 @@ def load_monthly_feedback_memory_context(
                 UserMemoryModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
             )
         )
+        session_statement = select(SessionModel).where(
+            SessionModel.user_id == member_id,
+            SessionModel.period_type == _MONTHLY_MEMORY_PERIOD_TYPE,
+        )
+        if analysis_month is not None:
+            session_statement = session_statement.where(SessionModel.analysis_date < analysis_month)
+        recent_sessions = list(
+            session.scalars(
+                session_statement.order_by(
+                    SessionModel.analysis_date.desc(),
+                    SessionModel.id.desc(),
+                ).limit(recent_session_limit)
+            )
+        )
 
+    chronological_sessions = list(reversed(recent_sessions))
     return DailyFeedbackMemoryContext(
         user_id=member_id,
         period_type=_MONTHLY_MEMORY_PERIOD_TYPE,
         memory_summary=memory.summary if memory is not None else None,
         user_feedback_memory=memory.user_feedback_memory if memory is not None else None,
+        recent_sessions=[
+            DailyFeedbackSessionContext(
+                analysis_date=item.analysis_date,
+                analysis_result=item.analysis_result,
+                feedback_reason=item.feedback_reason,
+                todo_tomorrow=item.todo_tomorrow,
+            )
+            for item in chronological_sessions
+        ],
     )
 
 
@@ -725,6 +752,7 @@ def _build_error_result(
     monthly_analysis: MonthlySpendingData | None = None,
     interpretation_result: dict[str, object] | None = None,
     user_profile: UserProfileContext | None = None,
+    memory_context: DailyFeedbackMemoryContext | None = None,
     retrieval_queries: Sequence[str] | None = None,
     retrieved_contexts: Sequence[RetrievedAdviceContext] | None = None,
 ) -> MonthlyFeedbackServiceResult:
@@ -735,6 +763,7 @@ def _build_error_result(
         monthly_analysis=monthly_analysis,
         interpretation_result=_to_json_object(interpretation_result or {}),
         user_profile=user_profile,
+        memory_context=memory_context,
         retrieval_queries=list(retrieval_queries or []),
         retrieved_contexts=list(retrieved_contexts or []),
         error=error,
@@ -790,6 +819,7 @@ def generate_monthly_feedback(
         )
         memory_context = load_monthly_feedback_memory_context(
             member_id=member_id,
+            analysis_month=analysis_month,
             settings=config,
         )
         interpretation_chain = build_monthly_spending_analysis_chain(
@@ -825,6 +855,7 @@ def generate_monthly_feedback(
                 monthly_analysis=monthly_data,
                 interpretation_result=interpretation_result,
                 user_profile=user_profile,
+                memory_context=memory_context,
                 retrieval_queries=retrieval_queries,
             )
 
@@ -864,6 +895,7 @@ def generate_monthly_feedback(
             analysis_month=analysis_month,
             error=str(exc),
             user_profile=user_profile,
+            memory_context=memory_context,
         )
 
     return MonthlyFeedbackServiceResult(
@@ -873,6 +905,7 @@ def generate_monthly_feedback(
         monthly_analysis=monthly_data,
         interpretation_result=_to_json_object(interpretation_result),
         user_profile=user_profile,
+        memory_context=memory_context,
         retrieval_queries=retrieval_queries,
         retrieved_contexts=advice_contexts,
     )
