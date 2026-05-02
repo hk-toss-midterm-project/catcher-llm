@@ -3,7 +3,8 @@ from __future__ import annotations
 import html
 import re
 import sqlite3
-from datetime import timedelta
+from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -23,56 +24,26 @@ _USER_SCORE_COLUMN = "personal_score"
 st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
 
-def clean_text(value) -> str:
-    """LLM 출력을 HTML 템플릿 안에 안전하게 삽입할 수 있는 순수 텍스트로 변환한다.
+def find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in [current.parent, *current.parents]:
+        if (parent / "data" / "sqlite" / "app.sqlite3").exists():
+            return parent
+    return current.parents[1]
 
-    처리 순서:
-    1. HTML 엔티티 디코딩  (&lt;/div&gt; → </div>)
-    2. HTML 태그 제거      (</div>, <br/> 등)
-    3. 공백 정규화
-    4. HTML 이스케이프     (남은 < > & " → 엔티티로 변환, 브라우저가 태그로 해석하지 않도록)
-    """
+
+PROJECT_ROOT = find_project_root()
+APP_SQLITE_PATH = PROJECT_ROOT / "data" / "sqlite" / "app.sqlite3"
+
+
+def clean_text(value) -> str:
     if value is None:
         return ""
     text = str(value)
-    text = html.unescape(text)  # &lt;/div&gt; → </div>
-    text = re.sub(r"<[^>]*>", "", text)  # HTML 태그 제거
+    text = html.unescape(text)
+    text = re.sub(r"<[^>]*>", "", text)
     text = re.sub(r"\s+", " ", text).strip()
-    text = html.escape(text)  # 남은 < > & 문자가 태그로 오해되지 않도록
-    return text
-
-
-def _quote_sqlite_identifier(identifier: str) -> str:
-    return identifier.replace('"', '""')
-
-
-def _get_daily_report_sqlite_db_path() -> str:
-    return str(get_settings().sqlite_db_path)
-
-
-def _get_user_score_column(connection: sqlite3.Connection) -> str | None:
-    rows = connection.execute('PRAGMA table_info("users")').fetchall()
-    column_names = {str(row[1]) for row in rows}
-    return _USER_SCORE_COLUMN if _USER_SCORE_COLUMN in column_names else None
-
-
-def add_user_point(member_id: int, point: int = 50) -> None:
-    with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
-        score_column = _get_user_score_column(connection)
-        if score_column is None:
-            return
-
-        escaped_score_column = _quote_sqlite_identifier(score_column)
-        connection.execute(
-            f"""
-            UPDATE users
-            SET "{escaped_score_column}" =
-                CAST(COALESCE(NULLIF("{escaped_score_column}", ''), '0') AS INTEGER) + ?
-            WHERE id = ?
-            """,
-            (point, member_id),
-        )
-        connection.commit()
+    return html.escape(text)
 
 
 def money(v: int | float) -> str:
@@ -83,19 +54,141 @@ def pct(v: int | float) -> str:
     return f"{v:.1f}%"
 
 
+def safe_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def quote_col(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def calc_diff_rate(today: int | float, base: int | float) -> float:
+    if not base:
+        return 0.0
+    return (today - base) / base * 100
+
+
 def extract_monthly_goal(text: str | None) -> int:
     if not text:
         return 0
-
     match = re.search(r"(\d+)\s*만원", text)
     if match:
         return int(match.group(1)) * 10_000
-
     match = re.search(r"(\d+)\s*원", text)
     if match:
         return int(match.group(1))
-
     return 0
+
+
+def _get_daily_report_sqlite_db_path() -> str:
+    return str(APP_SQLITE_PATH)
+
+
+def _get_user_score_column(connection: sqlite3.Connection) -> str | None:
+    rows = connection.execute('PRAGMA table_info("users")').fetchall()
+    column_names = {str(row[1]) for row in rows}
+    return _USER_SCORE_COLUMN if _USER_SCORE_COLUMN in column_names else None
+
+
+def add_user_point(member_id: int, point: int = 50) -> None:
+    try:
+        with sqlite3.connect(_get_daily_report_sqlite_db_path()) as connection:
+            score_column = _get_user_score_column(connection)
+            if score_column is None:
+                return
+
+            connection.execute(
+                f"""
+                UPDATE users
+                SET {quote_col(score_column)} =
+                    CAST(COALESCE(NULLIF({quote_col(score_column)}, ''), '0') AS INTEGER) + ?
+                WHERE id = ?
+                """,
+                (point, member_id),
+            )
+            connection.commit()
+    except Exception:
+        return
+
+
+def get_daily_total_from_sqlite(member_id: int, target_date: date) -> int:
+    """
+    너희 DB 구조 기준:
+    - table: transactions
+    - member column: user_id
+    - amount column: amount
+    - date column: used_at
+    """
+    db_path = _get_daily_report_sqlite_db_path()
+
+    if not Path(db_path).exists():
+        return 0
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            tables = pd.read_sql_query(
+                "SELECT name FROM sqlite_master WHERE type='table'",
+                conn,
+            )["name"].tolist()
+
+            if "transactions" not in tables:
+                return 0
+
+            columns = pd.read_sql_query("PRAGMA table_info(transactions)", conn)["name"].tolist()
+
+            member_col = "user_id" if "user_id" in columns else None
+            amount_col = "amount" if "amount" in columns else None
+            date_col = "used_at" if "used_at" in columns else None
+
+            if amount_col is None or date_col is None:
+                return 0
+
+            where_parts = [
+                f"substr({quote_col(date_col)}, 1, 10) = ?",
+            ]
+            params: list[object] = [target_date.isoformat()]
+
+            if member_col is not None:
+                where_parts.append(f"{quote_col(member_col)} = ?")
+                params.append(member_id)
+
+            where_sql = " AND ".join(where_parts)
+
+            query = f"""
+            SELECT COALESCE(SUM(CAST({quote_col(amount_col)} AS REAL)), 0) AS total
+            FROM transactions
+            WHERE {where_sql}
+            """
+
+            df = pd.read_sql_query(query, conn, params=params)
+            return safe_int(df.iloc[0]["total"])
+    except Exception:
+        return 0
+
+
+def get_recent_4_same_weekday_average(member_id: int, analysis_date: date) -> int:
+    dates = [analysis_date - timedelta(days=7 * i) for i in range(1, 5)]
+    values = [get_daily_total_from_sqlite(member_id, d) for d in dates]
+    values = [v for v in values if v > 0]
+
+    if not values:
+        return 0
+
+    return round(sum(values) / len(values))
 
 
 def inject_css():
@@ -142,7 +235,7 @@ def inject_css():
             margin: 24px 0 12px;
         }
 
-        .mini-card {
+        .mini-card, .comparison-card {
             padding: 18px;
             border-radius: 20px;
             background: white;
@@ -151,9 +244,9 @@ def inject_css():
             min-height: 105px;
         }
 
-        .mini-label {
+        .mini-label, .comparison-label {
             color: #64748b;
-            font-weight: 700;
+            font-weight: 800;
             font-size: 13px;
             margin-bottom: 8px;
         }
@@ -163,6 +256,23 @@ def inject_css():
             font-weight: 900;
             font-size: 23px;
         }
+
+        .comparison-value {
+            font-weight: 950;
+            font-size: 22px;
+            margin-bottom: 6px;
+        }
+
+        .comparison-desc {
+            color:#64748b;
+            font-size:12.5px;
+            font-weight:650;
+            line-height:1.45;
+        }
+
+        .good-color { color:#2563eb; }
+        .bad-color { color:#dc2626; }
+        .neutral-color { color:#475569; }
 
         .problem-box {
             padding: 26px;
@@ -269,14 +379,32 @@ def inject_css():
             margin-top: 8px;
         }
 
+        .point-pop {
+            display:inline-block;
+            margin-top: 14px;
+            padding: 14px 24px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            font-size: 28px;
+            font-weight: 950;
+            box-shadow: 0 16px 34px rgba(34,197,94,0.35);
+            animation: pointPop 1.05s ease-out;
+        }
+
+        @keyframes pointPop {
+            0% { opacity: 0; transform: translateY(18px) scale(0.72); }
+            45% { opacity: 1; transform: translateY(-8px) scale(1.12); }
+            75% { transform: translateY(0px) scale(0.98); }
+            100% { opacity: 1; transform: translateY(0px) scale(1); }
+        }
+
         div[data-testid="stExpander"] {
             border-radius: 14px;
             border: 1px solid #e5e7eb;
         }
 
-        h3 {
-            margin-top: 0.3rem;
-        }
+        h3 { margin-top: 0.3rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -289,6 +417,39 @@ def metric_card(label: str, value: str):
         <div class="mini-card">
             <div class="mini-label">{label}</div>
             <div class="mini-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def comparison_card(label: str, today_amount: int, base_amount: int):
+    diff = today_amount - base_amount
+    rate = calc_diff_rate(today_amount, base_amount)
+
+    if base_amount <= 0:
+        color_class = "neutral-color"
+        value = "비교 데이터 없음"
+        desc = "해당 기준일의 소비 데이터가 없습니다."
+    elif diff > 0:
+        color_class = "bad-color"
+        value = f"+{money(abs(diff))} 증가"
+        desc = f"기준 {money(base_amount)} 대비 +{rate:.1f}%"
+    elif diff < 0:
+        color_class = "good-color"
+        value = f"-{money(abs(diff))} 감소"
+        desc = f"기준 {money(base_amount)} 대비 {rate:.1f}%"
+    else:
+        color_class = "neutral-color"
+        value = "변화 없음"
+        desc = f"기준 {money(base_amount)}와 동일"
+
+    st.markdown(
+        f"""
+        <div class="comparison-card">
+            <div class="comparison-label">{label}</div>
+            <div class="comparison-value {color_class}">{value}</div>
+            <div class="comparison-desc">{desc}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -491,7 +652,6 @@ def get_action_text(feedback):
 
 
 def _get_first_evidence_text(feedback: object) -> tuple[str | None, str | None]:
-    """피드백 근거 목록에서 판단 카드 대체 제목과 본문으로 쓸 첫 항목을 찾는다."""
     evidences = getattr(feedback, "key_evidences", []) or []
     for evidence in evidences:
         title = clean_text(getattr(evidence, "title", None))
@@ -502,7 +662,6 @@ def _get_first_evidence_text(feedback: object) -> tuple[str | None, str | None]:
 
 
 def get_judgment_text(feedback: object, daily_analysis: object | None = None) -> tuple[str, str]:
-    """일일 보고서 판단 카드에 표시할 제목과 본문을 피드백·근거·분석값 순서로 고른다."""
     title = clean_text(getattr(feedback, "summary_title", None))
     message = clean_text(
         feedback.scolding_message if hasattr(feedback, "scolding_message") else None
@@ -512,8 +671,10 @@ def get_judgment_text(feedback: object, daily_analysis: object | None = None) ->
         return title, message
 
     evidence_title, evidence_detail = _get_first_evidence_text(feedback)
+
     if not title:
         title = evidence_title or "오늘의 판단"
+
     if not message and evidence_detail:
         message = evidence_detail
 
@@ -532,6 +693,11 @@ def get_judgment_text(feedback: object, daily_analysis: object | None = None) ->
     )
 
 
+def render_point_animation():
+    if st.session_state.get("daily_report_point_popup"):
+        st.markdown('<div class="point-pop">+50P 🎉</div>', unsafe_allow_html=True)
+
+
 def render_report_feedback():
     if "daily_report_feedback" not in st.session_state:
         st.session_state.daily_report_feedback = None
@@ -539,7 +705,11 @@ def render_report_feedback():
     if "daily_report_rewarded" not in st.session_state:
         st.session_state.daily_report_rewarded = False
 
+    if "daily_report_point_popup" not in st.session_state:
+        st.session_state.daily_report_point_popup = False
+
     st.markdown('<div class="section">보고서 피드백</div>', unsafe_allow_html=True)
+
     st.markdown(
         """
         <div class="feedback-box">
@@ -547,7 +717,7 @@ def render_report_feedback():
                 오늘의 보고서가 도움이 되었나요?
             </div>
             <div style="color:#64748b; font-size:14px; margin-bottom:16px;">
-                피드백은 한 번만 포인트가 적립됩니다.
+                좋아요/싫어요를 누르면 한 번만 포인트가 적립됩니다.
             </div>
         </div>
         """,
@@ -563,12 +733,15 @@ def render_report_feedback():
         if not st.session_state.daily_report_rewarded:
             add_user_point(int(st.session_state.member_id), 50)
             st.session_state.daily_report_rewarded = True
+            st.session_state.daily_report_point_popup = True
+        else:
+            st.session_state.daily_report_point_popup = False
 
     with c1:
         if st.button(
             "👍 좋아요",
             type="primary" if like_selected else "secondary",
-            width="stretch",
+            use_container_width=True,
             key="daily_report_like",
         ):
             st.session_state.daily_report_feedback = "like"
@@ -579,12 +752,14 @@ def render_report_feedback():
         if st.button(
             "👎 싫어요",
             type="primary" if dislike_selected else "secondary",
-            width="stretch",
+            use_container_width=True,
             key="daily_report_dislike",
         ):
             st.session_state.daily_report_feedback = "dislike"
             reward_once()
             st.rerun()
+
+    render_point_animation()
 
     if st.session_state.daily_report_feedback == "like":
         st.success("좋아요가 저장되었습니다.")
@@ -602,6 +777,7 @@ st.markdown(
 )
 
 default_selection = get_default_daily_report_selection()
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -624,26 +800,17 @@ with col3:
 
     st.markdown(
         f"""
-        <div style="
-            font-size:14px;
-            color:#0f172a;
-            margin-bottom:12px;
-        ">
+        <div style="font-size:14px; color:#0f172a; margin-bottom:12px;">
             비교 기준일
         </div>
-        <div style="
-            font-size:16px;
-            color:#374151;
-            font-weight:400;
-            padding-top:2px;
-        ">
+        <div style="font-size:16px; color:#374151; font-weight:400; padding-top:2px;">
             {previous_date.isoformat()}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-run = st.button("오늘의 소비 알림장 생성", width="stretch")
+run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
 
 st.session_state.member_id = int(member_id)
 
@@ -667,6 +834,7 @@ if run:
     st.session_state.daily_report_result = result
     st.session_state.daily_report_feedback = None
     st.session_state.daily_report_rewarded = False
+    st.session_state.daily_report_point_popup = False
 
 result = st.session_state.get("daily_report_result")
 
@@ -689,16 +857,42 @@ if daily_analysis is None:
     st.warning("일일 분석 데이터가 비어 있어 리포트를 만들 수 없습니다.")
     st.stop()
 
-today_amount = daily_analysis.stable_metrics.today_total
-past_average = daily_analysis.stable_metrics.past_daily_stable_average
-change_rate = daily_analysis.previous_day_comparison.amount_diff_rate_percent or 0
-previous_amount = today_amount - daily_analysis.previous_day_comparison.amount_diff
+
+today_amount = safe_int(daily_analysis.stable_metrics.today_total)
+past_average = safe_int(daily_analysis.stable_metrics.past_daily_stable_average)
+
+previous_amount = get_daily_total_from_sqlite(
+    int(member_id),
+    analysis_date - timedelta(days=1),
+)
+
+prev_comp = getattr(daily_analysis, "previous_day_comparison", None)
+amount_diff = safe_int(getattr(prev_comp, "amount_diff", 0))
+
+# SQLite에 어제 거래가 안 잡히면 분석 결과의 amount_diff로 어제 금액 역산
+if previous_amount <= 0 and amount_diff != 0:
+    previous_amount = max(today_amount - amount_diff, 0)
+
+change_rate = calc_diff_rate(today_amount, previous_amount)
+
+last_week_same_weekday_date = analysis_date - timedelta(days=7)
+last_week_same_weekday_amount = get_daily_total_from_sqlite(
+    int(member_id),
+    last_week_same_weekday_date,
+)
+
+recent_4_same_weekday_average = get_recent_4_same_weekday_average(
+    int(member_id),
+    analysis_date,
+)
+
 peak_time = daily_analysis.time_slot_analysis.peak_slot or "-"
 main_category, main_ratio = get_main_category(daily_analysis)
 
 user_profile = getattr(result, "user_profile", None)
 saving_goal_text = getattr(user_profile, "saving_goal_text", None)
 monthly_goal = extract_monthly_goal(saving_goal_text)
+
 daily_saving_goal = round(monthly_goal / 30) if monthly_goal else 0
 daily_budget = max(round(past_average - daily_saving_goal), 0)
 budget_gap = daily_budget - today_amount if daily_budget else 0
@@ -707,6 +901,7 @@ llm_summary_title, llm_feedback_message = get_judgment_text(
     feedback,
     daily_analysis=daily_analysis,
 )
+
 llm_tomorrow_mission = clean_text(feedback.tomorrow_mission)
 action_title, action_detail = get_action_text(feedback)
 
@@ -725,6 +920,7 @@ else:
     hero_gradient = "linear-gradient(135deg, #DC2626 0%, #EF4444 45%, #F87171 100%)"
     hero_shadow = "rgba(239, 68, 68, 0.24)"
     amount_color = "#FED7AA"
+
 
 st.markdown(
     f"""
@@ -752,12 +948,30 @@ m1, m2, m3, m4 = st.columns([1, 1, 1.2, 1])
 
 with m1:
     metric_card("오늘 소비", money(today_amount))
+
 with m2:
-    metric_card("전일 대비", f"{change_rate:.2f}%")
+    metric_card("어제 대비", f"{change_rate:.2f}%")
+
 with m3:
     metric_card("피크 시간대", peak_time)
+
 with m4:
     metric_card(f"{main_category} 비중", pct(main_ratio))
+
+
+st.markdown('<div class="section">비교 기준으로 보기</div>', unsafe_allow_html=True)
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    comparison_card("어제 대비", today_amount, previous_amount)
+
+with c2:
+    comparison_card("지난주 같은 요일 대비", today_amount, last_week_same_weekday_amount)
+
+with c3:
+    comparison_card("최근 4주 같은 요일 평균 대비", today_amount, recent_4_same_weekday_average)
+
 
 st.markdown('<div class="section">오늘 소비 대시보드</div>', unsafe_allow_html=True)
 
@@ -768,11 +982,11 @@ with dashboard_left:
 
     with chart1:
         st.markdown("### 어디에 썼나")
-        st.plotly_chart(make_category_chart(daily_analysis), width="stretch")
+        st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
 
     with chart2:
         st.markdown("### 언제 썼나")
-        st.plotly_chart(make_hour_chart(daily_analysis), width="stretch")
+        st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
 
 with dashboard_right:
     st.markdown("### 소비 한도")
@@ -780,7 +994,7 @@ with dashboard_right:
     if daily_budget:
         st.plotly_chart(
             make_budget_gauge(today_amount, daily_budget),
-            width="stretch",
+            use_container_width=True,
         )
 
         remaining_label = "남은 금액" if budget_gap >= 0 else "초과 금액"
@@ -810,7 +1024,8 @@ with dashboard_right:
         st.info("절약 목표 없음")
 
 st.markdown(
-    '<div class="section">오늘의 판단 · 내일 행동 · 기대 효과</div>', unsafe_allow_html=True
+    '<div class="section">오늘의 판단 · 내일 행동 · 기대 효과</div>',
+    unsafe_allow_html=True,
 )
 
 bottom1, bottom2, bottom3 = st.columns([1.25, 1.15, 1])
@@ -855,26 +1070,28 @@ with bottom3:
 
 with st.expander("LLM 피드백 근거와 실행 항목"):
     st.subheader("피드백 근거")
+
     if feedback.key_evidences:
         st.dataframe(
             [
                 item.model_dump() if hasattr(item, "model_dump") else item
                 for item in feedback.key_evidences
             ],
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
         )
     else:
         st.info("표시할 피드백 근거가 없습니다.")
 
     st.subheader("오늘 할 일")
+
     if feedback.action_items:
         st.dataframe(
             [
                 item.model_dump() if hasattr(item, "model_dump") else item
                 for item in feedback.action_items
             ],
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
         )
     else:
@@ -887,10 +1104,13 @@ with feedback_col1:
 
 with feedback_col2:
     st.markdown('<div class="section">상세 데이터</div>', unsafe_allow_html=True)
+
     with st.expander("상세 분석 & 데이터"):
         st.subheader("일일 분석 JSON")
         st.json(
-            daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis
+            daily_analysis.model_dump()
+            if hasattr(daily_analysis, "model_dump")
+            else daily_analysis
         )
 
         st.subheader("최종 피드백 JSON")
@@ -898,3 +1118,16 @@ with feedback_col2:
 
         st.subheader("RAG 검색 질의")
         st.write(getattr(result, "retrieval_queries", []))
+
+        st.subheader("비교 데이터 디버그")
+        st.json(
+            {
+                "db_path": _get_daily_report_sqlite_db_path(),
+                "analysis_date": analysis_date.isoformat(),
+                "yesterday": (analysis_date - timedelta(days=1)).isoformat(),
+                "yesterday_amount": previous_amount,
+                "last_week_same_weekday": last_week_same_weekday_date.isoformat(),
+                "last_week_same_weekday_amount": last_week_same_weekday_amount,
+                "recent_4_same_weekday_average": recent_4_same_weekday_average,
+            }
+        )
