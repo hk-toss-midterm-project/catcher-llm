@@ -4,6 +4,7 @@ import html
 import inspect
 import re
 import sqlite3
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -51,8 +52,94 @@ def safe_float(value, default: float = 0.0) -> float:
         return default
 
 
+def calc_diff_rate(current: int | float, base: int | float) -> float:
+    if not base:
+        return 0.0
+    return (current - base) / base * 100
+
+
 def quote_col(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
+
+
+def find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in [current.parent, *current.parents]:
+        if (parent / "data" / "sqlite" / "app.sqlite3").exists():
+            return parent
+    return current.parents[1]
+
+
+PROJECT_ROOT = find_project_root()
+APP_SQLITE_PATH = PROJECT_ROOT / "data" / "sqlite" / "app.sqlite3"
+
+
+def shift_month(month: str, offset: int) -> str:
+    year, month_num = map(int, month.split("-"))
+    month_num += offset
+
+    while month_num <= 0:
+        year -= 1
+        month_num += 12
+
+    while month_num > 12:
+        year += 1
+        month_num -= 12
+
+    return f"{year}-{month_num:02d}"
+
+
+def month_range(month: str) -> tuple[str, str]:
+    year, month_num = map(int, month.split("-"))
+    start_date = f"{year}-{month_num:02d}-01"
+
+    if month_num == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month_num + 1:02d}-01"
+
+    return start_date, end_date
+
+
+def get_month_total_from_sqlite(member_id: int, month: str) -> int:
+    if not APP_SQLITE_PATH.exists():
+        return 0
+
+    start_date, end_date = month_range(month)
+
+    try:
+        with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+            query = """
+            SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS total
+            FROM transactions
+            WHERE user_id = ?
+              AND date(substr(used_at, 1, 10)) >= date(?)
+              AND date(substr(used_at, 1, 10)) < date(?)
+            """
+            df = pd.read_sql_query(
+                query,
+                conn,
+                params=[member_id, start_date, end_date],
+            )
+            return safe_int(df.iloc[0]["total"])
+    except Exception:
+        return 0
+
+
+def get_recent_3_month_average(member_id: int, month: str) -> int:
+    values = []
+
+    for i in range(1, 4):
+        target_month = shift_month(month, -i)
+        total = get_month_total_from_sqlite(member_id, target_month)
+
+        if total > 0:
+            values.append(total)
+
+    if not values:
+        return 0
+
+    return round(sum(values) / len(values))
 
 
 def inject_css():
@@ -198,7 +285,7 @@ def inject_css():
             letter-spacing:-0.4px;
         }
 
-        .metric-card {
+        .metric-card, .compare-card {
             padding:20px 22px;
             border-radius:24px;
             background:#ffffff;
@@ -207,13 +294,13 @@ def inject_css():
             min-height:120px;
         }
 
-        .metric-label {
+        .metric-label, .compare-label {
             color:#64748b;
             font-weight:850;
             font-size:13px;
         }
 
-        .metric-value {
+        .metric-value, .compare-value {
             color:#0f172a;
             font-weight:950;
             font-size:24px;
@@ -222,7 +309,7 @@ def inject_css():
             letter-spacing:-0.5px;
         }
 
-        .metric-desc {
+        .metric-desc, .compare-desc {
             color:#94a3b8;
             font-size:12.5px;
             margin-top:8px;
@@ -332,6 +419,40 @@ def metric_card(label: str, value: str, desc: str = ""):
     )
 
 
+def compare_card(label: str, current: int, base: int):
+    if base <= 0:
+        value = "비교 데이터 없음"
+        desc = "해당 기준 월의 소비 데이터가 없습니다."
+        color = "neutral-color"
+    else:
+        diff = current - base
+        rate = calc_diff_rate(current, base)
+
+        if diff > 0:
+            value = f"+{money(abs(diff))} 증가"
+            desc = f"기준 {money(base)} 대비 +{rate:.1f}%"
+            color = "up-color"
+        elif diff < 0:
+            value = f"-{money(abs(diff))} 감소"
+            desc = f"기준 {money(base)} 대비 {rate:.1f}%"
+            color = "down-color"
+        else:
+            value = "변화 없음"
+            desc = f"기준 {money(base)}와 동일"
+            color = "neutral-color"
+
+    st.markdown(
+        f"""
+        <div class="compare-card">
+            <div class="compare-label">{_html_text(label)}</div>
+            <div class="compare-value {color}">{value}</div>
+            <div class="compare-desc">{desc}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def get_category_rows(monthly_data):
     return (
         monthly_data.get("category_deep", [])
@@ -364,12 +485,7 @@ def get_improved_category(monthly_data):
             diff_amount = total - prev
 
         if diff_amount < 0:
-            improved.append(
-                {
-                    "category": row.get("category", "-"),
-                    "diff_amount": diff_amount,
-                }
-            )
+            improved.append({"category": row.get("category", "-"), "diff_amount": diff_amount})
 
     if not improved:
         return None
@@ -439,7 +555,6 @@ def get_repeat_target(monthly_data):
 
 def make_weekly_trend_chart(monthly_analysis):
     data = to_dict(monthly_analysis)
-
     rows = (
         data.get("weekly_trend")
         or data.get("weekly_spending_trend")
@@ -523,13 +638,7 @@ def make_category_change_chart(monthly_data):
 
     df = df.sort_values("diff_amount").tail(9)
 
-    fig = px.bar(
-        df,
-        x="diff_amount",
-        y="category",
-        orientation="h",
-        text="diff_amount",
-    )
+    fig = px.bar(df, x="diff_amount", y="category", orientation="h", text="diff_amount")
 
     fig.update_traces(
         texttemplate="%{text:,.0f}",
@@ -555,96 +664,29 @@ def make_category_change_chart(monthly_data):
 
 
 def get_top5_merchants_from_sqlite(member_id: int, month: str) -> pd.DataFrame:
-    db_path = str(get_settings().sqlite_db_path)
+    db_path = str(APP_SQLITE_PATH)
 
-    try:
-        year, month_num = map(int, month.split("-"))
-        start_date = f"{year}-{month_num:02d}-01"
-        end_date = f"{year + 1}-01-01" if month_num == 12 else f"{year}-{month_num + 1:02d}-01"
-    except Exception:
-        start_date = None
-        end_date = None
+    start_date, end_date = month_range(month)
 
     with sqlite3.connect(db_path) as conn:
-        tables = pd.read_sql_query(
-            "SELECT name FROM sqlite_master WHERE type='table'",
-            conn,
-        )["name"].tolist()
-
-        if "transactions" not in tables:
-            return pd.DataFrame(columns=["merchant_name", "payment_count", "total_amount"])
-
-        columns = pd.read_sql_query("PRAGMA table_info(transactions)", conn)["name"].tolist()
-
-        merchant_candidates = [
-            "merchant_name",
-            "merchant",
-            "store_name",
-            "shop_name",
-            "place_name",
-            "description",
-        ]
-        amount_candidates = [
-            "amount",
-            "total_amount",
-            "payment_amount",
-            "spend_amount",
-            "approved_amount",
-            "price",
-        ]
-        date_candidates = [
-            "date",
-            "transaction_date",
-            "payment_date",
-            "approved_date",
-            "used_date",
-            "usage_date",
-            "created_at",
-            "transaction_at",
-            "payment_at",
-            "approved_at",
-        ]
-        member_candidates = ["member_id", "user_id", "customer_id", "card_member_id"]
-
-        merchant_col = next((col for col in merchant_candidates if col in columns), None)
-        amount_col = next((col for col in amount_candidates if col in columns), None)
-        date_col = next((col for col in date_candidates if col in columns), None)
-        member_col = next((col for col in member_candidates if col in columns), None)
-
-        if merchant_col is None or amount_col is None:
-            return pd.DataFrame(columns=["merchant_name", "payment_count", "total_amount"])
-
-        where_parts = [
-            f"{quote_col(merchant_col)} IS NOT NULL",
-            f"{quote_col(merchant_col)} != ''",
-        ]
-        params: list[object] = []
-
-        if date_col is not None and start_date is not None and end_date is not None:
-            where_parts.append(f"date({quote_col(date_col)}) >= date(?)")
-            where_parts.append(f"date({quote_col(date_col)}) < date(?)")
-            params.extend([start_date, end_date])
-
-        if member_col is not None:
-            where_parts.append(f"{quote_col(member_col)} = ?")
-            params.append(member_id)
-
-        where_sql = " AND ".join(where_parts)
-
-        query = f"""
+        query = """
         SELECT
-            {quote_col(merchant_col)} AS merchant_name,
+            merchant_name AS merchant_name,
             COUNT(*) AS payment_count,
-            SUM(CAST({quote_col(amount_col)} AS REAL)) AS total_amount
+            SUM(CAST(amount AS REAL)) AS total_amount
         FROM transactions
-        WHERE {where_sql}
-        GROUP BY {quote_col(merchant_col)}
+        WHERE user_id = ?
+          AND merchant_name IS NOT NULL
+          AND merchant_name != ''
+          AND date(substr(used_at, 1, 10)) >= date(?)
+          AND date(substr(used_at, 1, 10)) < date(?)
+        GROUP BY merchant_name
         HAVING total_amount IS NOT NULL
         ORDER BY total_amount DESC
         LIMIT 5
         """
 
-        return pd.read_sql_query(query, conn, params=params)
+        return pd.read_sql_query(query, conn, params=[member_id, start_date, end_date])
 
 
 def make_top5_merchant_chart_from_sqlite(member_id: int, month: str):
@@ -657,13 +699,7 @@ def make_top5_merchant_chart_from_sqlite(member_id: int, month: str):
     df["payment_count"] = df["payment_count"].fillna(0).astype(int)
     df = df.sort_values("total_amount", ascending=True)
 
-    fig = px.bar(
-        df,
-        x="total_amount",
-        y="merchant_name",
-        orientation="h",
-        text="total_amount",
-    )
+    fig = px.bar(df, x="total_amount", y="merchant_name", orientation="h", text="total_amount")
 
     fig.update_traces(
         texttemplate="%{text:,.0f}원",
@@ -748,7 +784,7 @@ def render_vote_buttons(member_id: str, month: str):
     v1, v2 = st.columns(2)
 
     with v1:
-        if st.button("👍 좋아요", width="stretch", type=like_type):
+        if st.button("👍 좋아요", use_container_width=True, type=like_type):
             st.session_state.monthly_report_vote = "like"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -758,7 +794,7 @@ def render_vote_buttons(member_id: str, month: str):
             st.rerun()
 
     with v2:
-        if st.button("👎 아쉬워요", width="stretch", type=dislike_type):
+        if st.button("👎 아쉬워요", use_container_width=True, type=dislike_type):
             st.session_state.monthly_report_vote = "dislike"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -782,19 +818,32 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_data = to_dict(monthly_analysis)
     monthly_summary = monthly_data["monthly_summary"]
 
-    feedback_message = _html_text(feedback.feedback_message)
-    next_month_mission = _html_text(feedback.next_month_mission)
+    feedback_message = _html_text(getattr(feedback, "feedback_message", ""))
+    next_month_mission = _html_text(getattr(feedback, "next_month_mission", ""))
 
-    feedback_evidences = feedback.key_evidences or []
-    feedback_action_items = feedback.action_items or []
+    feedback_evidences = getattr(feedback, "key_evidences", []) or []
+    feedback_action_items = getattr(feedback, "action_items", []) or []
+
+    member_id_int = int(member_id)
 
     total_amount = safe_int(monthly_summary["this_month_total"])
     prev_amount = safe_int(monthly_summary.get("prev_month_total", 0))
     diff_rate = safe_float(monthly_summary.get("diff_rate_percent", 0))
     transaction_count = safe_int(monthly_summary.get("transaction_count", 0))
 
+    sqlite_this_month_total = get_month_total_from_sqlite(member_id_int, month)
+    if total_amount <= 0 and sqlite_this_month_total > 0:
+        total_amount = sqlite_this_month_total
+
+    sqlite_prev_month_total = get_month_total_from_sqlite(member_id_int, shift_month(month, -1))
+    if prev_amount <= 0 and sqlite_prev_month_total > 0:
+        prev_amount = sqlite_prev_month_total
+
+    recent_3_month_average = get_recent_3_month_average(member_id_int, month)
+
     saved_amount = prev_amount - total_amount
     diff_amount = total_amount - prev_amount
+    diff_rate = calc_diff_rate(total_amount, prev_amount)
 
     top_category, top_category_amount = get_top_category(monthly_data)
     improved = get_improved_category(monthly_data)
@@ -852,8 +901,8 @@ def render_monthly_report(result, member_id: str, month: str):
                     {status_text}입니다.
                 </div>
                 <div class="hero-desc">
-                    단순 총액이 아니라 전월 대비 증가 카테고리, 줄어든 카테고리,
-                    반복 가맹점을 함께 비교해 다음 달에 조정할 소비 지점을 찾았습니다.
+                    단순 총액이 아니라 전월 대비, 최근 3개월 평균, 반복 가맹점을 함께 비교해
+                    다음 달에 조정할 소비 지점을 찾았습니다.
                 </div>
                 <div class="hero-chip-wrap">
                     <div class="hero-chip">최다 소비 · {_html_text(top_category)}</div>
@@ -921,6 +970,16 @@ def render_monthly_report(result, member_id: str, month: str):
     with m3:
         metric_card("최대 소비 카테고리", _html_text(top_category), money(top_category_amount))
 
+    st.markdown('<div class="section">비교 기준으로 보기</div>', unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        compare_card("전월 대비", total_amount, prev_amount)
+
+    with c2:
+        compare_card("최근 3개월 평균 대비", total_amount, recent_3_month_average)
+
     st.markdown('<div class="section">월간 소비 대시보드</div>', unsafe_allow_html=True)
 
     d1, d2, d3 = st.columns([1.15, 1.15, 1.15])
@@ -928,24 +987,21 @@ def render_monthly_report(result, member_id: str, month: str):
     with d1:
         with st.container(border=True):
             st.markdown("### 주차별 소비 흐름")
-            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), width="stretch")
+            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), use_container_width=True)
 
     with d2:
         with st.container(border=True):
             st.markdown("### 전월 대비 카테고리 증감")
-            st.plotly_chart(make_category_change_chart(monthly_data), width="stretch")
+            st.plotly_chart(make_category_change_chart(monthly_data), use_container_width=True)
 
     with d3:
         with st.container(border=True):
             st.markdown("### TOP 5 가맹점")
 
-            top5_merchant_fig = make_top5_merchant_chart_from_sqlite(
-                int(member_id),
-                month,
-            )
+            top5_merchant_fig = make_top5_merchant_chart_from_sqlite(member_id_int, month)
 
             if top5_merchant_fig is not None:
-                st.plotly_chart(top5_merchant_fig, width="stretch")
+                st.plotly_chart(top5_merchant_fig, use_container_width=True)
             else:
                 st.info("가맹점 데이터가 없습니다.")
 
@@ -1050,6 +1106,17 @@ def render_monthly_report(result, member_id: str, month: str):
         st.subheader("월간 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
 
+        st.subheader("비교 데이터 디버그")
+        st.json(
+            {
+                "db_path": str(APP_SQLITE_PATH),
+                "month": month,
+                "this_month_total": total_amount,
+                "prev_month_total": prev_amount,
+                "recent_3_month_average": recent_3_month_average,
+            }
+        )
+
         st.subheader("피드백 근거")
         if feedback_evidences:
             st.dataframe(
@@ -1057,7 +1124,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_evidences
                 ],
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -1070,7 +1137,7 @@ def render_monthly_report(result, member_id: str, month: str):
                     item.model_dump() if hasattr(item, "model_dump") else item
                     for item in feedback_action_items
                 ],
-                width="stretch",
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -1100,7 +1167,7 @@ top1, top2 = st.columns([1.3, 1])
 with top1:
     st.markdown('<div class="page-title">🏆 월간 소비 리포트</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="page-subtitle">한 달 소비를 전월과 비교해 LLM이 절약 포인트를 해석합니다.</div>',
+        '<div class="page-subtitle">한 달 소비를 전월과 최근 3개월 평균과 비교해 LLM이 절약 포인트를 해석합니다.</div>',
         unsafe_allow_html=True,
     )
 
@@ -1122,7 +1189,7 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", width="stretch")
+        run = st.button("생성", use_container_width=True)
 
 if run:
     st.session_state.monthly_report_vote = None
