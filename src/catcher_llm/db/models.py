@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 USER_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
@@ -10,53 +10,53 @@ USER_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
     "name": "name",
     "age": "age",
     "occupation": "job",
-    "직업": "job",
+    "吏곸뾽": "job",
     "gender": "gender",
-    "성별": "gender",
+    "?깅퀎": "gender",
     "annual_income": "income",
-    "연봉": "income",
-    "지역": "region",
+    "?곕큺": "income",
+    "吏??": "region",
     "region": "region",
     "card_grade": "card_grade",
-    "최상위 카드등급": "card_grade",
+    "理쒖긽??移대뱶?깃툒": "card_grade",
     "persona": "persona",
-    "페르소나": "persona",
+    "?섎Ⅴ?뚮굹": "persona",
     "saving_goal_text": "saving_goal_text",
 }
 
 TRANSACTION_CSV_COLUMN_TO_DB_COLUMN: dict[str, str] = {
     "id": "id",
     "user_id": "user_id",
-    "멤버 id": "user_id",
+    "硫ㅻ쾭 id": "user_id",
     "amount": "amount",
-    "사용 금액": "amount",
+    "?ъ슜 湲덉븸": "amount",
     "transaction_time": "used_at",
     "used_at": "used_at",
-    "사용 시간": "used_at",
+    "?ъ슜 ?쒓컙": "used_at",
     "description": "description",
-    "결제 내역": "description",
+    "寃곗젣 ?댁뿭": "description",
     "merchant_name": "merchant_name",
-    "가맹점명": "merchant_name",
-    "결제 장소 (가맹점 여부)": "merchant_status",
+    "媛留뱀젏紐?": "merchant_name",
+    "寃곗젣 ?μ냼 (媛留뱀젏 ?щ?)": "merchant_status",
     "is_installment": "installment_flag",
-    "할부 여부": "installment_flag",
+    "?좊? ?щ?": "installment_flag",
     "installment_months": "installment_months",
-    "할부 개월": "installment_months",
+    "?좊? 媛쒖썡": "installment_months",
     "is_interest_free": "installment_interest_type",
-    "할부 무/유이자 여부": "installment_interest_type",
+    "?좊? 臾??좎씠???щ?": "installment_interest_type",
     "status": "transaction_status",
-    "거래 상태 (승인 / 취소)": "transaction_status",
+    "嫄곕옒 ?곹깭 (?뱀씤 / 痍⑥냼)": "transaction_status",
     "is_overseas": "is_overseas",
-    "해외 결제": "is_overseas",
+    "?댁쇅 寃곗젣": "is_overseas",
     "category": "category",
-    "업종 카테고리": "category",
+    "?낆쥌 移댄뀒怨좊━": "category",
     "payment_channel": "payment_channel",
-    "결제 방식 (온/오프라인)": "payment_channel",
+    "寃곗젣 諛⑹떇 (???ㅽ봽?쇱씤)": "payment_channel",
 }
 
 
 class Base(DeclarativeBase):
-    pass
+    """프로젝트 SQLAlchemy 모델의 공통 베이스를 정의한다."""
 
 
 class UserModel(Base):
@@ -99,9 +99,7 @@ class UserMemoryModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
-    period_type: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )  # 'daily', 'weekly', 'monthly'
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     user_feedback_memory: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
@@ -120,13 +118,9 @@ class SessionModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     analysis_date: Mapped[str] = mapped_column(String(20), nullable=False, default="")
-    period_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="daily"
-    )  # 'daily', 'weekly', 'monthly'
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False, default="daily")
     analysis_result: Mapped[str | None] = mapped_column(Text)
-    feedback_message: Mapped[str | None] = mapped_column(
-        Text
-    )  # 자연어 피드백 본문 (scolding_message / feedback_message)
+    feedback_message: Mapped[str | None] = mapped_column(Text)
     feedback_reason: Mapped[str | None] = mapped_column(Text)
     feedback_reaction: Mapped[str | None] = mapped_column(String(20))
     feedback_reaction_reason: Mapped[str | None] = mapped_column(Text)
@@ -134,17 +128,17 @@ class SessionModel(Base):
 
     @property
     def daily_analysis_result(self) -> str | None:
-        """기존 일일 세션 코드가 공통 분석 결과 컬럼을 읽을 수 있게 별칭을 제공한다."""
+        """기존 일간 세션 코드가 공통 분석 결과 컬럼을 읽도록 호환 속성을 제공한다."""
         return self.analysis_result
 
     @daily_analysis_result.setter
     def daily_analysis_result(self, value: str | None) -> None:
-        """기존 일일 세션 코드가 저장한 분석 결과를 공통 컬럼에 반영한다."""
+        """기존 일간 세션 코드가 저장한 분석 결과를 공통 컬럼에 반영한다."""
         self.analysis_result = value
 
     @property
     def weekly_analysis_result(self) -> str | None:
-        """기존 주간 세션 코드가 공통 분석 결과 컬럼을 읽을 수 있게 별칭을 제공한다."""
+        """기존 주간 세션 코드가 공통 분석 결과 컬럼을 읽도록 호환 속성을 제공한다."""
         return self.analysis_result
 
     @weekly_analysis_result.setter
@@ -154,10 +148,79 @@ class SessionModel(Base):
 
     @property
     def monthly_analysis_result(self) -> str | None:
-        """기존 월간 세션 코드가 공통 분석 결과 컬럼을 읽을 수 있게 별칭을 제공한다."""
+        """기존 월간 세션 코드가 공통 분석 결과 컬럼을 읽도록 호환 속성을 제공한다."""
         return self.analysis_result
 
     @monthly_analysis_result.setter
     def monthly_analysis_result(self, value: str | None) -> None:
         """기존 월간 세션 코드가 저장한 분석 결과를 공통 컬럼에 반영한다."""
         self.analysis_result = value
+
+
+class GroupModel(Base):
+    __tablename__ = "groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+
+
+class GroupMembershipModel(Base):
+    __tablename__ = "group_memberships"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_membership"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    joined_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+
+
+class CompetitionModel(Base):
+    __tablename__ = "competitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+
+
+class SharedTransactionModel(Base):
+    __tablename__ = "shared_transactions"
+    __table_args__ = (UniqueConstraint("group_id", "transaction_id", name="uq_group_shared_tx"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True, nullable=False)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id"),
+        index=True,
+        nullable=False,
+    )
+    shared_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
+    competition_id: Mapped[int | None] = mapped_column(ForeignKey("competitions.id"), index=True)
+    comment: Mapped[str | None] = mapped_column(Text)
+    shared_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+
+
+class GroupPointLedgerModel(Base):
+    __tablename__ = "group_point_ledger"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    competition_id: Mapped[int | None] = mapped_column(ForeignKey("competitions.id"), index=True)
+    shared_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("shared_transactions.id"),
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    points: Mapped[int] = mapped_column(nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)

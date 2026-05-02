@@ -83,6 +83,7 @@ APP_SQLITE_PATH = PROJECT_ROOT / "data" / "sqlite" / "app.sqlite3"
 # DB: weekly action plan / point
 # =========================
 
+
 def ensure_weekly_action_plan_table() -> None:
     with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
         conn.execute(
@@ -286,6 +287,7 @@ def give_weekly_plan_reward(plan_id: int, member_id: int) -> bool:
 # weekly comparison
 # =========================
 
+
 def get_week_total_from_sqlite(member_id: int, week_start: date, week_end: date) -> int:
     if not APP_SQLITE_PATH.exists():
         return 0
@@ -337,6 +339,7 @@ def get_last_month_same_week_total(member_id: int, week_start: date, week_end: d
 # =========================
 # CSS
 # =========================
+
 
 def inject_css():
     st.markdown(
@@ -670,6 +673,7 @@ def inject_css():
 # UI helpers
 # =========================
 
+
 def metric_card(label: str, value: str, desc: str = ""):
     st.markdown(
         f"""
@@ -721,6 +725,7 @@ def compare_card(label: str, current: int, base: int):
 # Data extractors
 # =========================
 
+
 def get_weekly_summary(weekly_data: dict) -> dict:
     return weekly_data.get("weekly_summary", {}) or {}
 
@@ -751,7 +756,9 @@ def get_merchant_rows(weekly_data: dict) -> list[dict]:
         {
             "merchant": row.get("merchant_name", row.get("merchant", row.get("name", "-"))),
             "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
-            "count": safe_int(row.get("visit_count", row.get("transaction_count", row.get("count", 0)))),
+            "count": safe_int(
+                row.get("visit_count", row.get("transaction_count", row.get("count", 0)))
+            ),
         }
         for row in rows
     ]
@@ -853,6 +860,7 @@ def infer_plan_target(
 # =========================
 # Charts
 # =========================
+
 
 def make_weekday_chart(weekly_data: dict):
     rows = get_weekday_rows(weekly_data)
@@ -972,6 +980,7 @@ def make_top_merchant_chart(weekly_data: dict):
 # Vote
 # =========================
 
+
 def render_vote_buttons():
     like_active = st.session_state.weekly_report_feedback == "like"
     dislike_active = st.session_state.weekly_report_feedback == "dislike"
@@ -995,6 +1004,7 @@ def render_vote_buttons():
 # =========================
 # Main report
 # =========================
+
 
 def render_weekly_report(result, member_id: int, start_date: date, end_date: date):
     if result.error:
@@ -1067,7 +1077,11 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         getattr(
             feedback,
             "feedback_message",
-            getattr(feedback, "scolding_message", "이번 주 소비에서 반복되는 패턴을 줄이는 것이 중요합니다."),
+            getattr(
+                feedback,
+                "scolding_message",
+                "이번 주 소비에서 반복되는 패턴을 줄이는 것이 중요합니다.",
+            ),
         )
     )
     next_week_mission = _html_text(getattr(feedback, "next_week_mission", ""))
@@ -1084,8 +1098,7 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         )
     else:
         hero_main = (
-            f"이번 주 소비는<br>"
-            f"<strong>{_html_text(peak_weekday)}요일</strong>에 가장 몰렸어요."
+            f"이번 주 소비는<br><strong>{_html_text(peak_weekday)}요일</strong>에 가장 몰렸어요."
         )
         hero_desc = (
             f"{_html_text(peak_weekday)}요일에 {money(peak_weekday_amount)}을 사용했습니다. "
@@ -1161,10 +1174,18 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         metric_card("이번 주 총 소비", money(total_amount), f"전주 대비 {prev_rate:.1f}%")
 
     with m2:
-        metric_card("TOP 가맹점", _html_text(top_merchant), f"{top_visit_count}회 · {money(top_merchant_amount)}")
+        metric_card(
+            "TOP 가맹점",
+            _html_text(top_merchant),
+            f"{top_visit_count}회 · {money(top_merchant_amount)}",
+        )
 
     with m3:
-        metric_card("TOP 카테고리", _html_text(top_category), f"{top_category_count}건 · {money(top_category_amount)}")
+        metric_card(
+            "TOP 카테고리",
+            _html_text(top_category),
+            f"{top_category_count}건 · {money(top_category_amount)}",
+        )
 
     with m4:
         metric_card("소비 집중 요일", f"{_html_text(peak_weekday)}요일", money(peak_weekday_amount))
@@ -1394,7 +1415,10 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         st.subheader("피드백 근거")
         if feedback_evidences:
             st.dataframe(
-                [item.model_dump() if hasattr(item, "model_dump") else item for item in feedback_evidences],
+                [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in feedback_evidences
+                ],
                 use_container_width=True,
                 hide_index=True,
             )
@@ -1404,7 +1428,10 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         st.subheader("다음 주 할 일")
         if feedback_action_items:
             st.dataframe(
-                [item.model_dump() if hasattr(item, "model_dump") else item for item in feedback_action_items],
+                [
+                    item.model_dump() if hasattr(item, "model_dump") else item
+                    for item in feedback_action_items
+                ],
                 use_container_width=True,
                 hide_index=True,
             )
