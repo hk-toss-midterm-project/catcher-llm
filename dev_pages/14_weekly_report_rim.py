@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import html
+import sqlite3
+from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -17,6 +20,10 @@ st.set_page_config(
     page_icon="🔁",
     layout="wide",
 )
+
+PURPLE_MAIN = "#7c3aed"
+PURPLE_LIGHT = "#8b5cf6"
+PURPLE_DARK = "#6d28d9"
 
 
 def money(value: int | float) -> str:
@@ -47,6 +54,73 @@ def safe_float(value, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def calc_diff_rate(current: int | float, base: int | float) -> float:
+    if not base:
+        return 0.0
+    return (current - base) / base * 100
+
+
+def quote_col(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def find_project_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in [current.parent, *current.parents]:
+        if (parent / "data" / "sqlite" / "app.sqlite3").exists():
+            return parent
+    return current.parents[1]
+
+
+PROJECT_ROOT = find_project_root()
+APP_SQLITE_PATH = PROJECT_ROOT / "data" / "sqlite" / "app.sqlite3"
+
+
+def get_week_total_from_sqlite(member_id: int, week_start: date, week_end: date) -> int:
+    if not APP_SQLITE_PATH.exists():
+        return 0
+
+    try:
+        with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+            query = """
+            SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS total
+            FROM transactions
+            WHERE user_id = ?
+              AND date(substr(used_at, 1, 10)) >= date(?)
+              AND date(substr(used_at, 1, 10)) <= date(?)
+            """
+            df = pd.read_sql_query(
+                query,
+                conn,
+                params=[member_id, week_start.isoformat(), week_end.isoformat()],
+            )
+            return safe_int(df.iloc[0]["total"])
+    except Exception:
+        return 0
+
+
+def get_recent_4_week_average(member_id: int, week_start: date, week_end: date) -> int:
+    values = []
+
+    for i in range(1, 5):
+        start = week_start - timedelta(days=7 * i)
+        end = week_end - timedelta(days=7 * i)
+        total = get_week_total_from_sqlite(member_id, start, end)
+        if total > 0:
+            values.append(total)
+
+    if not values:
+        return 0
+
+    return round(sum(values) / len(values))
+
+
+def get_last_month_same_week_total(member_id: int, week_start: date, week_end: date) -> int:
+    last_month_start = week_start - timedelta(days=28)
+    last_month_end = week_end - timedelta(days=28)
+    return get_week_total_from_sqlite(member_id, last_month_start, last_month_end)
 
 
 def inject_css():
@@ -192,7 +266,7 @@ def inject_css():
             letter-spacing:-0.4px;
         }
 
-        .metric-card {
+        .metric-card, .compare-card {
             padding:20px 22px;
             border-radius:24px;
             background:#ffffff;
@@ -201,13 +275,13 @@ def inject_css():
             min-height:122px;
         }
 
-        .metric-label {
+        .metric-label, .compare-label {
             color:#64748b;
             font-weight:850;
             font-size:13px;
         }
 
-        .metric-value {
+        .metric-value, .compare-value {
             color:#0f172a;
             font-weight:950;
             font-size:24px;
@@ -216,35 +290,11 @@ def inject_css():
             letter-spacing:-0.5px;
         }
 
-        .metric-desc {
+        .metric-desc, .compare-desc {
             color:#94a3b8;
             font-size:12.5px;
             margin-top:8px;
             line-height:1.45;
-            font-weight:650;
-        }
-
-        .insight-card {
-            padding:22px;
-            border-radius:26px;
-            background:#ffffff;
-            border:1px solid #e5e7eb;
-            box-shadow:0 10px 28px rgba(15,23,42,0.055);
-            min-height:170px;
-        }
-
-        .insight-title {
-            font-size:19px;
-            font-weight:950;
-            color:#0f172a;
-            margin-bottom:12px;
-            letter-spacing:-0.4px;
-        }
-
-        .insight-body {
-            color:#475569;
-            font-size:14px;
-            line-height:1.7;
             font-weight:650;
         }
 
@@ -282,7 +332,7 @@ def inject_css():
             letter-spacing:-0.5px;
         }
 
-        .action-card {
+        .insight-card, .action-card, .vote-card {
             padding:22px;
             border-radius:26px;
             background:#ffffff;
@@ -291,12 +341,27 @@ def inject_css():
             min-height:142px;
         }
 
+        .insight-title {
+            font-size:19px;
+            font-weight:950;
+            color:#0f172a;
+            margin-bottom:12px;
+            letter-spacing:-0.4px;
+        }
+
+        .insight-body {
+            color:#475569;
+            font-size:14px;
+            line-height:1.7;
+            font-weight:650;
+        }
+
         .num {
             display:inline-flex;
             width:36px;
             height:36px;
             border-radius:50%;
-            background:#3182f6;
+            background:#7c3aed;
             color:white;
             align-items:center;
             justify-content:center;
@@ -313,15 +378,6 @@ def inject_css():
             min-height:142px;
             font-weight:850;
             line-height:1.65;
-        }
-
-        .vote-card {
-            padding:22px;
-            border-radius:26px;
-            background:#ffffff;
-            border:1px solid #e5e7eb;
-            box-shadow:0 10px 28px rgba(15,23,42,0.055);
-            min-height:142px;
         }
 
         div[data-testid="stButton"] button {
@@ -364,24 +420,54 @@ def metric_card(label: str, value: str, desc: str = ""):
     )
 
 
+def compare_card(label: str, current: int, base: int):
+    if base <= 0:
+        value = "비교 데이터 없음"
+        desc = "해당 기준 주차의 소비 데이터가 없습니다."
+        color = "neutral-color"
+    else:
+        diff = current - base
+        rate = calc_diff_rate(current, base)
+
+        if diff > 0:
+            value = f"+{money(abs(diff))} 증가"
+            desc = f"기준 {money(base)} 대비 +{rate:.1f}%"
+            color = "up-color"
+        elif diff < 0:
+            value = f"-{money(abs(diff))} 감소"
+            desc = f"기준 {money(base)} 대비 {rate:.1f}%"
+            color = "down-color"
+        else:
+            value = "변화 없음"
+            desc = f"기준 {money(base)}와 동일"
+            color = "neutral-color"
+
+    st.markdown(
+        f"""
+        <div class="compare-card">
+            <div class="compare-label">{_html_text(label)}</div>
+            <div class="compare-value {color}">{value}</div>
+            <div class="compare-desc">{desc}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def get_weekly_summary(weekly_data: dict) -> dict:
     return weekly_data.get("weekly_summary", {}) or {}
 
 
 def get_category_rows(weekly_data: dict) -> list[dict]:
     rows = weekly_data.get("category_summary", []) or []
-    cleaned = []
-
-    for row in rows:
-        cleaned.append(
-            {
-                "category": row.get("category", row.get("category_name", "-")),
-                "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
-                "count": safe_int(row.get("transaction_count", row.get("count", 0))),
-            }
-        )
-
-    return cleaned
+    return [
+        {
+            "category": row.get("category", row.get("category_name", "-")),
+            "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
+            "count": safe_int(row.get("transaction_count", row.get("count", 0))),
+        }
+        for row in rows
+    ]
 
 
 def get_merchant_rows(weekly_data: dict) -> list[dict]:
@@ -394,59 +480,41 @@ def get_merchant_rows(weekly_data: dict) -> list[dict]:
     merchant_rows = weekly_data.get("merchant_summary", []) or []
     rows = repeat_rows or merchant_rows
 
-    cleaned = []
-    for row in rows:
-        cleaned.append(
-            {
-                "merchant": row.get(
-                    "merchant_name",
-                    row.get("merchant", row.get("name", "-")),
-                ),
-                "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
-                "count": safe_int(
-                    row.get(
-                        "visit_count",
-                        row.get("transaction_count", row.get("count", 0)),
-                    )
-                ),
-            }
-        )
-
-    return cleaned
+    return [
+        {
+            "merchant": row.get("merchant_name", row.get("merchant", row.get("name", "-"))),
+            "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
+            "count": safe_int(row.get("visit_count", row.get("transaction_count", row.get("count", 0)))),
+        }
+        for row in rows
+    ]
 
 
 def get_weekday_rows(weekly_data: dict) -> list[dict]:
     pattern = weekly_data.get("weekday_pattern", {}) or {}
     rows = pattern.get("weekday_breakdown", []) or []
 
-    cleaned = []
-    for row in rows:
-        cleaned.append(
-            {
-                "weekday": row.get("weekday", "-"),
-                "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
-            }
-        )
-
-    return cleaned
+    return [
+        {
+            "weekday": row.get("weekday", "-"),
+            "amount": safe_int(row.get("total_amount", row.get("amount", 0))),
+        }
+        for row in rows
+    ]
 
 
 def get_top_category(weekly_data: dict):
     rows = get_category_rows(weekly_data)
-
     if not rows:
         return "-", 0, 0
-
     top = max(rows, key=lambda x: x["amount"])
     return top["category"], top["amount"], top["count"]
 
 
 def get_top_merchant(weekly_data: dict):
     rows = get_merchant_rows(weekly_data)
-
     if not rows:
         return "-", 0, 0
-
     top = max(rows, key=lambda x: (x["count"], x["amount"]))
     return top["merchant"], top["count"], top["amount"]
 
@@ -468,11 +536,7 @@ def get_peak_weekday(weekly_data: dict):
     return top["weekday"], top["amount"]
 
 
-def get_pattern_type(
-    top_visit_count: int,
-    peak_weekday_amount: int,
-    total_amount: int,
-):
+def get_pattern_type(top_visit_count: int, peak_weekday_amount: int, total_amount: int):
     weekday_ratio = (peak_weekday_amount / total_amount * 100) if total_amount else 0
 
     if top_visit_count >= 2:
@@ -527,7 +591,7 @@ def make_weekday_chart(weekly_data: dict):
     fig.update_traces(
         texttemplate="%{text:,.0f}",
         textposition="outside",
-        marker_color="#7c3aed",
+        marker_color=PURPLE_MAIN,
         marker_line_width=0,
         width=0.55,
         hovertemplate="<b>%{x}</b><br>%{y:,.0f}원<extra></extra>",
@@ -558,18 +622,12 @@ def make_top_category_chart(weekly_data: dict):
     df = df.sort_values("amount", ascending=False).head(5)
     df = df.sort_values("amount", ascending=True)
 
-    fig = px.bar(
-        df,
-        x="amount",
-        y="category",
-        orientation="h",
-        text="amount",
-    )
+    fig = px.bar(df, x="amount", y="category", orientation="h", text="amount")
 
     fig.update_traces(
         texttemplate="%{text:,.0f}",
         textposition="outside",
-        marker_color="#8b5cf6",
+        marker_color=PURPLE_LIGHT,
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<extra></extra>",
     )
 
@@ -598,18 +656,12 @@ def make_top_merchant_chart(weekly_data: dict):
     df = df.sort_values("amount", ascending=False).head(5)
     df = df.sort_values("amount", ascending=True)
 
-    fig = px.bar(
-        df,
-        x="amount",
-        y="merchant",
-        orientation="h",
-        text="amount",
-    )
+    fig = px.bar(df, x="amount", y="merchant", orientation="h", text="amount")
 
     fig.update_traces(
         texttemplate="%{text:,.0f}",
         textposition="outside",
-        marker_color="#6d28d9",
+        marker_color=PURPLE_DARK,
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<br>%{customdata}회<extra></extra>",
         customdata=df["count"],
     )
@@ -639,17 +691,17 @@ def render_vote_buttons():
     like_col, dislike_col = st.columns(2)
 
     with like_col:
-        if st.button("👍 좋아요", width="stretch", key=like_key):
+        if st.button("👍 좋아요", use_container_width=True, key=like_key):
             st.session_state.weekly_report_feedback = "like"
             st.rerun()
 
     with dislike_col:
-        if st.button("👎 아쉬워요", width="stretch", key=dislike_key):
+        if st.button("👎 아쉬워요", use_container_width=True, key=dislike_key):
             st.session_state.weekly_report_feedback = "dislike"
             st.rerun()
 
 
-def render_weekly_report(result):
+def render_weekly_report(result, member_id: int, start_date: date, end_date: date):
     if result.error:
         st.error(f"주간 피드백 생성 실패: {result.error}")
         st.stop()
@@ -660,13 +712,29 @@ def render_weekly_report(result):
 
     feedback = result.feedback
     weekly_data = _to_dict(result.weekly_analysis)
-
     weekly_summary = get_weekly_summary(weekly_data)
 
     total_amount = safe_int(weekly_summary.get("this_week_total", 0))
     prev_amount = safe_int(weekly_summary.get("last_week_total", 0))
-    diff_amount = safe_int(weekly_summary.get("diff_amount", total_amount - prev_amount))
-    prev_rate = safe_float(weekly_summary.get("diff_rate_percent", 0))
+
+    sqlite_this_week_total = get_week_total_from_sqlite(member_id, start_date, end_date)
+    if total_amount <= 0 and sqlite_this_week_total > 0:
+        total_amount = sqlite_this_week_total
+
+    sqlite_prev_week_total = get_week_total_from_sqlite(
+        member_id,
+        start_date - timedelta(days=7),
+        end_date - timedelta(days=7),
+    )
+
+    if prev_amount <= 0 and sqlite_prev_week_total > 0:
+        prev_amount = sqlite_prev_week_total
+
+    recent_4_week_average = get_recent_4_week_average(member_id, start_date, end_date)
+    last_month_same_week_total = get_last_month_same_week_total(member_id, start_date, end_date)
+
+    diff_amount = total_amount - prev_amount
+    prev_rate = calc_diff_rate(total_amount, prev_amount)
 
     top_merchant, top_visit_count, top_merchant_amount = get_top_merchant(weekly_data)
     peak_weekday, peak_weekday_amount = get_peak_weekday(weekly_data)
@@ -681,8 +749,14 @@ def render_weekly_report(result):
     action_title, action_detail = get_action_text(feedback)
 
     summary_title = _html_text(getattr(feedback, "summary_title", "LLM 소비 코멘트"))
-    feedback_message = _html_text(feedback.feedback_message)
-    next_week_mission = _html_text(feedback.next_week_mission)
+    feedback_message = _html_text(
+        getattr(
+            feedback,
+            "feedback_message",
+            getattr(feedback, "scolding_message", "이번 주 소비에서 반복되는 패턴을 줄이는 것이 중요합니다."),
+        )
+    )
+    next_week_mission = _html_text(getattr(feedback, "next_week_mission", ""))
 
     if top_visit_count >= 2 and top_merchant != "-":
         hero_main = (
@@ -696,17 +770,19 @@ def render_weekly_report(result):
         )
     else:
         hero_main = (
-            f"이번 주 소비는<br><strong>{_html_text(peak_weekday)}요일</strong>에 가장 몰렸어요."
+            f"이번 주 소비는<br>"
+            f"<strong>{_html_text(peak_weekday)}요일</strong>에 가장 몰렸어요."
         )
         hero_desc = (
             f"{_html_text(peak_weekday)}요일에 {money(peak_weekday_amount)}을 사용했습니다. "
             "반복 가맹점이 뚜렷하지 않을 때는 특정 요일과 카테고리 집중도를 중심으로 해석합니다."
         )
 
-    if top_visit_count and top_merchant_amount:
-        expected_saving = round(top_merchant_amount / max(top_visit_count, 1))
-    else:
-        expected_saving = round(top_category_amount * 0.15)
+    expected_saving = (
+        round(top_merchant_amount / max(top_visit_count, 1))
+        if top_visit_count and top_merchant_amount
+        else round(top_category_amount * 0.15)
+    )
 
     h1, h2 = st.columns([2.35, 1])
 
@@ -771,21 +847,26 @@ def render_weekly_report(result):
         metric_card("이번 주 총 소비", money(total_amount), f"전주 대비 {prev_rate:.1f}%")
 
     with m2:
-        metric_card(
-            "TOP 가맹점",
-            _html_text(top_merchant),
-            f"{top_visit_count}회 · {money(top_merchant_amount)}",
-        )
+        metric_card("TOP 가맹점", _html_text(top_merchant), f"{top_visit_count}회 · {money(top_merchant_amount)}")
 
     with m3:
-        metric_card(
-            "TOP 카테고리",
-            _html_text(top_category),
-            f"{top_category_count}건 · {money(top_category_amount)}",
-        )
+        metric_card("TOP 카테고리", _html_text(top_category), f"{top_category_count}건 · {money(top_category_amount)}")
 
     with m4:
         metric_card("소비 집중 요일", f"{_html_text(peak_weekday)}요일", money(peak_weekday_amount))
+
+    st.markdown('<div class="section">비교 기준으로 보기</div>', unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        compare_card("전주 대비", total_amount, prev_amount)
+
+    with c2:
+        compare_card("최근 4주 평균 대비", total_amount, recent_4_week_average)
+
+    with c3:
+        compare_card("지난달 같은 주차 대비", total_amount, last_month_same_week_total)
 
     st.markdown('<div class="section">주간 소비 대시보드</div>', unsafe_allow_html=True)
 
@@ -794,19 +875,19 @@ def render_weekly_report(result):
     with d1:
         with st.container(border=True):
             st.markdown("### 요일별 소비 흐름")
-            st.plotly_chart(make_weekday_chart(weekly_data), width="stretch")
+            st.plotly_chart(make_weekday_chart(weekly_data), use_container_width=True)
 
     with d2:
         with st.container(border=True):
             st.markdown("### TOP 5 가맹점")
-            st.plotly_chart(make_top_merchant_chart(weekly_data), width="stretch")
+            st.plotly_chart(make_top_merchant_chart(weekly_data), use_container_width=True)
 
     d3, d4 = st.columns([1.1, 1])
 
     with d3:
         with st.container(border=True):
             st.markdown("### TOP 5 카테고리")
-            st.plotly_chart(make_top_category_chart(weekly_data), width="stretch")
+            st.plotly_chart(make_top_category_chart(weekly_data), use_container_width=True)
 
     with d4:
         st.markdown(
@@ -844,7 +925,7 @@ def render_weekly_report(result):
 
     with i2:
         st.markdown(
-            """
+            f"""
             <div class="insight-card">
                 <div class="insight-title">왜 이 지점을 봐야 할까?</div>
                 <div class="insight-body">
@@ -915,7 +996,7 @@ def render_weekly_report(result):
             key="weekly_feedback_reason_input",
         )
 
-        if st.button("의견 제출", width="stretch", key="weekly_reason_submit_btn"):
+        if st.button("의견 제출", use_container_width=True, key="weekly_reason_submit_btn"):
             st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
 
     with st.expander("상세 분석 데이터 보기"):
@@ -925,17 +1006,26 @@ def render_weekly_report(result):
         st.subheader("주간 피드백 JSON")
         st.json(feedback.model_dump() if hasattr(feedback, "model_dump") else feedback)
 
-        feedback_evidences = feedback.key_evidences or []
-        feedback_action_items = feedback.action_items or []
+        st.subheader("비교 데이터 디버그")
+        st.json(
+            {
+                "db_path": str(APP_SQLITE_PATH),
+                "this_week": [start_date.isoformat(), end_date.isoformat()],
+                "this_week_total": total_amount,
+                "prev_week_total": prev_amount,
+                "recent_4_week_average": recent_4_week_average,
+                "last_month_same_week_total": last_month_same_week_total,
+            }
+        )
+
+        feedback_evidences = getattr(feedback, "key_evidences", []) or []
+        feedback_action_items = getattr(feedback, "action_items", []) or []
 
         st.subheader("피드백 근거")
         if feedback_evidences:
             st.dataframe(
-                [
-                    item.model_dump() if hasattr(item, "model_dump") else item
-                    for item in feedback_evidences
-                ],
-                width="stretch",
+                [item.model_dump() if hasattr(item, "model_dump") else item for item in feedback_evidences],
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -944,11 +1034,8 @@ def render_weekly_report(result):
         st.subheader("다음 주 할 일")
         if feedback_action_items:
             st.dataframe(
-                [
-                    item.model_dump() if hasattr(item, "model_dump") else item
-                    for item in feedback_action_items
-                ],
-                width="stretch",
+                [item.model_dump() if hasattr(item, "model_dump") else item for item in feedback_action_items],
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -973,6 +1060,9 @@ if "weekly_report_feedback" not in st.session_state:
 if "weekly_feedback_reason" not in st.session_state:
     st.session_state.weekly_feedback_reason = ""
 
+if "weekly_report_params" not in st.session_state:
+    st.session_state.weekly_report_params = None
+
 top1, top2 = st.columns([1.35, 1])
 
 with top1:
@@ -981,7 +1071,7 @@ with top1:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="page-subtitle">주간 보고서는 금액보다 반복된 소비 습관, 집중 요일, TOP 가맹점을 중심으로 해석합니다.</div>',
+        '<div class="page-subtitle">주간 보고서는 반복 소비, 집중 요일, TOP 가맹점과 함께 비교 기준을 해석합니다.</div>',
         unsafe_allow_html=True,
     )
 
@@ -1000,13 +1090,18 @@ with top2:
 
     with f3:
         st.write("")
-        run = st.button("생성", width="stretch")
+        run = st.button("생성", use_container_width=True)
 
 if run:
     st.session_state.weekly_report_generated = True
     st.session_state.weekly_result = None
     st.session_state.weekly_report_feedback = None
     st.session_state.weekly_feedback_reason = ""
+    st.session_state.weekly_report_params = {
+        "member_id": int(member_id),
+        "start_date": start_date,
+        "end_date": end_date,
+    }
 
 if st.session_state.weekly_report_generated:
     from catcher_llm.config.settings import get_settings
@@ -1029,7 +1124,18 @@ if st.session_state.weekly_report_generated:
                 max_queries=4,
             )
 
-    render_weekly_report(st.session_state.weekly_result)
+    params = st.session_state.weekly_report_params or {
+        "member_id": int(member_id),
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+    render_weekly_report(
+        st.session_state.weekly_result,
+        member_id=params["member_id"],
+        start_date=params["start_date"],
+        end_date=params["end_date"],
+    )
 
 else:
     st.info("Member ID와 분석 기간을 선택한 뒤, 생성을 눌러주세요.")
