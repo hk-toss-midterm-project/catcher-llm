@@ -61,6 +61,8 @@ def _format_metric_value(metric: SpendingMetric) -> str:
         return f"{value:,.0f}원"
     if metric.unit == "percent" and isinstance(value, int | float):
         return f"{value:,.2f}%"
+    if metric.unit == "ratio" and isinstance(value, int | float):
+        return f"{value:,.2f}x"
     if metric.unit == "count":
         return f"{value}건"
     return str(value)
@@ -149,6 +151,56 @@ def _load_profile(member_id: int) -> UserProfileContext | None:
         return None
 
 
+def _render_financial_context_summary(metrics: Sequence[SpendingMetric]) -> None:
+    """소득과 목표 소비 기반 월간 해석 지표를 개발 확인용 메트릭으로 표시한다."""
+    st.subheader("소득·목표 소비 지표")
+    budget_columns = st.columns(4)
+    budget_columns[0].metric(
+        "월간 잔여 예산",
+        _metric_value_text(metrics, "월간 잔여 예산"),
+    )
+    budget_columns[1].metric(
+        "월간 예산 초과액",
+        _metric_value_text(metrics, "월간 예산 초과액"),
+    )
+    budget_columns[2].metric(
+        "월소득 대비 총소비율",
+        _metric_value_text(metrics, "월소득 대비 총소비율"),
+    )
+    budget_columns[3].metric(
+        "목표 소비 한도 소득 비중",
+        _metric_value_text(metrics, "목표 소비 한도 소득 비중"),
+    )
+
+    saving_columns = st.columns(4)
+    saving_columns[0].metric(
+        "추정 저축액",
+        _metric_value_text(metrics, "추정 저축액"),
+    )
+    saving_columns[1].metric(
+        "추정 저축률",
+        _metric_value_text(metrics, "추정 저축률"),
+    )
+    saving_columns[2].metric(
+        "목표 달성 시 저축액",
+        _metric_value_text(metrics, "목표 달성 시 저축액"),
+    )
+    saving_columns[3].metric(
+        "목표 달성 시 저축률",
+        _metric_value_text(metrics, "목표 달성 시 저축률"),
+    )
+
+    capacity_columns = st.columns(2)
+    capacity_columns[0].metric(
+        "소비 여력",
+        _metric_value_text(metrics, "소비 여력"),
+    )
+    capacity_columns[1].metric(
+        "비필수 소비 소득 비중",
+        _metric_value_text(metrics, "비필수 소비 소득 비중"),
+    )
+
+
 def _render_indicator_summary(indicators: MonthlySpendingIndicatorPayload) -> None:
     """추출된 월간 소비 지표 묶음의 핵심 요약과 상세 표를 표시한다."""
     metric_columns = st.columns(5)
@@ -185,6 +237,8 @@ def _render_indicator_summary(indicators: MonthlySpendingIndicatorPayload) -> No
         "총 절약 가능액",
         _metric_value_text(indicators.metrics, "총 절약 가능액"),
     )
+
+    _render_financial_context_summary(indicators.metrics)
 
     st.subheader("월간 핵심 소비 지표")
     _render_metric_table(indicators.metrics)

@@ -152,6 +152,42 @@ def _render_payment_behavior_summary(metrics: Sequence[SpendingMetric]) -> None:
     )
 
 
+def _render_financial_context_summary(metrics: Sequence[SpendingMetric]) -> None:
+    """소득과 목표 소비 기반 일일 해석 지표를 개발 확인용 메트릭으로 표시한다."""
+    st.subheader("소득·목표 소비 지표")
+    budget_columns = st.columns(4)
+    budget_columns[0].metric(
+        "일일 잔여 예산",
+        _metric_value_text(metrics, "일일 잔여 예산"),
+    )
+    budget_columns[1].metric(
+        "일일 예산 초과액",
+        _metric_value_text(metrics, "일일 예산 초과액"),
+    )
+    budget_columns[2].metric(
+        "일 환산 소득 대비 소비율",
+        _metric_value_text(metrics, "일 환산 소득 대비 소비율"),
+    )
+    budget_columns[3].metric(
+        "월 누적 목표 사용률",
+        _metric_value_text(metrics, "월 누적 목표 사용률"),
+    )
+
+    projection_columns = st.columns(3)
+    projection_columns[0].metric(
+        "월말 예상 소비",
+        _metric_value_text(metrics, "월말 예상 소비"),
+    )
+    projection_columns[1].metric(
+        "월말 예상 목표 사용률",
+        _metric_value_text(metrics, "월말 예상 목표 사용률"),
+    )
+    projection_columns[2].metric(
+        "월말까지 남은 하루 허용 소비",
+        _metric_value_text(metrics, "월말까지 남은 하루 허용 소비"),
+    )
+
+
 def _render_indicator_summary(indicators: SpendingIndicatorPayload) -> None:
     """추출된 소비 지표 묶음의 핵심 요약과 상세 표를 표시한다."""
     metric_columns = st.columns(4)
@@ -174,6 +210,8 @@ def _render_indicator_summary(indicators: SpendingIndicatorPayload) -> None:
     _render_metric_table(indicators.metrics)
 
     _render_payment_behavior_summary(indicators.metrics)
+
+    _render_financial_context_summary(indicators.metrics)
 
     st.subheader("카테고리 비중 변화")
     _render_category_table(indicators.category_ratio_changes)

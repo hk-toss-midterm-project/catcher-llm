@@ -24,18 +24,6 @@ _USER_SCORE_COLUMN = "personal_score"
 st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
 
-def find_project_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in [current.parent, *current.parents]:
-        if (parent / "data" / "sqlite" / "app.sqlite3").exists():
-            return parent
-    return current.parents[1]
-
-
-PROJECT_ROOT = find_project_root()
-APP_SQLITE_PATH = PROJECT_ROOT / "data" / "sqlite" / "app.sqlite3"
-
-
 def clean_text(value) -> str:
     if value is None:
         return ""
@@ -95,7 +83,8 @@ def extract_monthly_goal(text: str | None) -> int:
 
 
 def _get_daily_report_sqlite_db_path() -> str:
-    return str(APP_SQLITE_PATH)
+    """일간 보고서 포인트 조회와 거래 조회에 사용할 설정 SQLite 경로를 반환한다."""
+    return str(get_settings().sqlite_db_path)
 
 
 def _get_user_score_column(connection: sqlite3.Connection) -> str | None:
@@ -741,7 +730,7 @@ def render_report_feedback():
         if st.button(
             "👍 좋아요",
             type="primary" if like_selected else "secondary",
-            use_container_width=True,
+            width="stretch",
             key="daily_report_like",
         ):
             st.session_state.daily_report_feedback = "like"
@@ -752,7 +741,7 @@ def render_report_feedback():
         if st.button(
             "👎 싫어요",
             type="primary" if dislike_selected else "secondary",
-            use_container_width=True,
+            width="stretch",
             key="daily_report_dislike",
         ):
             st.session_state.daily_report_feedback = "dislike"
@@ -810,7 +799,7 @@ with col3:
         unsafe_allow_html=True,
     )
 
-run = st.button("오늘의 소비 알림장 생성", use_container_width=True)
+run = st.button("오늘의 소비 알림장 생성", width="stretch")
 
 st.session_state.member_id = int(member_id)
 
@@ -982,11 +971,11 @@ with dashboard_left:
 
     with chart1:
         st.markdown("### 어디에 썼나")
-        st.plotly_chart(make_category_chart(daily_analysis), use_container_width=True)
+        st.plotly_chart(make_category_chart(daily_analysis), width="stretch")
 
     with chart2:
         st.markdown("### 언제 썼나")
-        st.plotly_chart(make_hour_chart(daily_analysis), use_container_width=True)
+        st.plotly_chart(make_hour_chart(daily_analysis), width="stretch")
 
 with dashboard_right:
     st.markdown("### 소비 한도")
@@ -994,7 +983,7 @@ with dashboard_right:
     if daily_budget:
         st.plotly_chart(
             make_budget_gauge(today_amount, daily_budget),
-            use_container_width=True,
+            width="stretch",
         )
 
         remaining_label = "남은 금액" if budget_gap >= 0 else "초과 금액"
@@ -1077,7 +1066,7 @@ with st.expander("LLM 피드백 근거와 실행 항목"):
                 item.model_dump() if hasattr(item, "model_dump") else item
                 for item in feedback.key_evidences
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:
@@ -1091,7 +1080,7 @@ with st.expander("LLM 피드백 근거와 실행 항목"):
                 item.model_dump() if hasattr(item, "model_dump") else item
                 for item in feedback.action_items
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:
@@ -1108,9 +1097,7 @@ with feedback_col2:
     with st.expander("상세 분석 & 데이터"):
         st.subheader("일일 분석 JSON")
         st.json(
-            daily_analysis.model_dump()
-            if hasattr(daily_analysis, "model_dump")
-            else daily_analysis
+            daily_analysis.model_dump() if hasattr(daily_analysis, "model_dump") else daily_analysis
         )
 
         st.subheader("최종 피드백 JSON")

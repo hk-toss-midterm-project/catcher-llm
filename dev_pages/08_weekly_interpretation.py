@@ -61,6 +61,8 @@ def _format_metric_value(metric: SpendingMetric) -> str:
         return f"{value:,.0f}원"
     if metric.unit == "percent" and isinstance(value, int | float):
         return f"{value:,.2f}%"
+    if metric.unit == "ratio" and isinstance(value, int | float):
+        return f"{value:,.2f}x"
     if metric.unit == "count":
         return f"{value}건"
     return str(value)
@@ -142,6 +144,38 @@ def _load_profile(member_id: int) -> UserProfileContext | None:
         return None
 
 
+def _render_financial_context_summary(metrics: Sequence[SpendingMetric]) -> None:
+    """소득과 목표 소비 기반 주간 해석 지표를 개발 확인용 메트릭으로 표시한다."""
+    st.subheader("소득·목표 소비 지표")
+    budget_columns = st.columns(3)
+    budget_columns[0].metric(
+        "주간 잔여 예산",
+        _metric_value_text(metrics, "주간 잔여 예산"),
+    )
+    budget_columns[1].metric(
+        "주간 예산 초과액",
+        _metric_value_text(metrics, "주간 예산 초과액"),
+    )
+    budget_columns[2].metric(
+        "주 환산 소득 대비 소비율",
+        _metric_value_text(metrics, "주 환산 소득 대비 소비율"),
+    )
+
+    projection_columns = st.columns(3)
+    projection_columns[0].metric(
+        "주간 예산 소진 배율",
+        _metric_value_text(metrics, "주간 예산 소진 배율"),
+    )
+    projection_columns[1].metric(
+        "월 누적 목표 사용률",
+        _metric_value_text(metrics, "월 누적 목표 사용률"),
+    )
+    projection_columns[2].metric(
+        "주간 페이스 기준 월말 예상 소비",
+        _metric_value_text(metrics, "주간 페이스 기준 월말 예상 소비"),
+    )
+
+
 def _render_indicator_summary(indicators: WeeklySpendingIndicatorPayload) -> None:
     """추출된 주간 소비 지표 묶음의 핵심 요약과 상세 표를 표시한다."""
     metric_columns = st.columns(5)
@@ -178,6 +212,8 @@ def _render_indicator_summary(indicators: WeeklySpendingIndicatorPayload) -> Non
         "고액 결제 건수",
         _metric_value_text(indicators.metrics, "고액 결제 건수"),
     )
+
+    _render_financial_context_summary(indicators.metrics)
 
     st.subheader("주간 핵심 소비 지표")
     _render_metric_table(indicators.metrics)
