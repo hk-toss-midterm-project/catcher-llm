@@ -9,6 +9,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from catcher_llm.config.settings import get_settings
+from catcher_llm.services.consumption_feedback.feedback_reaction import (
+    save_session_feedback_reaction,
+)
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -982,7 +986,7 @@ def make_top_merchant_chart(weekly_data: dict):
 # =========================
 
 
-def render_vote_buttons():
+def render_vote_buttons(*, member_id: int, start_date: date) -> None:
     like_active = st.session_state.weekly_report_feedback == "like"
     dislike_active = st.session_state.weekly_report_feedback == "dislike"
 
@@ -993,11 +997,27 @@ def render_vote_buttons():
 
     with like_col:
         if st.button("👍 좋아요", width="stretch", key=like_key):
+            save_session_feedback_reaction(
+                member_id=member_id,
+                analysis_date=start_date,
+                period_type="weekly",
+                reaction="like",
+                reason=None,
+                settings=get_settings(),
+            )
             st.session_state.weekly_report_feedback = "like"
             st.rerun()
 
     with dislike_col:
         if st.button("👎 아쉬워요", width="stretch", key=dislike_key):
+            save_session_feedback_reaction(
+                member_id=member_id,
+                analysis_date=start_date,
+                period_type="weekly",
+                reaction="dislike",
+                reason=None,
+                settings=get_settings(),
+            )
             st.session_state.weekly_report_feedback = "dislike"
             st.rerun()
 
@@ -1357,7 +1377,7 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
             """,
             unsafe_allow_html=True,
         )
-        render_vote_buttons()
+        render_vote_buttons(member_id=member_id, start_date=start_date)
 
     if st.session_state.weekly_report_feedback == "like":
         st.success("좋아요 감사합니다! 다음 리포트도 이 방향으로 개선해볼게요 😊")

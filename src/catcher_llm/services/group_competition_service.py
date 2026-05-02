@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, select
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import (
@@ -11,6 +11,7 @@ from catcher_llm.db.models import (
     GroupMembershipModel,
     GroupModel,
     GroupPointLedgerModel,
+    SessionModel,
     SharedTransactionModel,
     TransactionModel,
     UserModel,
@@ -19,6 +20,7 @@ from catcher_llm.db.session import session_scope
 from catcher_llm.services.user_data_service import ensure_user_database
 
 _DEFAULT_SHARE_POINTS = 10
+_FEEDBACK_WINDOW_DAYS = 7
 
 
 @dataclass(slots=True, frozen=True)
@@ -62,7 +64,7 @@ class CompetitionCreateResult:
 
 @dataclass(slots=True, frozen=True)
 class TransactionShareInput:
-    """그룹에 소비 내역을 공유할 때 필요한 입력값을 담는다."""
+    """그룹에 소비를 공유할 때 필요한 입력값을 담는다."""
 
     group_id: int
     shared_by_user_id: int
@@ -73,7 +75,7 @@ class TransactionShareInput:
 
 @dataclass(slots=True, frozen=True)
 class TransactionShareResult:
-    """소비 공유 결과와 적립된 포인트를 반환한다."""
+    """소비 공유 결과와 적립 포인트를 반환한다."""
 
     shared_transaction_id: int
     awarded_points: int
@@ -131,16 +133,14 @@ def _get_membership_or_raise(
             )
         )
     if membership is None:
-        raise ValueError(f"사용자 {user_id}번은 그룹 {group_id}번 멤버가 아닙니다.")
+        raise ValueError(f"사용자 {user_id}번은 그룹 {group_id}번의 멤버가 아닙니다.")
     return membership
 
 
 def _get_transaction_or_raise(settings: Settings, *, transaction_id: int) -> TransactionModel:
     """주어진 거래 ID가 존재하는지 확인하고 거래 모델을 반환한다."""
     with session_scope(settings) as session:
-        transaction = session.scalar(
-            select(TransactionModel).where(TransactionModel.id == transaction_id)
-        )
+        transaction = session.scalar(select(TransactionModel).where(TransactionModel.id == transaction_id))
     if transaction is None:
         raise ValueError(f"거래 {transaction_id}번을 찾을 수 없습니다.")
     return transaction
@@ -155,8 +155,7 @@ def create_group(
     config = settings or get_settings()
     ensure_user_database(settings=config)
 
-    owner_user = _get_user_or_raise(config, user_id=payload.owner_user_id)
-    _ = owner_user
+    _get_user_or_raise(config, user_id=payload.owner_user_id)
     member_user_ids = sorted(set(payload.member_user_ids + [payload.owner_user_id]))
     for member_user_id in member_user_ids:
         _get_user_or_raise(config, user_id=member_user_id)
@@ -196,7 +195,7 @@ def create_competition(
     *,
     settings: Settings | None = None,
 ) -> CompetitionCreateResult:
-    """그룹 안에서 포인트 경쟁을 집계할 대회를 생성한다."""
+    """그룹 안에서 기간이 있는 대회를 생성한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
     _get_group_or_raise(config, group_id=payload.group_id)
@@ -228,7 +227,7 @@ def share_transaction_to_group(
     *,
     settings: Settings | None = None,
 ) -> TransactionShareResult:
-    """그룹 멤버의 소비 내역을 공유하고 공유 포인트를 적립한다."""
+    """그룹 멤버가 소비를 공유하고 포인트를 적립한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
     _get_membership_or_raise(config, group_id=payload.group_id, user_id=payload.shared_by_user_id)
@@ -239,7 +238,7 @@ def share_transaction_to_group(
     if payload.competition_id is not None:
         competition = _get_competition_or_raise(config, competition_id=payload.competition_id)
         if competition.group_id != payload.group_id:
-            raise ValueError("선택한 대회가 그룹에 속해 있지 않습니다.")
+            raise ValueError("선택한 대회가 그룹과 일치하지 않습니다.")
 
     with session_scope(config) as session:
         existing_share = session.scalar(
@@ -249,7 +248,7 @@ def share_transaction_to_group(
             )
         )
         if existing_share is not None:
-            raise ValueError("같은 소비 내역은 같은 그룹에 한 번만 공유할 수 있습니다.")
+            raise ValueError("같은 소비는 같은 그룹에 한 번만 공유할 수 있습니다.")
 
         shared_transaction = SharedTransactionModel(
             group_id=payload.group_id,
@@ -289,7 +288,7 @@ def get_group_feed(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str | None]]:
-    """그룹에 공유된 소비 피드를 최신순으로 조회한다."""
+    """그룹에 공유된 소비 피드를 최신순으로 반환한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
     _get_group_or_raise(config, group_id=group_id)
@@ -323,7 +322,7 @@ def list_user_groups(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str]]:
-    """사용자가 속한 그룹 목록을 그룹 생성순으로 조회한다."""
+    """사용자가 속한 그룹 목록을 멤버 수와 역할과 함께 반환한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
     _get_user_or_raise(config, user_id=user_id)
@@ -363,7 +362,7 @@ def list_group_competitions(
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str]]:
-    """그룹에 속한 대회 목록을 최신 생성순으로 조회한다."""
+    """그룹에 등록된 대회 목록을 최신 생성순으로 반환한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
     _get_group_or_raise(config, group_id=group_id)
@@ -387,27 +386,28 @@ def list_group_competitions(
     ]
 
 
-def get_group_leaderboard(
-    competition_id: int,
+def get_group_leaderboard_for_group(
+    group_id: int,
     *,
     settings: Settings | None = None,
 ) -> list[dict[str, int | str]]:
-    """대회가 속한 그룹 멤버를 현재 personal_score 기준 점수순으로 정렬해 반환한다."""
+    """그룹 멤버를 현재 personal_score 기준으로 정렬해 반환한다."""
     config = settings or get_settings()
     ensure_user_database(settings=config)
-    competition = _get_competition_or_raise(config, competition_id=competition_id)
+    _get_group_or_raise(config, group_id=group_id)
+    score_expr = func.coalesce(cast(UserModel.personal_score, Integer), 0)
 
     with session_scope(config) as session:
         rows = session.execute(
             select(
                 GroupMembershipModel.user_id,
                 UserModel.name,
-                func.coalesce(UserModel.personal_score, 0).label("total_points"),
+                score_expr.label("total_points"),
             )
             .join(UserModel, UserModel.id == GroupMembershipModel.user_id)
-            .where(GroupMembershipModel.group_id == competition.group_id)
+            .where(GroupMembershipModel.group_id == group_id)
             .order_by(
-                func.coalesce(UserModel.personal_score, 0).desc(),
+                score_expr.desc(),
                 GroupMembershipModel.user_id.asc(),
             )
         ).all()
@@ -423,3 +423,117 @@ def get_group_leaderboard(
             }
         )
     return leaderboard
+
+
+def get_group_member_feedback_status(
+    group_id: int,
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, int | str | None]]:
+    """그룹의 최신 daily 기준 최근 7일 피드백 반응과 미션을 요약해 반환한다."""
+    config = settings or get_settings()
+    ensure_user_database(settings=config)
+    leaderboard = get_group_leaderboard_for_group(group_id, settings=config)
+
+    user_ids = [int(item["user_id"]) for item in leaderboard]
+    if not user_ids:
+        return []
+
+    with session_scope(config) as session:
+        session_rows = session.scalars(
+            select(SessionModel)
+            .where(
+                SessionModel.user_id.in_(user_ids),
+                SessionModel.period_type == "daily",
+            )
+            .order_by(
+                SessionModel.user_id.asc(),
+                SessionModel.analysis_date.desc(),
+                SessionModel.id.desc(),
+            )
+        ).all()
+
+    parsed_dates = [
+        _parse_session_analysis_date(session_row.analysis_date) for session_row in session_rows
+    ]
+    valid_dates = [parsed_date for parsed_date in parsed_dates if parsed_date is not None]
+    if not valid_dates:
+        return [
+            {
+                "user_id": int(item["user_id"]),
+                "user_name": str(item["user_name"]),
+                "points": int(item["points"]),
+                "feedback_checked_count": 0,
+                "positive_reaction_count": 0,
+                "feedback_acceptance_rate": 0,
+                "latest_mission": None,
+            }
+            for item in leaderboard
+        ]
+
+    latest_daily_date = max(valid_dates)
+    window_start_date = latest_daily_date - timedelta(days=_FEEDBACK_WINDOW_DAYS - 1)
+
+    sessions_by_user_id: dict[int, list[SessionModel]] = {user_id: [] for user_id in user_ids}
+    for session_row in session_rows:
+        parsed_date = _parse_session_analysis_date(session_row.analysis_date)
+        if parsed_date is None or parsed_date < window_start_date:
+            continue
+        sessions_by_user_id.setdefault(session_row.user_id, []).append(session_row)
+
+    feedback_status: list[dict[str, int | str | None]] = []
+    for item in leaderboard:
+        member_user_id = int(item["user_id"])
+        member_sessions = sessions_by_user_id.get(member_user_id, [])
+        checked_sessions = [
+            session_row
+            for session_row in member_sessions
+            if session_row.feedback_reaction is not None and session_row.feedback_reaction.strip() != ""
+        ]
+        positive_reaction_count = sum(
+            1 for session_row in checked_sessions if session_row.feedback_reaction == "like"
+        )
+        checked_count = len(checked_sessions)
+        acceptance_rate = (
+            int(round((positive_reaction_count / checked_count) * 100)) if checked_count > 0 else 0
+        )
+        latest_mission = next(
+            (
+                session_row.todo_tomorrow
+                for session_row in member_sessions
+                if session_row.todo_tomorrow is not None and session_row.todo_tomorrow.strip() != ""
+            ),
+            None,
+        )
+        feedback_status.append(
+            {
+                "user_id": member_user_id,
+                "user_name": str(item["user_name"]),
+                "points": int(item["points"]),
+                "feedback_checked_count": checked_count,
+                "positive_reaction_count": positive_reaction_count,
+                "feedback_acceptance_rate": acceptance_rate,
+                "latest_mission": latest_mission,
+            }
+        )
+    return feedback_status
+
+
+def _parse_session_analysis_date(value: str) -> date | None:
+    """세션의 analysis_date 문자열을 날짜로 변환하고 실패하면 None을 반환한다."""
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def get_group_leaderboard(
+    competition_id: int,
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, int | str]]:
+    """대회가 속한 그룹의 현재 personal_score 리더보드를 반환한다."""
+    config = settings or get_settings()
+    ensure_user_database(settings=config)
+    competition = _get_competition_or_raise(config, competition_id=competition_id)
+    return get_group_leaderboard_for_group(competition.group_id, settings=config)

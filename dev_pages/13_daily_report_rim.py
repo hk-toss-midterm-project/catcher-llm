@@ -12,6 +12,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.services.consumption_feedback.feedback_reaction import (
+    save_session_feedback_reaction,
+)
 from catcher_llm.services.daily_report_defaults import get_default_daily_report_selection
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
@@ -688,7 +691,7 @@ def render_point_animation():
         st.markdown('<div class="point-pop">+50P 🎉</div>', unsafe_allow_html=True)
 
 
-def render_report_feedback():
+def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
     if "daily_report_feedback" not in st.session_state:
         st.session_state.daily_report_feedback = None
 
@@ -734,6 +737,14 @@ def render_report_feedback():
             width="stretch",
             key="daily_report_like",
         ):
+            save_session_feedback_reaction(
+                member_id=member_id,
+                analysis_date=analysis_date,
+                period_type="daily",
+                reaction="like",
+                reason=None,
+                settings=get_settings(),
+            )
             st.session_state.daily_report_feedback = "like"
             reward_once()
             st.rerun()
@@ -745,6 +756,14 @@ def render_report_feedback():
             width="stretch",
             key="daily_report_dislike",
         ):
+            save_session_feedback_reaction(
+                member_id=member_id,
+                analysis_date=analysis_date,
+                period_type="daily",
+                reaction="dislike",
+                reason=None,
+                settings=get_settings(),
+            )
             st.session_state.daily_report_feedback = "dislike"
             reward_once()
             st.rerun()
@@ -1100,7 +1119,7 @@ with st.expander("LLM 피드백 근거와 실행 항목"):
 feedback_col1, feedback_col2 = st.columns([1.5, 1])
 
 with feedback_col1:
-    render_report_feedback()
+    render_report_feedback(member_id=member_id, analysis_date=analysis_date)
 
 with feedback_col2:
     st.markdown('<div class="section">상세 데이터</div>', unsafe_allow_html=True)

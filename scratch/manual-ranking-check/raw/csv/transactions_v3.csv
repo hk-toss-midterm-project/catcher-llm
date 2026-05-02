@@ -1,0 +1,2 @@
+id,user_id,amount,transaction_time,description,merchant_name,is_installment,installment_months,is_interest_free,status,is_overseas,category,payment_channel
+100,1,12000,2026-04-01 09:00:00,??,????,False,0,False,APPROVED,False,??,OFFLINE

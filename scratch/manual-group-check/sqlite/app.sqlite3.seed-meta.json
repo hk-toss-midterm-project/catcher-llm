@@ -1,0 +1,11 @@
+{
+  "seed_schema_version": 5,
+  "members_csv": {
+    "path": "C:\\Users\\user\\catcher\\catcher-llm\\scratch\\manual-group-check\\raw\\csv\\users_v3.csv",
+    "sha256": "ed6e458834b947469124367c0bd3e2351c41c3f3988dccb8e59df076cf6f5a79"
+  },
+  "consumption_csv": {
+    "path": "C:\\Users\\user\\catcher\\catcher-llm\\scratch\\manual-group-check\\raw\\csv\\transactions_v3.csv",
+    "sha256": "3549ad81e8c3c91a55df149dbbaffca92e95b1ba8e78ff97f81d5b82b39853c3"
+  }
+}

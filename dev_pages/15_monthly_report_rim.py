@@ -11,6 +11,9 @@ import plotly.express as px
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.services.consumption_feedback.feedback_reaction import (
+    save_session_feedback_reaction,
+)
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_MONTH,
     render_date_picker_styles,
@@ -1011,6 +1014,14 @@ def render_vote_buttons(member_id: str, month: str):
 
     with v1:
         if st.button("👍 좋아요", width="stretch", type=like_type):
+            save_session_feedback_reaction(
+                member_id=int(member_id),
+                analysis_date=month,
+                period_type="monthly",
+                reaction="like",
+                reason=None,
+                settings=get_settings(),
+            )
             st.session_state.monthly_report_vote = "like"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
@@ -1021,6 +1032,14 @@ def render_vote_buttons(member_id: str, month: str):
 
     with v2:
         if st.button("👎 아쉬워요", width="stretch", type=dislike_type):
+            save_session_feedback_reaction(
+                member_id=int(member_id),
+                analysis_date=month,
+                period_type="monthly",
+                reaction="dislike",
+                reason=None,
+                settings=get_settings(),
+            )
             st.session_state.monthly_report_vote = "dislike"
             st.session_state.monthly_report_vote_log = {
                 "member_id": member_id,
