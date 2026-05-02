@@ -20,6 +20,7 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklyFeedbackEvidence,
     WeeklyFeedbackResult,
 )
+from catcher_llm.services.consumption_feedback.timing import FeedbackTimingRecord
 from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
@@ -306,6 +307,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         memory_summary_chain.invoke.return_value = (
             "지난주 배달 미션과 이번 주 배달 제한 미션을 함께 요약합니다."
         )
+        timing_records: list[FeedbackTimingRecord] = []
 
         with TemporaryDirectory() as tmp_dir:
             settings = _make_weekly_settings(Path(tmp_dir))
@@ -367,6 +369,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                     week_start="2024-04-01",
                     week_end="2024-04-07",
                     settings=settings,
+                    timing_callback=timing_records.append,
                 )
 
             with session_scope(settings) as db_session:
@@ -418,6 +421,23 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             refreshed_memory.summary,
             "지난주 배달 미션과 이번 주 배달 제한 미션을 함께 요약합니다.",
         )
+        self.assertEqual(
+            [record.step_key for record in timing_records],
+            [
+                "weekly_analysis",
+                "parse_weekly_analysis",
+                "user_profile",
+                "interpretation_chain",
+                "retrieval_queries",
+                "rag_retrieval",
+                "memory_context",
+                "feedback_chain",
+                "save_session",
+                "refresh_memory",
+            ],
+        )
+        self.assertTrue(all(record.elapsed_seconds >= 0 for record in timing_records))
+        self.assertTrue(all(record.status == "success" for record in timing_records))
 
     def test_weekly_feedback_retrieval_queries_use_weekly_signals(self) -> None:
         """주간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""

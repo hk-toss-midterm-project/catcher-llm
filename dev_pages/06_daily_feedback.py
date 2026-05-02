@@ -33,6 +33,10 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_daily_date,
 )
+from catcher_llm.ui.feedback_progress import (
+    DAILY_FEEDBACK_PROGRESS_STEPS,
+    create_feedback_progress_callback,
+)
 from catcher_llm.ui.feedback_reaction import render_feedback_reaction_controls
 
 _DAILY_PERSONA_KEY = "daily_persona"
@@ -334,6 +338,7 @@ else:
 
     if st.button("일일 피드백 생성", width="stretch") or should_generate:
         spinner_label = "일일 피드백 재생성 중..." if should_generate else "일일 피드백 생성 중..."
+        progress_callback = create_feedback_progress_callback(DAILY_FEEDBACK_PROGRESS_STEPS)
         with st.spinner(spinner_label):
             result = generate_daily_feedback(
                 member_id=int(member_id),
@@ -345,5 +350,6 @@ else:
                 top_k=int(top_k),
                 max_queries=int(max_queries),
                 persona_key=st.session_state.get(_DAILY_PERSONA_KEY),
+                timing_callback=progress_callback,
             )
         _render_daily_feedback_result(result=result, member_id=int(member_id))

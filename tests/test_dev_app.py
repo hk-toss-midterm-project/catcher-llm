@@ -1047,6 +1047,20 @@ def test_feedback_dev_pages_render_feedback_reaction_controls() -> None:
         assert period_snippet in page_source
 
 
+def test_feedback_dev_pages_render_generation_progress() -> None:
+    """일·주·월 피드백 개발 페이지가 생성 단계 진행 바와 타이밍 콜백을 연결하는지 검증한다."""
+    page_paths = [
+        Path("dev_pages/06_daily_feedback.py"),
+        Path("dev_pages/09_weekly_feedback.py"),
+        Path("dev_pages/12_monthly_feedback.py"),
+    ]
+
+    for page_path in page_paths:
+        page_source = page_path.read_text(encoding="utf-8")
+        assert "create_feedback_progress_callback" in page_source
+        assert "timing_callback=progress_callback" in page_source
+
+
 def test_report_pages_render_generated_feedback_fields() -> None:
     """리포트 페이지가 피드백 개발 페이지와 같은 생성 피드백 필드를 메인 화면에 반영하는지 검증한다."""
     daily_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")

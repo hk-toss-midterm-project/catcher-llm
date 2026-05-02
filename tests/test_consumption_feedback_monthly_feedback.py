@@ -28,6 +28,7 @@ from catcher_llm.services.consumption_feedback.monthly_feedback import (
     make_monthly_spending_analysis_input,
     parse_monthly_spending_data,
 )
+from catcher_llm.services.consumption_feedback.timing import FeedbackTimingRecord
 from catcher_llm.services.user_data_service import ensure_user_database
 
 
@@ -246,6 +247,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         memory_summary_chain.invoke.return_value = (
             "지난달 자동이체 점검과 이번 달 미션을 함께 요약합니다."
         )
+        timing_records: list[FeedbackTimingRecord] = []
 
         with TemporaryDirectory() as tmp_dir:
             settings = _make_monthly_settings(Path(tmp_dir))
@@ -305,6 +307,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
                     member_id=1,
                     analysis_month="2024-04",
                     settings=settings,
+                    timing_callback=timing_records.append,
                 )
 
             with session_scope(settings) as db_session:
@@ -365,6 +368,23 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
             refreshed_memory.summary,
             "지난달 자동이체 점검과 이번 달 미션을 함께 요약합니다.",
         )
+        self.assertEqual(
+            [record.step_key for record in timing_records],
+            [
+                "monthly_analysis",
+                "parse_monthly_analysis",
+                "user_profile",
+                "interpretation_chain",
+                "retrieval_queries",
+                "rag_retrieval",
+                "memory_context",
+                "feedback_chain",
+                "save_session",
+                "refresh_memory",
+            ],
+        )
+        self.assertTrue(all(record.elapsed_seconds >= 0 for record in timing_records))
+        self.assertTrue(all(record.status == "success" for record in timing_records))
 
     def test_monthly_feedback_retrieval_queries_use_monthly_signals(self) -> None:
         """월간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""

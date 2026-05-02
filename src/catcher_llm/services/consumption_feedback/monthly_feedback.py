@@ -55,6 +55,10 @@ from catcher_llm.services.consumption_feedback.interpretation import (
 from catcher_llm.services.consumption_feedback.monthly_analysis import (
     build_monthly_consumption_analysis_json,
 )
+from catcher_llm.services.consumption_feedback.timing import (
+    FeedbackTimingCallback,
+    run_timed_feedback_step,
+)
 from catcher_llm.services.user_data_service import ensure_user_database
 
 _MONTHLY_MEMORY_PERIOD_TYPE = "monthly"
@@ -784,6 +788,7 @@ def generate_monthly_feedback(
     interpretation_temperature: float = 0.0,
     feedback_temperature: float = 0.0,
     persona_key: str | None = None,
+    timing_callback: FeedbackTimingCallback | None = None,
 ) -> MonthlyFeedbackServiceResult:
     """월간 소비 분석, 해석, RAG 검색, 최종 월간 피드백 생성을 한 번에 실행한다."""
     config = settings or get_settings()
@@ -807,45 +812,79 @@ def generate_monthly_feedback(
     user_profile: UserProfileContext | None = None
     memory_context: DailyFeedbackMemoryContext | None = None
     try:
-        monthly_payload = build_monthly_consumption_analysis_json(
-            member_id=member_id,
-            analysis_month=analysis_month,
-            settings=config,
+        monthly_payload = run_timed_feedback_step(
+            step_key="monthly_analysis",
+            step_name="월간 소비 분석 JSON 생성",
+            detail="SQLite transactions 조회와 pandas 지표 계산",
+            timing_callback=timing_callback,
+            operation=lambda: build_monthly_consumption_analysis_json(
+                member_id=member_id,
+                analysis_month=analysis_month,
+                settings=config,
+            ),
         )
-        monthly_data = parse_monthly_spending_data(monthly_payload)
-        user_profile = load_user_profile_context(
-            member_id=member_id,
-            settings=config,
+        monthly_data = run_timed_feedback_step(
+            step_key="parse_monthly_analysis",
+            step_name="월간 분석 모델 검증",
+            detail="분석 JSON을 MonthlySpendingData Pydantic 모델로 변환",
+            timing_callback=timing_callback,
+            operation=lambda: parse_monthly_spending_data(monthly_payload),
         )
-        memory_context = load_monthly_feedback_memory_context(
-            member_id=member_id,
-            analysis_month=analysis_month,
-            settings=config,
+        user_profile = run_timed_feedback_step(
+            step_key="user_profile",
+            step_name="사용자 프로필 조회",
+            detail="SQLite users 테이블 조회",
+            timing_callback=timing_callback,
+            operation=lambda: load_user_profile_context(
+                member_id=member_id,
+                settings=config,
+            ),
         )
         interpretation_chain = build_monthly_spending_analysis_chain(
             settings=config,
             temperature=interpretation_temperature,
         )
-        interpretation_result = interpretation_chain.invoke(
-            make_monthly_spending_analysis_input(
+        interpretation_result = run_timed_feedback_step(
+            step_key="interpretation_chain",
+            step_name="소비 해석 체인 실행",
+            detail="월간 지표 기반 구조화 LLM 호출",
+            timing_callback=timing_callback,
+            operation=lambda: interpretation_chain.invoke(
+                make_monthly_spending_analysis_input(
+                    monthly_data,
+                    user_profile=user_profile,
+                )
+            ),
+        )
+        retrieval_queries = run_timed_feedback_step(
+            step_key="retrieval_queries",
+            step_name="RAG 검색 질의 생성",
+            detail=f"max_queries={max_queries}",
+            timing_callback=timing_callback,
+            operation=lambda: build_monthly_feedback_retrieval_queries(
                 monthly_data,
+                interpretation_result=interpretation_result,
                 user_profile=user_profile,
-            )
+                max_queries=max_queries,
+            ),
         )
-        retrieval_queries = build_monthly_feedback_retrieval_queries(
-            monthly_data,
-            interpretation_result=interpretation_result,
-            user_profile=user_profile,
-            max_queries=max_queries,
-        )
-        advice_contexts = retrieve_feedback_contexts(
-            retrieval_queries,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            top_k=top_k,
-            raw_data_dir=raw_data_dir,
-            source_files=source_files,
-            settings=config,
+        advice_contexts = run_timed_feedback_step(
+            step_key="rag_retrieval",
+            step_name="RAG 문서 검색",
+            detail=(
+                f"queries={len(retrieval_queries)}, top_k={top_k}, "
+                f"chunk_size={chunk_size}, chunk_overlap={chunk_overlap}"
+            ),
+            timing_callback=timing_callback,
+            operation=lambda: retrieve_feedback_contexts(
+                retrieval_queries,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                top_k=top_k,
+                raw_data_dir=raw_data_dir,
+                source_files=source_files,
+                settings=config,
+            ),
         )
         if not advice_contexts:
             return _build_error_result(
@@ -859,35 +898,64 @@ def generate_monthly_feedback(
                 retrieval_queries=retrieval_queries,
             )
 
+        memory_context = run_timed_feedback_step(
+            step_key="memory_context",
+            step_name="피드백 메모리 조회",
+            detail="SQLite user_memories와 최근 monthly session 조회",
+            timing_callback=timing_callback,
+            operation=lambda: load_monthly_feedback_memory_context(
+                member_id=member_id,
+                analysis_month=analysis_month,
+                settings=config,
+            ),
+        )
         feedback_chain = build_monthly_feedback_chain(
             settings=config,
             temperature=feedback_temperature,
             persona_key=persona_key,
         )
-        feedback = feedback_chain.invoke(
-            make_monthly_feedback_input(
-                monthly_data=monthly_data,
-                interpretation_result=interpretation_result,
-                advice_contexts=advice_contexts,
-                user_profile=user_profile,
-                memory_context=memory_context,
-            )
+        feedback = run_timed_feedback_step(
+            step_key="feedback_chain",
+            step_name="최종 피드백 체인 실행",
+            detail="분석/해석/RAG/프로필/메모리 기반 구조화 LLM 호출",
+            timing_callback=timing_callback,
+            operation=lambda: feedback_chain.invoke(
+                make_monthly_feedback_input(
+                    monthly_data=monthly_data,
+                    interpretation_result=interpretation_result,
+                    advice_contexts=advice_contexts,
+                    user_profile=user_profile,
+                    memory_context=memory_context,
+                )
+            ),
         )
         feedback_result = (
             feedback
             if isinstance(feedback, MonthlyFeedbackResult)
             else MonthlyFeedbackResult.model_validate(feedback)
         )
-        save_monthly_feedback_session(
-            member_id=member_id,
-            analysis_month=analysis_month,
-            monthly_analysis=monthly_data,
-            feedback=feedback_result,
-            settings=config,
+        run_timed_feedback_step(
+            step_key="save_session",
+            step_name="피드백 세션 저장",
+            detail="SQLite session 테이블 저장 또는 갱신",
+            timing_callback=timing_callback,
+            operation=lambda: save_monthly_feedback_session(
+                member_id=member_id,
+                analysis_month=analysis_month,
+                monthly_analysis=monthly_data,
+                feedback=feedback_result,
+                settings=config,
+            ),
         )
-        _refresh_monthly_user_memory_if_possible(
-            member_id=member_id,
-            settings=config,
+        run_timed_feedback_step(
+            step_key="refresh_memory",
+            step_name="장기 메모리 요약 갱신",
+            detail=f"최근 최대 {_DEFAULT_MONTHLY_MEMORY_SESSION_LIMIT}개 세션을 LLM으로 요약",
+            timing_callback=timing_callback,
+            operation=lambda: _refresh_monthly_user_memory_if_possible(
+                member_id=member_id,
+                settings=config,
+            ),
         )
     except Exception as exc:
         return _build_error_result(
