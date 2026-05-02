@@ -24,6 +24,7 @@ st.set_page_config(
 PURPLE_MAIN = "#7c3aed"
 PURPLE_LIGHT = "#8b5cf6"
 PURPLE_DARK = "#6d28d9"
+USER_SCORE_COLUMN = "personal_score"
 
 
 def money(value: int | float) -> str:
@@ -78,6 +79,213 @@ PROJECT_ROOT = find_project_root()
 APP_SQLITE_PATH = PROJECT_ROOT / "data" / "sqlite" / "app.sqlite3"
 
 
+# =========================
+# DB: weekly action plan / point
+# =========================
+
+def ensure_weekly_action_plan_table() -> None:
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS weekly_action_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                week_start TEXT NOT NULL,
+                week_end TEXT NOT NULL,
+                action_title TEXT NOT NULL,
+                action_detail TEXT,
+                target_type TEXT,
+                target_name TEXT,
+                target_amount INTEGER DEFAULT 0,
+                reward_given INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, week_start, week_end)
+            )
+            """
+        )
+        conn.commit()
+
+
+def save_weekly_action_plan(
+    member_id: int,
+    week_start: date,
+    week_end: date,
+    action_title: str,
+    action_detail: str,
+    target_type: str,
+    target_name: str,
+    target_amount: int,
+) -> None:
+    ensure_weekly_action_plan_table()
+
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+        conn.execute(
+            """
+            INSERT INTO weekly_action_plans (
+                user_id, week_start, week_end,
+                action_title, action_detail,
+                target_type, target_name, target_amount
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, week_start, week_end)
+            DO UPDATE SET
+                action_title = excluded.action_title,
+                action_detail = excluded.action_detail,
+                target_type = excluded.target_type,
+                target_name = excluded.target_name,
+                target_amount = excluded.target_amount
+            """,
+            (
+                member_id,
+                week_start.isoformat(),
+                week_end.isoformat(),
+                action_title,
+                action_detail,
+                target_type,
+                target_name,
+                target_amount,
+            ),
+        )
+        conn.commit()
+
+
+def get_previous_week_action_plan(member_id: int, start_date: date):
+    ensure_weekly_action_plan_table()
+
+    prev_start = start_date - timedelta(days=7)
+
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+        df = pd.read_sql_query(
+            """
+            SELECT *
+            FROM weekly_action_plans
+            WHERE user_id = ?
+              AND week_start = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            conn,
+            params=[member_id, prev_start.isoformat()],
+        )
+
+    if df.empty:
+        return None
+
+    return df.iloc[0].to_dict()
+
+
+def get_category_total(member_id: int, week_start: date, week_end: date, category: str) -> int:
+    try:
+        with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS total
+                FROM transactions
+                WHERE user_id = ?
+                  AND category = ?
+                  AND date(substr(used_at, 1, 10)) >= date(?)
+                  AND date(substr(used_at, 1, 10)) <= date(?)
+                """,
+                conn,
+                params=[member_id, category, week_start.isoformat(), week_end.isoformat()],
+            )
+        return safe_int(df.iloc[0]["total"])
+    except Exception:
+        return 0
+
+
+def get_merchant_total(member_id: int, week_start: date, week_end: date, merchant: str) -> int:
+    try:
+        with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) AS total
+                FROM transactions
+                WHERE user_id = ?
+                  AND merchant_name = ?
+                  AND date(substr(used_at, 1, 10)) >= date(?)
+                  AND date(substr(used_at, 1, 10)) <= date(?)
+                """,
+                conn,
+                params=[member_id, merchant, week_start.isoformat(), week_end.isoformat()],
+            )
+        return safe_int(df.iloc[0]["total"])
+    except Exception:
+        return 0
+
+
+def check_previous_plan_success(member_id: int, start_date: date, end_date: date):
+    plan = get_previous_week_action_plan(member_id, start_date)
+
+    if not plan:
+        return None
+
+    target_type = str(plan.get("target_type", ""))
+    target_name = str(plan.get("target_name", ""))
+
+    prev_start = start_date - timedelta(days=7)
+    prev_end = end_date - timedelta(days=7)
+
+    if target_type == "가맹점":
+        prev_amount = get_merchant_total(member_id, prev_start, prev_end, target_name)
+        this_amount = get_merchant_total(member_id, start_date, end_date, target_name)
+    else:
+        prev_amount = get_category_total(member_id, prev_start, prev_end, target_name)
+        this_amount = get_category_total(member_id, start_date, end_date, target_name)
+
+    success = prev_amount > 0 and this_amount < prev_amount
+
+    return {
+        "plan": plan,
+        "prev_amount": prev_amount,
+        "this_amount": this_amount,
+        "success": success,
+    }
+
+
+def give_weekly_plan_reward(plan_id: int, member_id: int) -> bool:
+    ensure_weekly_action_plan_table()
+
+    with sqlite3.connect(str(APP_SQLITE_PATH)) as conn:
+        plan = conn.execute(
+            "SELECT reward_given FROM weekly_action_plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
+
+        if not plan or safe_int(plan[0]) == 1:
+            return False
+
+        user_cols = pd.read_sql_query("PRAGMA table_info(users)", conn)["name"].tolist()
+
+        if USER_SCORE_COLUMN in user_cols:
+            conn.execute(
+                f"""
+                UPDATE users
+                SET {quote_col(USER_SCORE_COLUMN)} =
+                    CAST(COALESCE(NULLIF({quote_col(USER_SCORE_COLUMN)}, ''), '0') AS INTEGER) + 50
+                WHERE id = ?
+                """,
+                (member_id,),
+            )
+
+        conn.execute(
+            """
+            UPDATE weekly_action_plans
+            SET reward_given = 1
+            WHERE id = ?
+            """,
+            (plan_id,),
+        )
+
+        conn.commit()
+
+    return True
+
+
+# =========================
+# weekly comparison
+# =========================
+
 def get_week_total_from_sqlite(member_id: int, week_start: date, week_end: date) -> int:
     if not APP_SQLITE_PATH.exists():
         return 0
@@ -108,6 +316,7 @@ def get_recent_4_week_average(member_id: int, week_start: date, week_end: date) 
         start = week_start - timedelta(days=7 * i)
         end = week_end - timedelta(days=7 * i)
         total = get_week_total_from_sqlite(member_id, start, end)
+
         if total > 0:
             values.append(total)
 
@@ -118,10 +327,16 @@ def get_recent_4_week_average(member_id: int, week_start: date, week_end: date) 
 
 
 def get_last_month_same_week_total(member_id: int, week_start: date, week_end: date) -> int:
-    last_month_start = week_start - timedelta(days=28)
-    last_month_end = week_end - timedelta(days=28)
-    return get_week_total_from_sqlite(member_id, last_month_start, last_month_end)
+    return get_week_total_from_sqlite(
+        member_id,
+        week_start - timedelta(days=28),
+        week_end - timedelta(days=28),
+    )
 
+
+# =========================
+# CSS
+# =========================
 
 def inject_css():
     st.markdown(
@@ -380,6 +595,50 @@ def inject_css():
             line-height:1.65;
         }
 
+        .reward-card {
+            padding:22px;
+            border-radius:26px;
+            background:#ecfdf5;
+            border:1px solid #86efac;
+            color:#166534;
+            box-shadow:0 10px 28px rgba(34,197,94,0.12);
+            min-height:130px;
+            font-weight:850;
+            line-height:1.65;
+        }
+
+        .fail-card {
+            padding:22px;
+            border-radius:26px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            color:#475569;
+            box-shadow:0 10px 28px rgba(15,23,42,0.055);
+            min-height:130px;
+            font-weight:750;
+            line-height:1.65;
+        }
+
+        .point-pop {
+            display:inline-block;
+            margin-top:14px;
+            padding:14px 24px;
+            border-radius:999px;
+            background:linear-gradient(135deg, #22c55e, #16a34a);
+            color:white;
+            font-size:28px;
+            font-weight:950;
+            box-shadow:0 16px 34px rgba(34,197,94,0.35);
+            animation: pointPop 1.05s ease-out;
+        }
+
+        @keyframes pointPop {
+            0% { opacity:0; transform:translateY(18px) scale(0.72); }
+            45% { opacity:1; transform:translateY(-8px) scale(1.12); }
+            75% { transform:translateY(0px) scale(0.98); }
+            100% { opacity:1; transform:translateY(0px) scale(1); }
+        }
+
         div[data-testid="stButton"] button {
             border-radius:18px;
             height:48px;
@@ -406,6 +665,10 @@ def inject_css():
         unsafe_allow_html=True,
     )
 
+
+# =========================
+# UI helpers
+# =========================
 
 def metric_card(label: str, value: str, desc: str = ""):
     st.markdown(
@@ -453,6 +716,10 @@ def compare_card(label: str, current: int, base: int):
         unsafe_allow_html=True,
     )
 
+
+# =========================
+# Data extractors
+# =========================
 
 def get_weekly_summary(weekly_data: dict) -> dict:
     return weekly_data.get("weekly_summary", {}) or {}
@@ -505,16 +772,20 @@ def get_weekday_rows(weekly_data: dict) -> list[dict]:
 
 def get_top_category(weekly_data: dict):
     rows = get_category_rows(weekly_data)
+
     if not rows:
         return "-", 0, 0
+
     top = max(rows, key=lambda x: x["amount"])
     return top["category"], top["amount"], top["count"]
 
 
 def get_top_merchant(weekly_data: dict):
     rows = get_merchant_rows(weekly_data)
+
     if not rows:
         return "-", 0, 0
+
     top = max(rows, key=lambda x: (x["count"], x["amount"]))
     return top["merchant"], top["count"], top["amount"]
 
@@ -566,6 +837,22 @@ def get_action_text(feedback):
         "다음 주에는 전체 소비를 줄이기보다 TOP 가맹점 또는 TOP 카테고리 소비를 1회만 줄여보세요.",
     )
 
+
+def infer_plan_target(
+    top_merchant: str,
+    top_merchant_amount: int,
+    top_category: str,
+    top_category_amount: int,
+) -> tuple[str, str, int]:
+    if top_merchant and top_merchant != "-" and top_merchant_amount > 0:
+        return "가맹점", top_merchant, top_merchant_amount
+
+    return "카테고리", top_category, top_category_amount
+
+
+# =========================
+# Charts
+# =========================
 
 def make_weekday_chart(weekly_data: dict):
     rows = get_weekday_rows(weekly_data)
@@ -681,6 +968,10 @@ def make_top_merchant_chart(weekly_data: dict):
     return fig
 
 
+# =========================
+# Vote
+# =========================
+
 def render_vote_buttons():
     like_active = st.session_state.weekly_report_feedback == "like"
     dislike_active = st.session_state.weekly_report_feedback == "dislike"
@@ -700,6 +991,10 @@ def render_vote_buttons():
             st.session_state.weekly_report_feedback = "dislike"
             st.rerun()
 
+
+# =========================
+# Main report
+# =========================
 
 def render_weekly_report(result, member_id: int, start_date: date, end_date: date):
     if result.error:
@@ -747,6 +1042,25 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
     )
 
     action_title, action_detail = get_action_text(feedback)
+    target_type, target_name, target_amount = infer_plan_target(
+        top_merchant=top_merchant,
+        top_merchant_amount=top_merchant_amount,
+        top_category=top_category,
+        top_category_amount=top_category_amount,
+    )
+
+    save_weekly_action_plan(
+        member_id=member_id,
+        week_start=start_date,
+        week_end=end_date,
+        action_title=action_title,
+        action_detail=action_detail,
+        target_type=target_type,
+        target_name=target_name,
+        target_amount=target_amount,
+    )
+
+    previous_plan_check = check_previous_plan_success(member_id, start_date, end_date)
 
     summary_title = _html_text(getattr(feedback, "summary_title", "LLM 소비 코멘트"))
     feedback_message = _html_text(
@@ -938,6 +1252,56 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
             unsafe_allow_html=True,
         )
 
+    st.markdown('<div class="section">지난주 실행 플랜 달성 여부</div>', unsafe_allow_html=True)
+
+    if previous_plan_check is None:
+        st.markdown(
+            """
+            <div class="fail-card">
+                <b>아직 비교할 지난주 실행 플랜이 없어요.</b><br><br>
+                이번 주 실행 플랜부터 저장되고, 다음 주 리포트에서 달성 여부를 확인할 수 있습니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    elif previous_plan_check["success"]:
+        plan = previous_plan_check["plan"]
+        rewarded = give_weekly_plan_reward(safe_int(plan["id"]), member_id)
+
+        st.markdown(
+            f"""
+            <div class="reward-card">
+                🎉 지난주 실행 플랜을 달성했어요!<br><br>
+                <b>{_html_text(plan["target_type"])} · {_html_text(plan["target_name"])}</b> 소비가
+                지난주 <b>{money(previous_plan_check["prev_amount"])}</b>에서
+                이번 주 <b>{money(previous_plan_check["this_amount"])}</b>로 줄었습니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if rewarded:
+            st.markdown('<div class="point-pop">+50P 🎉</div>', unsafe_allow_html=True)
+        else:
+            st.info("이미 이 실행 플랜 보상은 지급되었습니다.")
+
+    else:
+        plan = previous_plan_check["plan"]
+
+        st.markdown(
+            f"""
+            <div class="fail-card">
+                <b>지난주 실행 플랜은 아직 달성하지 못했어요.</b><br><br>
+                지난주 목표: <b>{_html_text(plan["action_title"])}</b><br>
+                점검 대상: <b>{_html_text(plan["target_type"])} · {_html_text(plan["target_name"])}</b><br><br>
+                지난주 {money(previous_plan_check["prev_amount"])} →
+                이번 주 {money(previous_plan_check["this_amount"])} 입니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     st.markdown('<div class="section">다음 주 실행 플랜</div>', unsafe_allow_html=True)
 
     a1, a2, a3 = st.columns([1.55, 1, 0.85])
@@ -960,9 +1324,9 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         st.markdown(
             f"""
             <div class="effect-card">
-                이번 주 전체 소비를 갑자기 줄이기보다<br>
-                <b>{_html_text(top_merchant if top_merchant != "-" else top_category)}</b> 소비부터 조정해보세요.
-                <br><br>
+                이번 주 실행 플랜은 다음 주 리포트에서 자동 점검됩니다.<br><br>
+                점검 대상: <b>{_html_text(target_type)} · {_html_text(target_name)}</b><br>
+                현재 소비액: <b>{money(target_amount)}</b><br><br>
                 예상 절약액 약 <b>{money(expected_saving)}</b>
             </div>
             """,
@@ -1015,6 +1379,12 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
                 "prev_week_total": prev_amount,
                 "recent_4_week_average": recent_4_week_average,
                 "last_month_same_week_total": last_month_same_week_total,
+                "saved_plan_target": {
+                    "target_type": target_type,
+                    "target_name": target_name,
+                    "target_amount": target_amount,
+                },
+                "previous_plan_check": previous_plan_check,
             }
         )
 
@@ -1045,8 +1415,13 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         st.write(getattr(result, "retrieval_queries", []))
 
 
+# =========================
+# Page
+# =========================
+
 inject_css()
 render_date_picker_styles()
+ensure_weekly_action_plan_table()
 
 if "weekly_report_generated" not in st.session_state:
     st.session_state.weekly_report_generated = False
@@ -1071,7 +1446,7 @@ with top1:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="page-subtitle">주간 보고서는 반복 소비, 집중 요일, TOP 가맹점과 함께 비교 기준을 해석합니다.</div>',
+        '<div class="page-subtitle">지난주 실행 플랜 달성 여부를 확인하고, 달성 시 50P를 지급합니다.</div>',
         unsafe_allow_html=True,
     )
 
