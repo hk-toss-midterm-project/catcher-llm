@@ -569,7 +569,7 @@ def make_top_category_chart(weekly_data: dict):
     fig.update_traces(
         texttemplate="%{text:,.0f}",
         textposition="outside",
-        marker_color="#3182f6",
+        marker_color="#8b5cf6",
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<extra></extra>",
     )
 
@@ -609,7 +609,7 @@ def make_top_merchant_chart(weekly_data: dict):
     fig.update_traces(
         texttemplate="%{text:,.0f}",
         textposition="outside",
-        marker_color="#8b5cf6",
+        marker_color="#6d28d9",
         hovertemplate="<b>%{y}</b><br>%{x:,.0f}원<br>%{customdata}회<extra></extra>",
         customdata=df["count"],
     )
