@@ -22,8 +22,8 @@ def _write_feedback_seed_csvs(csv_dir: Path) -> None:
     (csv_dir / "users_v3.csv").write_text(
         "\n".join(
             [
-                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나",
-                "1,김토스,29,개발자,남성,7000,서울,Gold,절약형",
+                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,target_max_spending_amount",
+                "1,김토스,29,개발자,남성,36000000,서울,Gold,절약형,300000",
             ]
         ),
         encoding="utf-8-sig",
@@ -121,6 +121,8 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
             analysis_date="2024-04-01",
             previous_date="2024-03-31",
             daily_budget=8000,
+            monthly_budget=310_000,
+            monthly_income=3_100_000,
         )
 
         metrics = cast(JsonObject, result["daily_metrics"])
@@ -130,6 +132,16 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         self.assertEqual(metrics["daily_max_transaction_amount"], 7000)
         self.assertEqual(metrics["late_night_ratio_percent"], 70.0)
         self.assertEqual(metrics["daily_budget_usage_rate_percent"], 125.0)
+        self.assertEqual(metrics["daily_remaining_budget"], 0)
+        self.assertEqual(metrics["daily_overspend_amount"], 2000)
+        self.assertAlmostEqual(float(metrics["daily_income_usage_rate_percent"]), 9.6774)
+        self.assertAlmostEqual(float(metrics["month_to_date_budget_usage_rate_percent"]), 3.2258)
+        self.assertEqual(metrics["projected_monthly_spending"], 300000)
+        self.assertAlmostEqual(
+            float(metrics["projected_monthly_budget_usage_rate_percent"]),
+            96.7742,
+        )
+        self.assertEqual(metrics["required_daily_budget_until_month_end"], 10345)
         self.assertEqual(metrics["no_spending_day"], False)
         self.assertAlmostEqual(float(metrics["daily_anomaly_score"]), 1.1111)
 
@@ -299,6 +311,18 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         self.assertEqual(previous_day_comparison["yesterday_total"], 2000)
         self.assertEqual(frictionless_spending["transaction_count"], 0)
         self.assertEqual(frictionless_spending["total_amount"], 0)
+        daily_metrics = cast(JsonObject, result["daily_metrics"])
+        self.assertEqual(daily_metrics["daily_budget_usage_rate_percent"], 35.0)
+        self.assertEqual(daily_metrics["daily_remaining_budget"], 6500)
+        self.assertEqual(daily_metrics["daily_overspend_amount"], 0)
+        self.assertEqual(daily_metrics["daily_income_usage_rate_percent"], 3.5)
+        self.assertAlmostEqual(
+            float(daily_metrics["month_to_date_budget_usage_rate_percent"]),
+            1.1667,
+        )
+        self.assertEqual(daily_metrics["projected_monthly_spending"], 105000)
+        self.assertEqual(daily_metrics["projected_monthly_budget_usage_rate_percent"], 35.0)
+        self.assertEqual(daily_metrics["required_daily_budget_until_month_end"], 10224)
 
     def test_build_daily_consumption_analysis_json_validates_required_columns(self) -> None:
         """필수 CSV 컬럼이 없으면 분석 함수가 입력 오류를 명확한 예외로 알린다."""

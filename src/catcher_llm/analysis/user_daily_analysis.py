@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 from pathlib import Path
 from typing import cast
@@ -71,6 +72,91 @@ def _round_float(value: float | int, digits: int = 4) -> float:
 def _to_amount(value: float | int) -> int:
     """원화 합계처럼 정수로 표현할 금액 값을 JSON용 int로 변환한다."""
     return int(round(float(value)))
+
+
+def _resolve_daily_budget(
+    *,
+    analysis_day: date,
+    daily_budget: float | int | None,
+    monthly_budget: float | int | None,
+) -> float | None:
+    """명시 일일 예산이 없으면 월 목표 소비 한도를 일 단위 예산으로 환산한다."""
+    if daily_budget is not None:
+        return float(daily_budget)
+    if monthly_budget is None:
+        return None
+    month_day_count = calendar.monthrange(analysis_day.year, analysis_day.month)[1]
+    return _safe_rate(float(monthly_budget), float(month_day_count))
+
+
+def _build_daily_financial_metrics(
+    past_member_frame: pd.DataFrame,
+    *,
+    analysis_day: date,
+    today_total: float,
+    daily_budget: float | int | None,
+    monthly_budget: float | int | None,
+    monthly_income: float | int | None,
+) -> JsonObject:
+    """사용자 목표 소비 한도와 월소득을 기준으로 일일 예산·소득 지표를 계산한다."""
+    month_day_count = calendar.monthrange(analysis_day.year, analysis_day.month)[1]
+    resolved_daily_budget = _resolve_daily_budget(
+        analysis_day=analysis_day,
+        daily_budget=daily_budget,
+        monthly_budget=monthly_budget,
+    )
+    daily_income = (
+        _safe_rate(float(monthly_income), float(month_day_count))
+        if monthly_income is not None
+        else None
+    )
+    month_start = date(analysis_day.year, analysis_day.month, 1)
+    month_to_date_past_total = float(
+        past_member_frame[
+            (past_member_frame["date"] >= month_start) & (past_member_frame["date"] < analysis_day)
+        ]["사용 금액"].sum()
+    )
+    month_to_date_total = month_to_date_past_total + today_total
+    projected_monthly_spending = (
+        _safe_rate(
+            month_to_date_total,
+            float(max(analysis_day.day, 1)),
+        )
+        * month_day_count
+    )
+    remaining_month_days = max(month_day_count - analysis_day.day, 0)
+    remaining_month_budget = (
+        max(float(monthly_budget) - month_to_date_total, 0.0)
+        if monthly_budget is not None
+        else None
+    )
+
+    return {
+        "daily_budget_usage_rate_percent": None
+        if resolved_daily_budget is None
+        else _round_float(_safe_rate(today_total, resolved_daily_budget) * 100),
+        "daily_remaining_budget": None
+        if resolved_daily_budget is None
+        else _to_amount(max(resolved_daily_budget - today_total, 0.0)),
+        "daily_overspend_amount": None
+        if resolved_daily_budget is None
+        else _to_amount(max(today_total - resolved_daily_budget, 0.0)),
+        "daily_income_usage_rate_percent": None
+        if daily_income is None
+        else _round_float(_safe_rate(today_total, daily_income) * 100),
+        "month_to_date_budget_usage_rate_percent": None
+        if monthly_budget is None
+        else _round_float(_safe_rate(month_to_date_total, float(monthly_budget)) * 100),
+        "projected_monthly_spending": _to_amount(projected_monthly_spending),
+        "projected_monthly_budget_usage_rate_percent": None
+        if monthly_budget is None
+        else _round_float(_safe_rate(projected_monthly_spending, float(monthly_budget)) * 100),
+        "required_daily_budget_until_month_end": None
+        if remaining_month_budget is None
+        else _to_amount(_safe_rate(remaining_month_budget, float(remaining_month_days)))
+        if remaining_month_days > 0
+        else 0,
+    }
 
 
 def _main_category(frame: pd.DataFrame) -> str | None:
@@ -295,7 +381,10 @@ def _build_daily_metrics(
     today_count: int,
     past_daily_original_avg: float,
     spike_ratio: float,
+    analysis_day: date,
     daily_budget: float | int | None,
+    monthly_budget: float | int | None,
+    monthly_income: float | int | None,
 ) -> JsonObject:
     """문서의 일일 소비 분석 10개 핵심 지표와 특수 지표를 계산한다."""
     daily_average_transaction_amount = _safe_rate(today_total, float(today_count))
@@ -313,8 +402,13 @@ def _build_daily_metrics(
     late_night_ratio = _safe_rate(late_night_amount, today_total)
 
     category_spending = _build_daily_category_spending(today_frame, today_total)
-    daily_budget_usage_rate = (
-        _safe_rate(today_total, float(daily_budget)) * 100 if daily_budget is not None else None
+    financial_metrics = _build_daily_financial_metrics(
+        past_member_frame,
+        analysis_day=analysis_day,
+        today_total=today_total,
+        daily_budget=daily_budget,
+        monthly_budget=monthly_budget,
+        monthly_income=monthly_income,
     )
 
     nonessential_total = float(
@@ -340,9 +434,20 @@ def _build_daily_metrics(
         "time_slot_amounts": _build_time_slot_rows(time_comparison),
         "late_night_ratio_percent": _round_float(late_night_ratio * 100),
         "category_spending": category_spending,
-        "daily_budget_usage_rate_percent": None
-        if daily_budget_usage_rate is None
-        else _round_float(daily_budget_usage_rate),
+        "daily_budget_usage_rate_percent": financial_metrics["daily_budget_usage_rate_percent"],
+        "daily_remaining_budget": financial_metrics["daily_remaining_budget"],
+        "daily_overspend_amount": financial_metrics["daily_overspend_amount"],
+        "daily_income_usage_rate_percent": financial_metrics["daily_income_usage_rate_percent"],
+        "month_to_date_budget_usage_rate_percent": financial_metrics[
+            "month_to_date_budget_usage_rate_percent"
+        ],
+        "projected_monthly_spending": financial_metrics["projected_monthly_spending"],
+        "projected_monthly_budget_usage_rate_percent": financial_metrics[
+            "projected_monthly_budget_usage_rate_percent"
+        ],
+        "required_daily_budget_until_month_end": financial_metrics[
+            "required_daily_budget_until_month_end"
+        ],
         "no_spending_day": bool(today_count == 0),
         "daily_anomaly_score": _round_float(spike_ratio),
         "special_metrics": {
@@ -446,6 +551,8 @@ def build_daily_consumption_analysis_from_frames(
     past_source_path: str | Path | None = None,
     today_source_path: str | Path | None = None,
     daily_budget: float | int | None = None,
+    monthly_budget: float | int | None = None,
+    monthly_income: float | int | None = None,
 ) -> JsonObject:
     """과거/기준일 소비 DataFrame에서 파이프라인용 일일 소비 분석 JSON을 만든다."""
     _validate_columns(past_frame, "과거")
@@ -576,7 +683,10 @@ def build_daily_consumption_analysis_from_frames(
         today_count=today_count,
         past_daily_original_avg=past_daily_original_avg,
         spike_ratio=spike_ratio,
+        analysis_day=analysis_day,
         daily_budget=daily_budget,
+        monthly_budget=monthly_budget,
+        monthly_income=monthly_income,
     )
     return {
         "member_id": member_id,

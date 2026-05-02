@@ -47,7 +47,7 @@ def _render_document_daily_metrics(daily_metrics: JsonObject) -> None:
     """기존 요약과 겹치지 않는 문서 기준 일일 추가 지표를 화면에 표시한다."""
     st.subheader("문서 기준 일일 추가 지표")
     special_metrics = cast(JsonObject, daily_metrics["special_metrics"])
-    metric_columns = st.columns(5)
+    metric_columns = st.columns(4)
     metric_columns[0].metric(
         "야간 소비 비중",
         _format_percent(daily_metrics["late_night_ratio_percent"]),
@@ -56,9 +56,41 @@ def _render_document_daily_metrics(daily_metrics: JsonObject) -> None:
         "일일 예산 소진율",
         _format_percent(daily_metrics["daily_budget_usage_rate_percent"]),
     )
-    metric_columns[2].metric("무소비일 여부", "Y" if daily_metrics["no_spending_day"] else "N")
-    metric_columns[3].metric("충동소비 점수", str(special_metrics["impulse_spending_score"]))
-    metric_columns[4].metric("하루 소비 위험도", f"{special_metrics['daily_spending_risk']}x")
+    metric_columns[2].metric(
+        "일일 잔여 예산",
+        _format_amount(daily_metrics.get("daily_remaining_budget")),
+    )
+    metric_columns[3].metric(
+        "일일 예산 초과액",
+        _format_amount(daily_metrics.get("daily_overspend_amount")),
+    )
+
+    income_columns = st.columns(4)
+    income_columns[0].metric(
+        "일 환산 소득 대비 소비율",
+        _format_percent(daily_metrics.get("daily_income_usage_rate_percent")),
+    )
+    income_columns[1].metric(
+        "월 누적 목표 사용률",
+        _format_percent(daily_metrics.get("month_to_date_budget_usage_rate_percent")),
+    )
+    income_columns[2].metric(
+        "월말 예상 소비",
+        _format_amount(daily_metrics.get("projected_monthly_spending")),
+    )
+    income_columns[3].metric(
+        "월말 예상 목표 사용률",
+        _format_percent(daily_metrics.get("projected_monthly_budget_usage_rate_percent")),
+    )
+
+    risk_columns = st.columns(4)
+    risk_columns[0].metric(
+        "월말까지 하루 허용 소비",
+        _format_amount(daily_metrics.get("required_daily_budget_until_month_end")),
+    )
+    risk_columns[1].metric("무소비일 여부", "Y" if daily_metrics["no_spending_day"] else "N")
+    risk_columns[2].metric("충동소비 점수", str(special_metrics["impulse_spending_score"]))
+    risk_columns[3].metric("하루 소비 위험도", f"{special_metrics['daily_spending_risk']}x")
 
 
 def _render_daily_comparison_card(

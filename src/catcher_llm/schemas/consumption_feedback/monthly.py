@@ -304,6 +304,14 @@ class MonthlyMetrics(BaseModel):
 
     monthly_total_amount: int = 0
     monthly_budget_usage_rate_percent: float | None = None
+    monthly_remaining_budget: int | None = None
+    monthly_overspend_amount: int | None = None
+    monthly_income_usage_rate_percent: float | None = None
+    target_spending_to_income_rate_percent: float | None = None
+    estimated_saving_amount: int | None = None
+    estimated_saving_rate_percent: float | None = None
+    target_saving_amount: int | None = None
+    target_saving_rate_percent: float | None = None
     previous_month_change_rate_percent: float = 0.0
     fixed_cost_amount: int = 0
     fixed_cost_ratio_percent: float = 0.0
@@ -314,6 +322,8 @@ class MonthlyMetrics(BaseModel):
     month_end_pressure_index: float | None = None
     special_metrics: MonthlySpecialMetrics = Field(default_factory=MonthlySpecialMetrics)
     fixed_cost_burden_rate_percent: float | None = None
+    spending_capacity: int | None = None
+    nonessential_spending_income_rate_percent: float | None = None
 
 
 class MonthlySpendingData(BaseModel):

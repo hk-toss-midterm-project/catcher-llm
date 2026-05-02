@@ -70,6 +70,80 @@ def _safe_rate(numerator: float, denominator: float) -> float:
     return 0.0 if denominator == 0 else numerator / denominator
 
 
+def _budget_balance_metrics(
+    *,
+    total_amount: float,
+    budget: float | int | None,
+    prefix: str,
+) -> JsonObject:
+    """총 소비와 예산을 비교해 사용률·잔여액·초과액 지표를 만든다."""
+    if budget is None:
+        return {
+            f"{prefix}_budget_usage_rate_percent": None,
+            f"{prefix}_remaining_budget": None,
+            f"{prefix}_overspend_amount": None,
+        }
+    budget_amount = float(budget)
+    return {
+        f"{prefix}_budget_usage_rate_percent": _round_float(
+            _safe_rate(total_amount, budget_amount) * 100
+        ),
+        f"{prefix}_remaining_budget": _to_amount(max(budget_amount - total_amount, 0.0)),
+        f"{prefix}_overspend_amount": _to_amount(max(total_amount - budget_amount, 0.0)),
+    }
+
+
+def _build_monthly_income_metrics(
+    df_this: pd.DataFrame,
+    *,
+    this_total: float,
+    monthly_budget: float | int | None,
+    monthly_income: float | int | None,
+) -> JsonObject:
+    """월소득과 월 목표 소비 한도를 기준으로 저축·소득 대비 소비 지표를 계산한다."""
+    if monthly_income is None:
+        return {
+            "monthly_income_usage_rate_percent": None,
+            "target_spending_to_income_rate_percent": None,
+            "estimated_saving_amount": None,
+            "estimated_saving_rate_percent": None,
+            "target_saving_amount": None,
+            "target_saving_rate_percent": None,
+            "nonessential_spending_income_rate_percent": None,
+        }
+
+    monthly_income_amount = float(monthly_income)
+    estimated_saving_amount = monthly_income_amount - this_total
+    target_saving_amount = (
+        monthly_income_amount - float(monthly_budget) if monthly_budget is not None else None
+    )
+    nonessential_total = float(
+        df_this[~df_this["업종 카테고리"].isin(_ESSENTIAL_CATEGORIES)]["사용 금액"].sum()
+    )
+
+    return {
+        "monthly_income_usage_rate_percent": _round_float(
+            _safe_rate(this_total, monthly_income_amount) * 100
+        ),
+        "target_spending_to_income_rate_percent": None
+        if monthly_budget is None
+        else _round_float(_safe_rate(float(monthly_budget), monthly_income_amount) * 100),
+        "estimated_saving_amount": _to_amount(estimated_saving_amount),
+        "estimated_saving_rate_percent": _round_float(
+            _safe_rate(estimated_saving_amount, monthly_income_amount) * 100
+        ),
+        "target_saving_amount": None
+        if target_saving_amount is None
+        else _to_amount(target_saving_amount),
+        "target_saving_rate_percent": None
+        if target_saving_amount is None
+        else _round_float(_safe_rate(target_saving_amount, monthly_income_amount) * 100),
+        "nonessential_spending_income_rate_percent": _round_float(
+            _safe_rate(nonessential_total, monthly_income_amount) * 100
+        ),
+    }
+
+
 def _is_match(merchant: str, keywords: list[str]) -> bool:
     return any(kw in str(merchant) for kw in keywords)
 
@@ -822,8 +896,10 @@ def _build_monthly_metrics(
     salary_day: int | None,
 ) -> JsonObject:
     """문서의 월간 소비 분석 10개 핵심 지표와 특수 지표를 계산한다."""
-    monthly_budget_usage_rate = (
-        _safe_rate(this_total, float(monthly_budget)) * 100 if monthly_budget is not None else None
+    budget_metrics = _budget_balance_metrics(
+        total_amount=this_total,
+        budget=monthly_budget,
+        prefix="monthly",
     )
     fixed_cost_amount = float(fixed_variable.get("fixed_total", 0))
     variable_cost_amount = float(fixed_variable.get("variable_total", 0))
@@ -848,12 +924,26 @@ def _build_monthly_metrics(
         if monthly_income is not None
         else None
     )
+    income_metrics = _build_monthly_income_metrics(
+        df_this,
+        this_total=this_total,
+        monthly_budget=monthly_budget,
+        monthly_income=monthly_income,
+    )
 
     return {
         "monthly_total_amount": _to_amount(this_total),
-        "monthly_budget_usage_rate_percent": None
-        if monthly_budget_usage_rate is None
-        else _round_float(monthly_budget_usage_rate),
+        "monthly_budget_usage_rate_percent": budget_metrics["monthly_budget_usage_rate_percent"],
+        "monthly_remaining_budget": budget_metrics["monthly_remaining_budget"],
+        "monthly_overspend_amount": budget_metrics["monthly_overspend_amount"],
+        "monthly_income_usage_rate_percent": income_metrics["monthly_income_usage_rate_percent"],
+        "target_spending_to_income_rate_percent": income_metrics[
+            "target_spending_to_income_rate_percent"
+        ],
+        "estimated_saving_amount": income_metrics["estimated_saving_amount"],
+        "estimated_saving_rate_percent": income_metrics["estimated_saving_rate_percent"],
+        "target_saving_amount": income_metrics["target_saving_amount"],
+        "target_saving_rate_percent": income_metrics["target_saving_rate_percent"],
         "previous_month_change_rate_percent": _round_float(
             _safe_rate(this_total - prev_total, prev_total) * 100
         ),
@@ -883,6 +973,10 @@ def _build_monthly_metrics(
         "fixed_cost_burden_rate_percent": None
         if fixed_cost_burden_rate is None
         else _round_float(fixed_cost_burden_rate),
+        "spending_capacity": spending_capacity,
+        "nonessential_spending_income_rate_percent": income_metrics[
+            "nonessential_spending_income_rate_percent"
+        ],
     }
 
 

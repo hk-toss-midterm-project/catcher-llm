@@ -40,8 +40,8 @@ def _write_weekly_seed_csvs(csv_dir: Path) -> None:
     (csv_dir / "users_v3.csv").write_text(
         "\n".join(
             [
-                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text",
-                "1,김토스,29,개발자,남성,7000,서울,Gold,절약형,비상금 300만원 만들기",
+                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text,target_max_spending_amount",
+                "1,김토스,29,개발자,남성,36000000,서울,Gold,절약형,비상금 300만원 만들기,210000",
             ]
         ),
         encoding="utf-8-sig",
@@ -80,6 +80,46 @@ def _make_weekly_settings(root: Path) -> Settings:
 
 
 class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
+    def test_weekly_analysis_json_uses_user_financial_context(self) -> None:
+        """주간 분석 서비스가 사용자 연봉과 목표 소비 금액으로 예산·소득 지표를 계산하는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_weekly_settings(Path(tmp_dir))
+            weekly_payload = build_weekly_consumption_analysis_json(
+                member_id=1,
+                week_start="2024-04-01",
+                week_end="2024-04-07",
+                settings=settings,
+            )
+
+        weekly_metrics = cast(dict[str, object], weekly_payload["weekly_metrics"])
+
+        self.assertAlmostEqual(
+            float(weekly_metrics["weekly_budget_usage_rate_percent"]),
+            228.5714,
+            places=4,
+        )
+        self.assertEqual(weekly_metrics["weekly_remaining_budget"], 0)
+        self.assertEqual(weekly_metrics["weekly_overspend_amount"], 63000)
+        self.assertAlmostEqual(
+            float(weekly_metrics["weekly_income_usage_rate_percent"]),
+            16.0,
+            places=4,
+        )
+        self.assertAlmostEqual(
+            float(weekly_metrics["weekly_budget_burn_rate"]),
+            2.2857,
+            places=4,
+        )
+        self.assertAlmostEqual(
+            float(weekly_metrics["month_to_date_budget_usage_rate_percent"]),
+            53.3333,
+            places=4,
+        )
+        self.assertEqual(
+            weekly_metrics["projected_monthly_spending_from_weekly_pace"],
+            480000,
+        )
+
     def test_weekly_repeat_merchants_use_sqlite_merchant_name(self) -> None:
         """SQLite merchant_name 컬럼이 있으면 반복 가맹점을 실제 가맹점명으로 집계하는지 검증한다."""
         with TemporaryDirectory() as tmp_dir:

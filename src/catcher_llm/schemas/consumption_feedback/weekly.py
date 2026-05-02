@@ -263,6 +263,12 @@ class WeeklyMetrics(BaseModel):
     previous_week_change_rate_percent: float = 0.0
     weekly_spending_volatility: float = 0.0
     weekly_budget_usage_rate_percent: float | None = None
+    weekly_remaining_budget: int | None = None
+    weekly_overspend_amount: int | None = None
+    weekly_income_usage_rate_percent: float | None = None
+    weekly_budget_burn_rate: float | None = None
+    month_to_date_budget_usage_rate_percent: float | None = None
+    projected_monthly_spending_from_weekly_pace: int | None = None
     special_metrics: WeeklySpecialMetrics = Field(default_factory=WeeklySpecialMetrics)
     weekend_overspending_index: float = 0.0
 

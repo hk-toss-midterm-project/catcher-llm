@@ -180,6 +180,13 @@ class DailyMetrics(BaseModel):
     late_night_ratio_percent: float = 0.0
     category_spending: list[JsonValue] = Field(default_factory=list)
     daily_budget_usage_rate_percent: float | None = None
+    daily_remaining_budget: int | None = None
+    daily_overspend_amount: int | None = None
+    daily_income_usage_rate_percent: float | None = None
+    month_to_date_budget_usage_rate_percent: float | None = None
+    projected_monthly_spending: int | None = None
+    projected_monthly_budget_usage_rate_percent: float | None = None
+    required_daily_budget_until_month_end: int | None = None
     no_spending_day: bool = False
     daily_anomaly_score: float = 0.0
     special_metrics: DailySpecialMetrics = Field(default_factory=DailySpecialMetrics)

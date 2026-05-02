@@ -106,21 +106,67 @@ def _render_risk_summary(
 def _render_document_monthly_metrics(monthly_metrics: JsonObject) -> None:
     """기존 요약과 겹치지 않는 문서 기준 월간 추가 지표를 화면에 표시한다."""
     st.subheader("문서 기준 월간 추가 지표")
-    metric_columns = st.columns(5)
+    metric_columns = st.columns(4)
     metric_columns[0].metric(
         "월간 예산 대비 사용률",
         _format_percent(monthly_metrics["monthly_budget_usage_rate_percent"]),
     )
-    metric_columns[1].metric("구독료 합계", _format_amount(monthly_metrics["subscription_total"]))
+    metric_columns[1].metric(
+        "월간 잔여 예산",
+        _format_amount(monthly_metrics.get("monthly_remaining_budget")),
+    )
     metric_columns[2].metric(
+        "월간 예산 초과액",
+        _format_amount(monthly_metrics.get("monthly_overspend_amount")),
+    )
+    metric_columns[3].metric("구독료 합계", _format_amount(monthly_metrics["subscription_total"]))
+
+    income_columns = st.columns(4)
+    income_columns[0].metric(
+        "월소득 대비 총소비율",
+        _format_percent(monthly_metrics.get("monthly_income_usage_rate_percent")),
+    )
+    income_columns[1].metric(
+        "목표 소비 한도 소득 비중",
+        _format_percent(monthly_metrics.get("target_spending_to_income_rate_percent")),
+    )
+    income_columns[2].metric(
         "고정비 부담률",
         _format_percent(monthly_metrics["fixed_cost_burden_rate_percent"]),
     )
-    metric_columns[3].metric(
+    income_columns[3].metric(
+        "비필수 소비 소득 비중",
+        _format_percent(monthly_metrics.get("nonessential_spending_income_rate_percent")),
+    )
+
+    saving_columns = st.columns(4)
+    saving_columns[0].metric(
+        "추정 저축액",
+        _format_amount(monthly_metrics.get("estimated_saving_amount")),
+    )
+    saving_columns[1].metric(
+        "추정 저축률",
+        _format_percent(monthly_metrics.get("estimated_saving_rate_percent")),
+    )
+    saving_columns[2].metric(
+        "목표 달성 시 저축액",
+        _format_amount(monthly_metrics.get("target_saving_amount")),
+    )
+    saving_columns[3].metric(
+        "목표 달성 시 저축률",
+        _format_percent(monthly_metrics.get("target_saving_rate_percent")),
+    )
+
+    pressure_columns = st.columns(3)
+    pressure_columns[0].metric(
+        "소비 여력",
+        _format_amount(monthly_metrics.get("spending_capacity")),
+    )
+    pressure_columns[1].metric(
         "급여일 이후 소비 증가율",
         _format_percent(monthly_metrics["post_salary_spending_increase_rate_percent"]),
     )
-    metric_columns[4].metric(
+    pressure_columns[2].metric(
         "월말 소비 압박 지수",
         str(monthly_metrics["month_end_pressure_index"] or "-"),
     )

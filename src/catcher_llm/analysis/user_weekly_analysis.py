@@ -61,6 +61,100 @@ def _safe_rate(numerator: float, denominator: float) -> float:
     return 0.0 if denominator == 0 else numerator / denominator
 
 
+def _iter_period_dates(start_date: date, end_date: date) -> list[date]:
+    """시작일과 종료일을 모두 포함하는 날짜 목록을 만든다."""
+    day_count = (end_date - start_date).days + 1
+    return [start_date + timedelta(days=offset) for offset in range(max(day_count, 0))]
+
+
+def _allocated_monthly_amount_for_range(
+    monthly_amount: float | int | None,
+    *,
+    start_date: date,
+    end_date: date,
+) -> float | None:
+    """월 단위 금액을 기간 내 각 날짜의 월 일수 기준으로 배분해 합산한다."""
+    if monthly_amount is None:
+        return None
+    total = 0.0
+    for current_date in _iter_period_dates(start_date, end_date):
+        month_day_count = calendar.monthrange(current_date.year, current_date.month)[1]
+        total += _safe_rate(float(monthly_amount), float(month_day_count))
+    return total
+
+
+def _resolve_weekly_budget(
+    *,
+    weekly_budget: float | int | None,
+    monthly_budget: float | int | None,
+    week_start: date,
+    week_end: date,
+) -> float | None:
+    """명시 주간 예산이 없으면 월 목표 소비 한도를 주간 기간에 맞게 환산한다."""
+    if weekly_budget is not None:
+        return float(weekly_budget)
+    return _allocated_monthly_amount_for_range(
+        monthly_budget,
+        start_date=week_start,
+        end_date=week_end,
+    )
+
+
+def _build_weekly_financial_metrics(
+    df_member: pd.DataFrame,
+    *,
+    this_total: float,
+    week_start: date,
+    week_end: date,
+    weekly_budget: float | int | None,
+    monthly_budget: float | int | None,
+    monthly_income: float | int | None,
+) -> JsonObject:
+    """사용자 목표 소비 한도와 월소득을 기준으로 주간 예산·소득 지표를 계산한다."""
+    resolved_weekly_budget = _resolve_weekly_budget(
+        weekly_budget=weekly_budget,
+        monthly_budget=monthly_budget,
+        week_start=week_start,
+        week_end=week_end,
+    )
+    weekly_income = _allocated_monthly_amount_for_range(
+        monthly_income,
+        start_date=week_start,
+        end_date=week_end,
+    )
+    month_start = date(week_end.year, week_end.month, 1)
+    month_to_date_total = float(
+        df_member[(df_member["date"] >= month_start) & (df_member["date"] <= week_end)][
+            "사용 금액"
+        ].sum()
+    )
+    week_day_count = max((week_end - week_start).days + 1, 1)
+    month_day_count = calendar.monthrange(week_end.year, week_end.month)[1]
+    projected_monthly_spending = _safe_rate(this_total, float(week_day_count)) * month_day_count
+
+    return {
+        "weekly_budget_usage_rate_percent": None
+        if resolved_weekly_budget is None
+        else _round_float(_safe_rate(this_total, resolved_weekly_budget) * 100),
+        "weekly_remaining_budget": None
+        if resolved_weekly_budget is None
+        else _to_amount(max(resolved_weekly_budget - this_total, 0.0)),
+        "weekly_overspend_amount": None
+        if resolved_weekly_budget is None
+        else _to_amount(max(this_total - resolved_weekly_budget, 0.0)),
+        "weekly_income_usage_rate_percent": None
+        if weekly_income is None
+        else _round_float(_safe_rate(this_total, weekly_income) * 100),
+        "weekly_budget_burn_rate": None
+        if resolved_weekly_budget is None
+        else _round_float(_safe_rate(this_total, resolved_weekly_budget)),
+        "month_to_date_budget_usage_rate_percent": None
+        if monthly_budget is None
+        else _round_float(_safe_rate(month_to_date_total, float(monthly_budget)) * 100),
+        "projected_monthly_spending_from_weekly_pace": _to_amount(projected_monthly_spending),
+    }
+
+
 def _is_match(merchant: str, keywords: list[str]) -> bool:
     return any(kw in str(merchant) for kw in keywords)
 
@@ -446,6 +540,7 @@ def _build_weekday_pattern(df_this: pd.DataFrame, this_total: float) -> JsonObje
 
 
 def _build_weekly_metrics(
+    df_member: pd.DataFrame,
     df_this: pd.DataFrame,
     cat_rows: list[JsonValue],
     repeat_patterns: JsonObject,
@@ -454,6 +549,8 @@ def _build_weekly_metrics(
     week_start: date,
     week_end: date,
     weekly_budget: float | int | None,
+    monthly_budget: float | int | None,
+    monthly_income: float | int | None,
 ) -> JsonObject:
     """문서의 주간 소비 분석 10개 핵심 지표와 특수 지표를 계산한다."""
     all_days = pd.date_range(week_start, week_end, freq="D").date
@@ -461,8 +558,14 @@ def _build_weekly_metrics(
     weekday_total = float(df_this[df_this["weekday"] <= 4]["사용 금액"].sum())
     weekend_total = float(df_this[df_this["weekday"] >= 5]["사용 금액"].sum())
     previous_week_change_rate = _safe_rate(this_total - prev_total, prev_total) * 100
-    weekly_budget_usage_rate = (
-        _safe_rate(this_total, float(weekly_budget)) * 100 if weekly_budget is not None else None
+    financial_metrics = _build_weekly_financial_metrics(
+        df_member,
+        this_total=this_total,
+        week_start=week_start,
+        week_end=week_end,
+        weekly_budget=weekly_budget,
+        monthly_budget=monthly_budget,
+        monthly_income=monthly_income,
     )
     weekday_daily_average = _safe_rate(weekday_total, 5.0)
     weekend_daily_average = _safe_rate(weekend_total, 2.0)
@@ -486,9 +589,17 @@ def _build_weekly_metrics(
         "category_spending": cat_rows,
         "previous_week_change_rate_percent": _round_float(previous_week_change_rate),
         "weekly_spending_volatility": _round_float(float(daily_amounts.std(ddof=0))),
-        "weekly_budget_usage_rate_percent": None
-        if weekly_budget_usage_rate is None
-        else _round_float(weekly_budget_usage_rate),
+        "weekly_budget_usage_rate_percent": financial_metrics["weekly_budget_usage_rate_percent"],
+        "weekly_remaining_budget": financial_metrics["weekly_remaining_budget"],
+        "weekly_overspend_amount": financial_metrics["weekly_overspend_amount"],
+        "weekly_income_usage_rate_percent": financial_metrics["weekly_income_usage_rate_percent"],
+        "weekly_budget_burn_rate": financial_metrics["weekly_budget_burn_rate"],
+        "month_to_date_budget_usage_rate_percent": financial_metrics[
+            "month_to_date_budget_usage_rate_percent"
+        ],
+        "projected_monthly_spending_from_weekly_pace": financial_metrics[
+            "projected_monthly_spending_from_weekly_pace"
+        ],
         "special_metrics": {
             "weekend_overspending_index": _round_float(weekend_overspending_index),
             "weekday_concentration_ratio_percent": _round_float(max_day_ratio),
@@ -694,6 +805,8 @@ def build_weekly_consumption_analysis_from_frames(
     week_end: str | date = "2024-04-07",
     source_path: str | Path | None = None,
     weekly_budget: float | int | None = None,
+    monthly_budget: float | int | None = None,
+    monthly_income: float | int | None = None,
 ) -> JsonObject:
     """과거+당주 소비 DataFrame에서 주간 소비 분석 JSON을 만든다.
 
@@ -757,6 +870,7 @@ def build_weekly_consumption_analysis_from_frames(
     repeat_patterns = _build_repeat_patterns(df_this)
     weekday_pattern = _build_weekday_pattern(df_this, this_total)
     weekly_metrics = _build_weekly_metrics(
+        df,
         df_this,
         category_summary,
         repeat_patterns,
@@ -765,6 +879,8 @@ def build_weekly_consumption_analysis_from_frames(
         ws,
         we,
         weekly_budget,
+        monthly_budget,
+        monthly_income,
     )
     waste_detection = _build_waste_detection(df_this, this_total, upper_bound)
     saving_potential = _build_saving_potential(

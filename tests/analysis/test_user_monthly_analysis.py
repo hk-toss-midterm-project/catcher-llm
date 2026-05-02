@@ -158,12 +158,22 @@ def test_monthly_metrics_follow_period_metric_document(base_frame: pd.DataFrame)
 
     assert metrics["monthly_total_amount"] == 338_000
     assert metrics["monthly_budget_usage_rate_percent"] == pytest.approx(84.5, abs=0.001)
+    assert metrics["monthly_remaining_budget"] == 62_000
+    assert metrics["monthly_overspend_amount"] == 0
+    assert metrics["monthly_income_usage_rate_percent"] == pytest.approx(33.8, abs=0.001)
+    assert metrics["target_spending_to_income_rate_percent"] == pytest.approx(40.0, abs=0.001)
+    assert metrics["estimated_saving_amount"] == 662_000
+    assert metrics["estimated_saving_rate_percent"] == pytest.approx(66.2, abs=0.001)
+    assert metrics["target_saving_amount"] == 600_000
+    assert metrics["target_saving_rate_percent"] == pytest.approx(60.0, abs=0.001)
     assert metrics["previous_month_change_rate_percent"] == pytest.approx(207.2727, abs=0.001)
     assert metrics["fixed_cost_amount"] == 65_000
     assert metrics["fixed_cost_ratio_percent"] == pytest.approx(19.2308, abs=0.001)
     assert metrics["variable_cost_amount"] == 273_000
     assert metrics["subscription_total"] == 0
     assert metrics["fixed_cost_burden_rate_percent"] == pytest.approx(6.5, abs=0.001)
+    assert metrics["spending_capacity"] == 880_000
+    assert metrics["nonessential_spending_income_rate_percent"] == pytest.approx(21.8, abs=0.001)
     assert metrics["post_salary_spending_increase_rate_percent"] is not None
     assert metrics["month_end_pressure_index"] is not None
 

@@ -10,6 +10,9 @@ from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import TransactionModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import JsonObject
+from catcher_llm.services.consumption_feedback.financial_context import (
+    load_user_financial_context,
+)
 from catcher_llm.services.user_data_service import ensure_user_database
 
 
@@ -86,10 +89,13 @@ def build_monthly_consumption_analysis_json(
     """
     config = settings or get_settings()
     all_frame = _load_all_transaction_frame(member_id=member_id, settings=config)
+    financial_context = load_user_financial_context(member_id=member_id, settings=config)
 
     return build_monthly_consumption_analysis_from_frames(
         all_frame,
         member_id=member_id,
         analysis_month=analysis_month,
         source_path=config.sqlite_db_path,
+        monthly_budget=financial_context.target_max_spending_amount,
+        monthly_income=financial_context.monthly_income,
     )

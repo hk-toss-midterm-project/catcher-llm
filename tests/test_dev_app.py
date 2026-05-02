@@ -702,6 +702,52 @@ def test_consumption_analysis_pages_render_extended_comparisons() -> None:
             assert expected_fragment in page_source
 
 
+def test_consumption_analysis_pages_render_user_financial_metrics() -> None:
+    """일일·주간·월간 분석 페이지가 사용자 연봉·목표 소비 기반 지표를 노출하는지 검증한다."""
+    page_expectations = {
+        Path("dev_pages/04_daily_analysis.py"): [
+            "일일 잔여 예산",
+            "일일 예산 초과액",
+            "일 환산 소득 대비 소비율",
+            "월 누적 목표 사용률",
+            "월말 예상 소비",
+            "월말 예상 목표 사용률",
+            "월말까지 하루 허용 소비",
+            "daily_remaining_budget",
+            "required_daily_budget_until_month_end",
+        ],
+        Path("dev_pages/07_weekly_analysis.py"): [
+            "주간 잔여 예산",
+            "주간 예산 초과액",
+            "주 환산 소득 대비 소비율",
+            "주간 예산 소진 배율",
+            "월 누적 목표 사용률",
+            "주간 페이스 기준 월말 예상 소비",
+            "weekly_remaining_budget",
+            "projected_monthly_spending_from_weekly_pace",
+        ],
+        Path("dev_pages/10_monthly_analysis.py"): [
+            "월간 잔여 예산",
+            "월간 예산 초과액",
+            "월소득 대비 총소비율",
+            "목표 소비 한도 소득 비중",
+            "추정 저축액",
+            "추정 저축률",
+            "목표 달성 시 저축액",
+            "목표 달성 시 저축률",
+            "소비 여력",
+            "비필수 소비 소득 비중",
+            "monthly_remaining_budget",
+            "nonessential_spending_income_rate_percent",
+        ],
+    }
+
+    for page_path, expected_fragments in page_expectations.items():
+        page_source = page_path.read_text(encoding="utf-8")
+        for expected_fragment in expected_fragments:
+            assert expected_fragment in page_source
+
+
 def test_consumption_interpretation_dev_page_renders_payment_behavior_metrics() -> None:
     """소비 해석 개발 페이지가 추출 지표 요약에 새 결제 행동 지표를 표시하는지 검증한다."""
     app = AppTest.from_file("dev_pages/05_daily_interpretation.py")

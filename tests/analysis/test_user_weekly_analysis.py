@@ -137,6 +137,8 @@ def test_weekly_metrics_follow_period_metric_document(base_frame: pd.DataFrame) 
         week_start=_WEEK_START,
         week_end=_WEEK_END,
         weekly_budget=140_000,
+        monthly_budget=600_000,
+        monthly_income=3_000_000,
     )
 
     metrics = result["weekly_metrics"]
@@ -148,6 +150,12 @@ def test_weekly_metrics_follow_period_metric_document(base_frame: pd.DataFrame) 
     assert metrics["weekend_spending_ratio_percent"] == pytest.approx(32.3625, abs=0.001)
     assert metrics["previous_week_change_rate_percent"] == pytest.approx(243.3333, abs=0.001)
     assert metrics["weekly_budget_usage_rate_percent"] == pytest.approx(110.3571, abs=0.001)
+    assert metrics["weekly_remaining_budget"] == 0
+    assert metrics["weekly_overspend_amount"] == 14_500
+    assert metrics["weekly_income_usage_rate_percent"] == pytest.approx(22.0714, abs=0.001)
+    assert metrics["weekly_budget_burn_rate"] == pytest.approx(1.1036, abs=0.001)
+    assert metrics["month_to_date_budget_usage_rate_percent"] == pytest.approx(25.75, abs=0.001)
+    assert metrics["projected_monthly_spending_from_weekly_pace"] == 662_143
     assert metrics["weekly_spending_volatility"] > 0
     assert metrics["weekend_overspending_index"] > 0
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from catcher_llm.config.settings import Settings
@@ -38,8 +39,8 @@ def _write_monthly_seed_csvs(csv_dir: Path) -> None:
     (csv_dir / "users_v3.csv").write_text(
         "\n".join(
             [
-                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text",
-                "1,김토스,29,개발자,남성,7000,서울,Gold,절약형,비상금 300만원 만들기",
+                "id,name,age,직업,성별,연봉,지역,최상위 카드등급,페르소나,saving_goal_text,target_max_spending_amount",
+                "1,김토스,29,개발자,남성,36000000,서울,Gold,절약형,비상금 300만원 만들기,300000",
             ]
         ),
         encoding="utf-8-sig",
@@ -83,6 +84,35 @@ def _make_monthly_settings(root: Path) -> Settings:
 
 
 class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
+    def test_monthly_analysis_json_uses_user_financial_context(self) -> None:
+        """월간 분석 서비스가 사용자 연봉과 목표 소비 금액으로 예산·소득 지표를 계산하는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_monthly_settings(Path(tmp_dir))
+            monthly_payload = build_monthly_consumption_analysis_json(
+                member_id=1,
+                analysis_month="2024-04",
+                settings=settings,
+            )
+
+        monthly_metrics = cast(dict[str, object], monthly_payload["monthly_metrics"])
+
+        self.assertEqual(monthly_metrics["monthly_budget_usage_rate_percent"], 68.5)
+        self.assertEqual(monthly_metrics["monthly_remaining_budget"], 94500)
+        self.assertEqual(monthly_metrics["monthly_overspend_amount"], 0)
+        self.assertEqual(monthly_metrics["monthly_income_usage_rate_percent"], 6.85)
+        self.assertEqual(monthly_metrics["target_spending_to_income_rate_percent"], 10.0)
+        self.assertEqual(monthly_metrics["estimated_saving_amount"], 2794500)
+        self.assertEqual(monthly_metrics["estimated_saving_rate_percent"], 93.15)
+        self.assertEqual(monthly_metrics["target_saving_amount"], 2700000)
+        self.assertEqual(monthly_metrics["target_saving_rate_percent"], 90.0)
+        self.assertAlmostEqual(
+            float(monthly_metrics["fixed_cost_burden_rate_percent"]),
+            2.1667,
+            places=4,
+        )
+        self.assertEqual(monthly_metrics["spending_capacity"], 2880000)
+        self.assertEqual(monthly_metrics["nonessential_spending_income_rate_percent"], 2.85)
+
     def test_monthly_spending_analysis_input_uses_monthly_json_and_profile(self) -> None:
         """월간 분석 JSON을 월간 해석 체인의 raw/indicator/profile 입력으로 변환하는지 검증한다."""
         with TemporaryDirectory() as tmp_dir:

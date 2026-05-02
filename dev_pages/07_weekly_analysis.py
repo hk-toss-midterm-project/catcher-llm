@@ -34,6 +34,13 @@ def _format_percent(value: object) -> str:
     return "-"
 
 
+def _format_ratio(value: object) -> str:
+    """주간 소비 분석 JSON의 배율 값을 표시 문자열로 변환한다."""
+    if isinstance(value, int | float):
+        return f"{value:,.2f}x"
+    return "-"
+
+
 def _json_rows_to_frame(rows: object) -> pd.DataFrame:
     """JSON 목록 값을 Streamlit 표 렌더링에 사용할 DataFrame으로 변환한다."""
     if not isinstance(rows, list):
@@ -128,6 +135,34 @@ def _render_document_weekly_metrics(weekly_metrics: JsonObject) -> None:
     special_columns[2].metric(
         "소비 요일 편중도",
         _format_percent(special_metrics["weekday_concentration_ratio_percent"]),
+    )
+
+    budget_columns = st.columns(3)
+    budget_columns[0].metric(
+        "주간 잔여 예산",
+        _format_amount(weekly_metrics.get("weekly_remaining_budget")),
+    )
+    budget_columns[1].metric(
+        "주간 예산 초과액",
+        _format_amount(weekly_metrics.get("weekly_overspend_amount")),
+    )
+    budget_columns[2].metric(
+        "주 환산 소득 대비 소비율",
+        _format_percent(weekly_metrics.get("weekly_income_usage_rate_percent")),
+    )
+
+    projection_columns = st.columns(3)
+    projection_columns[0].metric(
+        "주간 예산 소진 배율",
+        _format_ratio(weekly_metrics.get("weekly_budget_burn_rate")),
+    )
+    projection_columns[1].metric(
+        "월 누적 목표 사용률",
+        _format_percent(weekly_metrics.get("month_to_date_budget_usage_rate_percent")),
+    )
+    projection_columns[2].metric(
+        "주간 페이스 기준 월말 예상 소비",
+        _format_amount(weekly_metrics.get("projected_monthly_spending_from_weekly_pace")),
     )
 
 
