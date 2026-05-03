@@ -20,6 +20,7 @@ _MARKDOWN_HEADERS = [
 ]
 _PDF_MARKDOWN_PAGE_SEPARATOR = "\n\n<!-- catcher-page:%page-number% -->\n\n"
 _PDF_MARKDOWN_PAGE_SEPARATOR_PATTERN = re.compile(r"<!-- catcher-page:(\d+) -->")
+_WELFARE_SOURCE_PATH_MARKER = (Path("pdf") / "welfare").parts
 
 
 def load_markdown_file(path: Path) -> list[Document]:
@@ -179,6 +180,34 @@ def load_local_documents(
     return documents
 
 
+def _has_path_marker(path: Path, marker: tuple[str, ...]) -> bool:
+    """경로 parts 안에 지정한 상대 경로 조각이 연속해서 포함되는지 확인한다."""
+    parts = path.parts
+    marker_length = len(marker)
+    return any(
+        parts[index : index + marker_length] == marker
+        for index in range(len(parts) - marker_length + 1)
+    )
+
+
+def _is_welfare_pdf_document(document: Document) -> bool:
+    """Document가 복지 정책 PDF 페이지에서 만들어진 문서인지 판별한다."""
+    if document.metadata.get("loader") != "opendataloader_pdf":
+        return False
+    source = document.metadata.get("source")
+    if not isinstance(source, str):
+        return False
+    return _has_path_marker(Path(source), _WELFARE_SOURCE_PATH_MARKER)
+
+
+def _assign_chunk_indexes(documents: Sequence[Document]) -> list[Document]:
+    """전달받은 Document 목록에 현재 순서 기준 chunk_index metadata를 부여한다."""
+    chunks = list(documents)
+    for index, chunk in enumerate(chunks):
+        chunk.metadata["chunk_index"] = index
+    return chunks
+
+
 def split_documents(
     documents: Sequence[Document],
     *,
@@ -186,14 +215,15 @@ def split_documents(
     chunk_overlap: int,
 ) -> list[Document]:
     """Document 목록을 RAG 검색에 사용할 청크 단위로 분할한다."""
+    if documents and all(_is_welfare_pdf_document(document) for document in documents):
+        return _assign_chunk_indexes(documents)
+
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
     chunks = splitter.split_documents(list(documents))
-    for index, chunk in enumerate(chunks):
-        chunk.metadata["chunk_index"] = index
-    return chunks
+    return _assign_chunk_indexes(chunks)
 
 
 def load_split_local_documents(

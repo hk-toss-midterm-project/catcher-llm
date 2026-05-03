@@ -6,6 +6,7 @@ from dataclasses import fields
 from langchain_anthropic import ChatAnthropic
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_upstage import UpstageEmbeddings
 
 from catcher_llm.config.settings import Settings
 from catcher_llm.llm.models import get_chat_model, get_embeddings_model
@@ -115,6 +116,32 @@ class LLMModelTests(unittest.TestCase):
         self.assertIsInstance(embeddings, OllamaEmbeddings)
         self.assertEqual(embeddings.model, "nomic-test")
         self.assertEqual(embeddings.base_url, "http://localhost:11434")
+
+    def test_get_embeddings_model_builds_upstage_embeddings(self) -> None:
+        """Upstage embedding provider 설정으로 UpstageEmbeddings가 생성되는지 검증한다."""
+        embeddings = get_embeddings_model(
+            Settings(
+                embedding_provider="upstage",
+                upstage_api_key="test-upstage-key",
+                upstage_embedding_model="solar-embedding-test",
+            )
+        )
+
+        self.assertIsInstance(embeddings, UpstageEmbeddings)
+        self.assertEqual(embeddings.model, "solar-embedding-test")
+
+    def test_upstage_embedding_requires_api_key(self) -> None:
+        """Upstage embedding provider는 UPSTAGE_API_KEY가 없으면 설정 오류를 반환한다."""
+        settings = Settings(
+            embedding_provider="upstage",
+            upstage_api_key="",
+        )
+
+        self.assertEqual(settings.embedding_model_error, "missing_upstage_api_key")
+        self.assertIn(
+            "UPSTAGE_API_KEY",
+            settings.get_embedding_model_error_message() or "",
+        )
 
 
 if __name__ == "__main__":

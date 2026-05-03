@@ -74,9 +74,11 @@ Streamlit 앱을 실행한 뒤 `Chat` 페이지부터 시작하면 된다. 로�
 - `ANTHROPIC_MODEL`
 - `OLLAMA_MODEL`
 - `OLLAMA_BASE_URL`
-- `EMBEDDING_PROVIDER`: `openai` 또는 `ollama`
+- `EMBEDDING_PROVIDER`: `upstage`, `openai` 또는 `ollama` (`solar`, `local` 별칭 지원)
 - `OPENAI_EMBEDDING_MODEL`
 - `OLLAMA_EMBEDDING_MODEL`
+- `UPSTAGE_API_KEY`
+- `UPSTAGE_EMBEDDING_MODEL`
 
 모델 temperature는 전역 환경변수 대신 `generate_reply`, `generate_rag_reply`, `build_*_chain` 호출 옵션으로 기능별로 지정한다.
 

@@ -5,6 +5,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_upstage import UpstageEmbeddings
 from pydantic import SecretStr
 
 from catcher_llm.config.settings import Settings, get_settings
@@ -67,8 +68,13 @@ def get_embeddings_model(settings: Settings | None = None) -> Embeddings:
             model=config.embedding_model_name,
             base_url=config.ollama_base_url,
         )
+    if provider == "upstage":
+        return UpstageEmbeddings(
+            upstage_api_key=SecretStr(config.upstage_api_key),
+            model=config.embedding_model_name,
+        )
 
-    supported = ", ".join(("openai", "ollama"))
+    supported = ", ".join(("openai", "ollama", "upstage"))
     raise ValueError(
         f"Unsupported EMBEDDING_PROVIDER '{config.embedding_provider}'. Use one of: {supported}."
     )

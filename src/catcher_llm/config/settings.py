@@ -24,7 +24,7 @@ _LANGCHAIN_ENV_KEYS = (
     "LANGCHAIN_ENDPOINT",
 )
 SUPPORTED_CHAT_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "ollama")
-SUPPORTED_EMBEDDING_PROVIDERS: tuple[str, ...] = ("openai", "ollama")
+SUPPORTED_EMBEDDING_PROVIDERS: tuple[str, ...] = ("openai", "ollama", "upstage")
 _CHAT_PROVIDER_ALIASES: dict[str, str] = {
     "openai": "openai",
     "gpt": "openai",
@@ -37,6 +37,8 @@ _EMBEDDING_PROVIDER_ALIASES: dict[str, str] = {
     "openai": "openai",
     "ollama": "ollama",
     "local": "ollama",
+    "upstage": "upstage",
+    "solar": "upstage",
 }
 
 
@@ -67,6 +69,11 @@ class Settings:
     embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "openai")
     embedding_model: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+    upstage_api_key: str = os.getenv("UPSTAGE_API_KEY", "")
+    upstage_embedding_model: str = os.getenv(
+        "UPSTAGE_EMBEDDING_MODEL",
+        "solar-embedding-1-large",
+    )
     langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
     langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "catcher-llm")
@@ -107,8 +114,11 @@ class Settings:
     @property
     def embedding_model_name(self) -> str:
         """현재 임베딩 provider에 맞는 모델명을 반환한다."""
-        if self.embedding_model_provider == "ollama":
+        provider = self.embedding_model_provider
+        if provider == "ollama":
             return self.ollama_embedding_model
+        if provider == "upstage":
+            return self.upstage_embedding_model
         return self.embedding_model
 
     @property
@@ -132,6 +142,11 @@ class Settings:
         return bool(self.anthropic_api_key.strip())
 
     @property
+    def has_upstage_key(self) -> bool:
+        """Upstage API 키가 설정되어 있는지 확인한다."""
+        return bool(self.upstage_api_key.strip())
+
+    @property
     def chat_model_error(self) -> str | None:
         """채팅 모델 설정에 즉시 확인 가능한 오류가 있으면 오류 코드를 반환한다."""
         provider = self.chat_provider
@@ -151,6 +166,8 @@ class Settings:
             return "unsupported_embedding_provider"
         if provider == "openai" and not self.has_openai_key:
             return "missing_openai_api_key"
+        if provider == "upstage" and not self.has_upstage_key:
+            return "missing_upstage_api_key"
         return None
 
     def get_chat_model_error_message(self, flow_name: str = "chat flow") -> str | None:
@@ -170,6 +187,8 @@ class Settings:
         error = self.embedding_model_error
         if error == "missing_openai_api_key":
             return f"OPENAI_API_KEY is not set. Add it to .env before using the {flow_name}."
+        if error == "missing_upstage_api_key":
+            return f"UPSTAGE_API_KEY is not set. Add it to .env before using the {flow_name}."
         if error == "unsupported_embedding_provider":
             supported = ", ".join(SUPPORTED_EMBEDDING_PROVIDERS)
             return (

@@ -113,6 +113,56 @@ class RetrieverTests(unittest.TestCase):
             self.assertGreater(len(documents), 1)
             self.assertIn("chunk_index", documents[0].metadata)
 
+    def test_load_split_local_documents_preserves_welfare_pdf_pages(self) -> None:
+        """복지 정책 PDF는 문자수 재청킹 없이 opendataloader-pdf 페이지 단위를 유지하는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            welfare_dir = root / "raw" / "pdf" / "welfare"
+            welfare_dir.mkdir(parents=True)
+            pdf_path = welfare_dir / "guide.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4")
+            first_page = "첫 페이지 정책 내용 " * 30
+            second_page = "둘째 페이지 정책 내용 " * 30
+
+            def fake_convert(
+                input_path: str,
+                *,
+                output_dir: str | None = None,
+                format: str | None = None,
+                quiet: bool = False,
+                markdown_page_separator: str | None = None,
+                image_output: str | None = None,
+            ) -> None:
+                """opendataloader-pdf 변환 결과를 긴 페이지 본문으로 생성한다."""
+                self.assertEqual(input_path, str(pdf_path))
+                self.assertEqual(format, "markdown")
+                self.assertTrue(quiet)
+                self.assertEqual(image_output, "off")
+                self.assertIsNotNone(output_dir)
+                self.assertIsNotNone(markdown_page_separator)
+                first_separator = markdown_page_separator.replace("%page-number%", "1")
+                second_separator = markdown_page_separator.replace("%page-number%", "2")
+                Path(output_dir).joinpath("guide.md").write_text(
+                    f"{first_separator}{first_page}{second_separator}{second_page}",
+                    encoding="utf-8",
+                )
+
+            with patch("catcher_llm.retrievers.loaders.opendataloader_pdf.convert") as convert:
+                convert.side_effect = fake_convert
+                documents = load_split_local_documents(
+                    welfare_dir,
+                    chunk_size=50,
+                    chunk_overlap=0,
+                )
+
+            self.assertEqual(len(documents), 2)
+            self.assertEqual(documents[0].page_content, first_page.strip())
+            self.assertEqual(documents[0].metadata["page_number"], 1)
+            self.assertEqual(documents[0].metadata["chunk_index"], 0)
+            self.assertEqual(documents[1].page_content, second_page.strip())
+            self.assertEqual(documents[1].metadata["page_number"], 2)
+            self.assertEqual(documents[1].metadata["chunk_index"], 1)
+
     def test_load_retrieval_seed_uses_explicit_chunk_settings(self) -> None:
         settings = Settings()
 
@@ -178,7 +228,7 @@ class RetrieverTests(unittest.TestCase):
             metadata_path = vectorstore_dir / "pdf" / "saving_tips" / "metadata.json"
             self.assertTrue(metadata_path.exists())
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            self.assertEqual(metadata["embedding_model"], settings.embedding_model)
+            self.assertEqual(metadata["embedding_model"], settings.embedding_model_name)
             self.assertEqual(metadata["chunk_size"], 100)
             self.assertEqual(metadata["chunk_overlap"], 10)
             self.assertEqual(metadata["raw_data_dir"], str(raw_dir.resolve()))
@@ -201,7 +251,7 @@ class RetrieverTests(unittest.TestCase):
                     {
                         "raw_data_dir": str(raw_dir.resolve()),
                         "embedding_provider": settings.embedding_model_provider,
-                        "embedding_model": settings.embedding_model,
+                        "embedding_model": settings.embedding_model_name,
                         "chunk_size": 100,
                         "chunk_overlap": 10,
                         "file_signature": [
