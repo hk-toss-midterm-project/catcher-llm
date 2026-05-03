@@ -12,8 +12,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.services.consumption_feedback.daily_feedback import (
+    generate_daily_feedback,
+    load_daily_session_for_date,
+)
 from catcher_llm.services.consumption_feedback.feedback_reaction import (
     save_session_feedback_reaction,
+)
+from catcher_llm.services.consumption_feedback.session_cache import has_stored_feedback_payload
+from catcher_llm.services.consumption_feedback.session_report import (
+    build_daily_report_result_from_session,
 )
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
@@ -27,6 +35,7 @@ from catcher_llm.ui.feedback_progress import (
 from catcher_llm.ui.report_auth import require_logged_in_user_id
 
 _USER_SCORE_COLUMN = "personal_score"
+_DAILY_REPORT_REGEN_KEY = "daily_report_force_regen"
 
 st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
@@ -828,13 +837,50 @@ with top2:
 
 st.session_state.member_id = member_id
 
-if run:
-    from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
+selected_report_params = {
+    "member_id": member_id,
+    "analysis_date": analysis_date,
+}
+if (
+    not run
+    and st.session_state.get("daily_report_result") is not None
+    and st.session_state.get("daily_report_params") != selected_report_params
+):
+    st.session_state.daily_report_result = None
 
-    settings = get_settings()
+settings = get_settings()
+regen_key = f"{_DAILY_REPORT_REGEN_KEY}_{member_id}_{analysis_date}"
+force_regen = bool(st.session_state.get(regen_key, False))
+
+cached_session = load_daily_session_for_date(
+    member_id=member_id,
+    analysis_date=analysis_date,
+    settings=settings,
+)
+has_cached_session = has_stored_feedback_payload(cached_session)
+
+if cached_session is not None and has_cached_session and not force_regen:
+    st.session_state.daily_report_result = build_daily_report_result_from_session(cached_session)
+    st.session_state.daily_report_params = selected_report_params
+    st.session_state.daily_report_feedback = cached_session.feedback_reaction
+    st.caption("저장된 일일 세션을 불러왔습니다.")
+
+    if st.button("일일 리포트 재생성", width="stretch"):
+        st.session_state[regen_key] = True
+        st.rerun()
+
+elif run or force_regen:
+    if force_regen:
+        st.session_state.pop(regen_key, None)
+
     progress_callback = create_feedback_progress_callback(DAILY_FEEDBACK_PROGRESS_STEPS)
 
-    with st.spinner("오늘의 소비 알림장을 생성하고 있어요..."):
+    spinner_label = (
+        "오늘의 소비 알림장을 다시 생성하고 있어요..."
+        if force_regen
+        else "오늘의 소비 알림장을 생성하고 있어요..."
+    )
+    with st.spinner(spinner_label):
         result = generate_daily_feedback(
             member_id=member_id,
             analysis_date=analysis_date,
@@ -848,6 +894,7 @@ if run:
         )
 
     st.session_state.daily_report_result = result
+    st.session_state.daily_report_params = selected_report_params
     st.session_state.daily_report_feedback = None
     st.session_state.daily_report_rewarded = False
     st.session_state.daily_report_point_popup = False

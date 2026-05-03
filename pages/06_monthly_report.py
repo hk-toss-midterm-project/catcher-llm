@@ -14,6 +14,14 @@ from catcher_llm.config.settings import get_settings
 from catcher_llm.services.consumption_feedback.feedback_reaction import (
     save_session_feedback_reaction,
 )
+from catcher_llm.services.consumption_feedback.monthly_feedback import (
+    generate_monthly_feedback,
+    load_monthly_session_for_date,
+)
+from catcher_llm.services.consumption_feedback.session_cache import has_stored_feedback_payload
+from catcher_llm.services.consumption_feedback.session_report import (
+    build_monthly_report_result_from_session,
+)
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_MONTH,
     render_date_picker_styles,
@@ -28,6 +36,7 @@ from catcher_llm.ui.report_auth import require_logged_in_user_id
 st.set_page_config(page_title="월간 소비 리포트", page_icon="🏆", layout="wide")
 
 USER_SCORE_COLUMN = "personal_score"
+MONTHLY_REPORT_REGEN_KEY = "monthly_report_force_regen"
 
 
 def money(value: int | float) -> str:
@@ -1441,33 +1450,73 @@ with top2:
         st.write("")
         run = st.button("생성", width="stretch")
 
+selected_params = {
+    "member_id": member_id,
+    "month": month,
+}
+if (
+    not run
+    and st.session_state.monthly_report_result is not None
+    and st.session_state.monthly_report_params != selected_params
+):
+    st.session_state.monthly_report_result = None
+
 if run:
     st.session_state.monthly_report_vote = None
     st.session_state.monthly_report_vote_log = {}
 
-    from catcher_llm.services.consumption_feedback.monthly_feedback import (
-        generate_monthly_feedback,
-    )
+    st.session_state.monthly_report_params = selected_params
+    st.session_state.monthly_report_result = None
 
+params = st.session_state.monthly_report_params if run else selected_params
+regen_key = f"{MONTHLY_REPORT_REGEN_KEY}_{params['member_id']}_{params['month']}"
+force_regen = bool(st.session_state.get(regen_key, False))
+
+if st.session_state.monthly_report_result is None:
     settings = get_settings()
-    progress_callback = create_feedback_progress_callback(MONTHLY_FEEDBACK_PROGRESS_STEPS)
-
-    with st.spinner("이번 달 소비 리포트를 만들고 있어요..."):
-        result = call_monthly_feedback(
-            generate_monthly_feedback,
-            member_id=member_id,
-            month=month,
-            settings=settings,
-            timing_callback=progress_callback,
+    cached_session = load_monthly_session_for_date(
+        member_id=params["member_id"],
+        analysis_month=params["month"],
+        settings=settings,
+    )
+    if (
+        cached_session is not None
+        and has_stored_feedback_payload(cached_session)
+        and not force_regen
+    ):
+        st.session_state.monthly_report_result = build_monthly_report_result_from_session(
+            cached_session,
         )
+        st.session_state.monthly_report_vote = cached_session.feedback_reaction
+        st.session_state.monthly_report_params = params
+        st.caption("저장된 월간 세션을 불러왔습니다.")
+    elif run or force_regen:
+        if force_regen:
+            st.session_state.pop(regen_key, None)
 
-    st.session_state.monthly_report_result = result
-    st.session_state.monthly_report_params = {
-        "member_id": member_id,
-        "month": month,
-    }
+        progress_callback = create_feedback_progress_callback(MONTHLY_FEEDBACK_PROGRESS_STEPS)
+        spinner_label = (
+            "이번 달 소비 리포트를 다시 만들고 있어요..."
+            if force_regen
+            else "이번 달 소비 리포트를 만들고 있어요..."
+        )
+        with st.spinner(spinner_label):
+            result = call_monthly_feedback(
+                generate_monthly_feedback,
+                member_id=params["member_id"],
+                month=params["month"],
+                settings=settings,
+                timing_callback=progress_callback,
+            )
+
+        st.session_state.monthly_report_result = result
 
 if st.session_state.monthly_report_result is not None:
+    if st.button("월간 리포트 재생성", width="stretch"):
+        st.session_state[regen_key] = True
+        st.session_state.monthly_report_result = None
+        st.rerun()
+
     render_monthly_report(
         st.session_state.monthly_report_result,
         st.session_state.monthly_report_params["member_id"],

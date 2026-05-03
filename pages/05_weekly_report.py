@@ -13,6 +13,14 @@ from catcher_llm.config.settings import get_settings
 from catcher_llm.services.consumption_feedback.feedback_reaction import (
     save_session_feedback_reaction,
 )
+from catcher_llm.services.consumption_feedback.session_cache import has_stored_feedback_payload
+from catcher_llm.services.consumption_feedback.session_report import (
+    build_weekly_report_result_from_session,
+)
+from catcher_llm.services.consumption_feedback.weekly_feedback import (
+    generate_weekly_feedback,
+    load_weekly_session_for_date,
+)
 from catcher_llm.ui.date_picker import (
     DEFAULT_CALENDAR_DATE,
     render_date_picker_styles,
@@ -34,6 +42,7 @@ PURPLE_MAIN = "#7c3aed"
 PURPLE_LIGHT = "#8b5cf6"
 PURPLE_DARK = "#6d28d9"
 USER_SCORE_COLUMN = "personal_score"
+WEEKLY_REPORT_REGEN_KEY = "weekly_report_force_regen"
 
 
 def money(value: int | float) -> str:
@@ -1523,32 +1532,64 @@ with top2:
         st.write("")
         run = st.button("생성", width="stretch")
 
+selected_params = {
+    "member_id": int(member_id),
+    "start_date": start_date,
+    "end_date": end_date,
+}
+if (
+    not run
+    and st.session_state.weekly_result is not None
+    and st.session_state.weekly_report_params != selected_params
+):
+    st.session_state.weekly_result = None
+
 if run:
     st.session_state.weekly_report_generated = True
     st.session_state.weekly_result = None
     st.session_state.weekly_report_feedback = None
     st.session_state.weekly_feedback_reason = ""
-    st.session_state.weekly_report_params = {
-        "member_id": int(member_id),
-        "start_date": start_date,
-        "end_date": end_date,
-    }
+    st.session_state.weekly_report_params = selected_params
 
-if st.session_state.weekly_report_generated:
-    from catcher_llm.config.settings import get_settings
-    from catcher_llm.services.consumption_feedback.weekly_feedback import (
-        generate_weekly_feedback,
+params = st.session_state.weekly_report_params or selected_params
+settings = get_settings()
+regen_key = f"{WEEKLY_REPORT_REGEN_KEY}_{params['member_id']}_{params['start_date']}"
+force_regen = bool(st.session_state.get(regen_key, False))
+
+if st.session_state.weekly_result is None:
+    cached_session = load_weekly_session_for_date(
+        member_id=params["member_id"],
+        week_start=params["start_date"],
+        settings=settings,
     )
+    if (
+        cached_session is not None
+        and has_stored_feedback_payload(cached_session)
+        and not force_regen
+    ):
+        st.session_state.weekly_result = build_weekly_report_result_from_session(
+            cached_session,
+            week_end=params["end_date"],
+        )
+        st.session_state.weekly_report_feedback = cached_session.feedback_reaction
+        st.session_state.weekly_report_params = params
+        st.session_state.weekly_report_generated = True
+        st.caption("저장된 주간 세션을 불러왔습니다.")
+    elif run or force_regen:
+        if force_regen:
+            st.session_state.pop(regen_key, None)
 
-    settings = get_settings()
-
-    if st.session_state.weekly_result is None:
         progress_callback = create_feedback_progress_callback(WEEKLY_FEEDBACK_PROGRESS_STEPS)
-        with st.spinner("이번 주 소비 습관을 분석하고 있어요..."):
+        spinner_label = (
+            "이번 주 소비 습관을 다시 분석하고 있어요..."
+            if force_regen
+            else "이번 주 소비 습관을 분석하고 있어요..."
+        )
+        with st.spinner(spinner_label):
             st.session_state.weekly_result = generate_weekly_feedback(
-                member_id=member_id,
-                week_start=start_date,
-                week_end=end_date,
+                member_id=params["member_id"],
+                week_start=params["start_date"],
+                week_end=params["end_date"],
                 settings=settings,
                 chunk_size=800,
                 chunk_overlap=120,
@@ -1557,11 +1598,11 @@ if st.session_state.weekly_report_generated:
                 timing_callback=progress_callback,
             )
 
-    params = st.session_state.weekly_report_params or {
-        "member_id": member_id,
-        "start_date": start_date,
-        "end_date": end_date,
-    }
+if st.session_state.weekly_result is not None:
+    if st.button("주간 리포트 재생성", width="stretch"):
+        st.session_state[regen_key] = True
+        st.session_state.weekly_result = None
+        st.rerun()
 
     render_weekly_report(
         st.session_state.weekly_result,
