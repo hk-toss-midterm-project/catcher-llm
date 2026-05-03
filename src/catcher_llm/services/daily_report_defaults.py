@@ -13,7 +13,7 @@ from catcher_llm.services.user_data_service import ensure_user_database
 
 @dataclass(frozen=True, slots=True)
 class DailyReportSelection:
-    """일간 보고서 실행에 사용할 기본 회원과 날짜 조합을 담는다."""
+    """일일 리포트 실행에 사용할 기본 회원과 날짜 조합을 담는다."""
 
     member_id: int
     analysis_date: date

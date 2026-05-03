@@ -183,7 +183,7 @@ def test_save_session_feedback_reaction_persists_reaction_and_reason(
 
 
 def test_default_daily_report_selection_uses_member_day_with_history(tmp_path: Path) -> None:
-    """일간 보고서 기본값이 실제 거래와 과거 거래가 모두 있는 회원 날짜를 선택하는지 검증한다."""
+    """일일 리포트 기본값이 실제 거래와 과거 거래가 모두 있는 회원 날짜를 선택하는지 검증한다."""
     settings = _make_settings(tmp_path)
 
     selection = get_default_daily_report_selection(settings=settings)

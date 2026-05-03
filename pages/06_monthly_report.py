@@ -19,6 +19,10 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_month,
 )
+from catcher_llm.ui.feedback_progress import (
+    MONTHLY_FEEDBACK_PROGRESS_STEPS,
+    create_feedback_progress_callback,
+)
 from catcher_llm.ui.report_auth import require_logged_in_user_id
 
 st.set_page_config(page_title="월간 소비 리포트", page_icon="🏆", layout="wide")
@@ -952,7 +956,9 @@ def make_top5_merchant_chart_from_sqlite(member_id: int, month: str):
     return fig
 
 
-def call_monthly_feedback(generate_monthly_feedback, *, member_id, month, settings):
+def call_monthly_feedback(
+    generate_monthly_feedback, *, member_id, month, settings, timing_callback
+):
     params = inspect.signature(generate_monthly_feedback).parameters
 
     base_kwargs = {
@@ -962,6 +968,7 @@ def call_monthly_feedback(generate_monthly_feedback, *, member_id, month, settin
         "chunk_overlap": 120,
         "top_k": 3,
         "max_queries": 4,
+        "timing_callback": timing_callback,
     }
 
     kwargs = {key: value for key, value in base_kwargs.items() if key in params}
@@ -1392,7 +1399,10 @@ if "monthly_report_params" not in st.session_state:
         "month": DEFAULT_CALENDAR_MONTH,
     }
 
-logged_in_member_id = require_logged_in_user_id()
+dev_report_member_id_input_enabled = (
+    st.session_state.get("dev_report_member_id_input_enabled") is True
+)
+logged_in_member_id = None if dev_report_member_id_input_enabled else require_logged_in_user_id()
 top1, top2 = st.columns([1.08, 1.12])
 
 with top1:
@@ -1411,10 +1421,11 @@ with top2:
                 st.number_input(
                     "Member ID",
                     min_value=1,
-                    value=safe_int(st.session_state.monthly_report_params["member_id"], 1),
+                    value=safe_int(st.session_state.get("dev_report_member_id", 1), 1),
                     step=1,
                 )
             )
+            st.session_state.dev_report_member_id = member_id
     else:
         member_id = logged_in_member_id
         f2, f3 = st.columns([1.27, 1.08])
@@ -1439,6 +1450,7 @@ if run:
     )
 
     settings = get_settings()
+    progress_callback = create_feedback_progress_callback(MONTHLY_FEEDBACK_PROGRESS_STEPS)
 
     with st.spinner("이번 달 소비 리포트를 만들고 있어요..."):
         result = call_monthly_feedback(
@@ -1446,6 +1458,7 @@ if run:
             member_id=member_id,
             month=month,
             settings=settings,
+            timing_callback=progress_callback,
         )
 
     st.session_state.monthly_report_result = result

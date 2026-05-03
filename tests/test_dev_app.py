@@ -199,7 +199,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "월간 소비 분석",
         "월간 소비 해석 체인",
         "월간 피드백",
-        "일간 보고서",
+        "일일 리포트",
         "주간 보고서",
         "월간 보고서",
         "사용자 동향 보고서 생성",
@@ -294,22 +294,21 @@ def test_dev_app_renders_default_page_without_exception() -> None:
 
 
 def test_daily_report_page_uses_global_calendar_default_date() -> None:
-    """일간 보고서 페이지가 SQLite 탐색 날짜가 아니라 공통 달력 기본일을 쓰는지 검증한다."""
-    page_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+    """일일 리포트 페이지가 SQLite 탐색 날짜가 아니라 공통 달력 기본일을 쓰는지 검증한다."""
+    page_source = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
 
-    assert "get_default_daily_report_selection" in page_source
     assert "DEFAULT_CALENDAR_DATE" in page_source
     assert "default=DEFAULT_CALENDAR_DATE" in page_source
-    assert "default=default_selection.analysis_date" not in page_source
     assert 'value="1"' not in page_source
     assert "date(2024, 3, 31)" not in page_source
     assert "st.number_input(" in page_source
     assert '"Member ID"' in page_source
+    assert "dev_report_member_id_input_enabled" in page_source
 
 
 def test_daily_report_page_uses_configured_sqlite_for_points() -> None:
-    """일간 보고서 포인트 조회와 갱신이 설정 SQLite 경로와 v3 점수 컬럼을 쓰는지 검증한다."""
-    page_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
+    """일일 리포트 포인트 조회와 갱신이 설정 SQLite 경로와 v3 점수 컬럼을 쓰는지 검증한다."""
+    page_source = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
 
     assert "get_settings().sqlite_db_path" in page_source
     assert "personal_score" in page_source
@@ -319,8 +318,8 @@ def test_daily_report_page_uses_configured_sqlite_for_points() -> None:
 
 def test_report_pages_remove_duplicated_derived_date_controls() -> None:
     """리포트 페이지가 기준 날짜 선택에서 계산 가능한 보조 날짜 UI를 표시하지 않는지 검증한다."""
-    daily_report_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
-    weekly_report_source = Path("dev_pages/14_weekly_report_rim.py").read_text(encoding="utf-8")
+    daily_report_source = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
+    weekly_report_source = Path("pages/05_weekly_report.py").read_text(encoding="utf-8")
 
     assert "전일 기준일" not in daily_report_source
     assert "default_selection.previous_date" not in daily_report_source
@@ -359,8 +358,8 @@ def test_consumption_dev_pages_use_2026_april_calendar_defaults() -> None:
         Path("dev_pages/07_weekly_analysis.py"),
         Path("dev_pages/08_weekly_interpretation.py"),
         Path("dev_pages/09_weekly_feedback.py"),
-        Path("dev_pages/13_daily_report_rim.py"),
-        Path("dev_pages/14_weekly_report_rim.py"),
+        Path("pages/04_daily_report.py"),
+        Path("pages/05_weekly_report.py"),
     ]
     for page_path in daily_or_weekly_pages:
         page_source = page_path.read_text(encoding="utf-8")
@@ -371,7 +370,7 @@ def test_consumption_dev_pages_use_2026_april_calendar_defaults() -> None:
         Path("dev_pages/10_monthly_analysis.py"),
         Path("dev_pages/11_monthly_interpretation.py"),
         Path("dev_pages/12_monthly_feedback.py"),
-        Path("dev_pages/15_monthly_report_rim.py"),
+        Path("pages/06_monthly_report.py"),
     ]
     for page_path in monthly_pages:
         page_source = page_path.read_text(encoding="utf-8")
@@ -381,7 +380,7 @@ def test_consumption_dev_pages_use_2026_april_calendar_defaults() -> None:
 
 
 def test_consumption_dev_pages_use_popover_date_picker_helper() -> None:
-    """일일·주간·월간 소비 개발 페이지가 popover 날짜 선택 헬퍼로 날짜를 선택하는지 검증한다."""
+    """일일·주간·월간 소비 페이지가 popover 날짜 선택 헬퍼로 날짜를 선택하는지 검증한다."""
     page_paths = [
         Path("dev_pages/04_daily_analysis.py"),
         Path("dev_pages/05_daily_interpretation.py"),
@@ -392,9 +391,9 @@ def test_consumption_dev_pages_use_popover_date_picker_helper() -> None:
         Path("dev_pages/10_monthly_analysis.py"),
         Path("dev_pages/11_monthly_interpretation.py"),
         Path("dev_pages/12_monthly_feedback.py"),
-        Path("dev_pages/13_daily_report_rim.py"),
-        Path("dev_pages/14_weekly_report_rim.py"),
-        Path("dev_pages/15_monthly_report_rim.py"),
+        Path("pages/04_daily_report.py"),
+        Path("pages/05_weekly_report.py"),
+        Path("pages/06_monthly_report.py"),
     ]
 
     for page_path in page_paths:
@@ -1170,11 +1169,14 @@ def test_feedback_dev_pages_render_feedback_reaction_controls() -> None:
 
 
 def test_feedback_dev_pages_render_generation_progress() -> None:
-    """일·주·월 피드백 개발 페이지가 생성 단계 진행 바와 타이밍 콜백을 연결하는지 검증한다."""
+    """일·주·월 피드백/리포트 페이지가 생성 단계 진행 바와 타이밍 콜백을 연결하는지 검증한다."""
     page_paths = [
         Path("dev_pages/06_daily_feedback.py"),
         Path("dev_pages/09_weekly_feedback.py"),
         Path("dev_pages/12_monthly_feedback.py"),
+        Path("pages/04_daily_report.py"),
+        Path("pages/05_weekly_report.py"),
+        Path("pages/06_monthly_report.py"),
     ]
 
     for page_path in page_paths:
@@ -1185,9 +1187,9 @@ def test_feedback_dev_pages_render_generation_progress() -> None:
 
 def test_report_pages_render_generated_feedback_fields() -> None:
     """리포트 페이지가 피드백 개발 페이지와 같은 생성 피드백 필드를 메인 화면에 반영하는지 검증한다."""
-    daily_source = Path("dev_pages/13_daily_report_rim.py").read_text(encoding="utf-8")
-    weekly_source = Path("dev_pages/14_weekly_report_rim.py").read_text(encoding="utf-8")
-    monthly_source = Path("dev_pages/15_monthly_report_rim.py").read_text(encoding="utf-8")
+    daily_source = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
+    weekly_source = Path("pages/05_weekly_report.py").read_text(encoding="utf-8")
+    monthly_source = Path("pages/06_monthly_report.py").read_text(encoding="utf-8")
 
     assert "feedback.scolding_message" in daily_source
     assert "feedback.tomorrow_mission" in daily_source

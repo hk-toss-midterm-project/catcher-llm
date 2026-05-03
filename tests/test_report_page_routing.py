@@ -31,6 +31,23 @@ def test_report_detail_pages_are_implemented_in_pages_directory() -> None:
     assert "select_month" in monthly_page
 
 
+def test_report_dev_pages_wrap_pages_with_member_id_input_mode() -> None:
+    """리포트 개발 페이지가 pages 구현을 실행하고 Member ID 입력 모드를 켜는지 검증한다."""
+    page_expectations = {
+        "dev_pages/13_daily_report_rim.py": "pages/04_daily_report.py",
+        "dev_pages/14_weekly_report_rim.py": "pages/05_weekly_report.py",
+        "dev_pages/15_monthly_report_rim.py": "pages/06_monthly_report.py",
+    }
+
+    for dev_page_path, wrapped_page_path in page_expectations.items():
+        page_source = Path(dev_page_path).read_text(encoding="utf-8")
+        assert "dev_report_member_id_input_enabled" in page_source
+        assert "dev_report_member_id" in page_source
+        assert "runpy.run_path" in page_source
+        assert wrapped_page_path in page_source
+        assert "Member ID" not in page_source
+
+
 def test_report_pages_use_consistent_top_date_picker_layout() -> None:
     """일일·주간·월간 리포트 상단에서 같은 제목·날짜 선택 레이아웃을 쓰는지 검증한다."""
     daily_page = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
@@ -102,18 +119,19 @@ def test_app_registers_report_detail_pages_for_logged_in_navigation() -> None:
 
 
 def test_report_pages_use_logged_in_user_id_when_session_exists() -> None:
-    """리포트 dev 페이지가 로그인 세션 사용자 ID를 우선 사용하도록 연결됐는지 검증한다."""
+    """리포트 pages 구현이 로그인 세션 사용자 ID를 우선 사용하도록 연결됐는지 검증한다."""
     page_paths = [
-        Path("dev_pages/13_daily_report_rim.py"),
-        Path("dev_pages/14_weekly_report_rim.py"),
-        Path("dev_pages/15_monthly_report_rim.py"),
+        Path("pages/04_daily_report.py"),
+        Path("pages/05_weekly_report.py"),
+        Path("pages/06_monthly_report.py"),
     ]
 
     for page_path in page_paths:
         page_source = page_path.read_text(encoding="utf-8")
-        assert "get_logged_in_user_id_from_session" in page_source
-        assert "logged_in_member_id = get_logged_in_user_id_from_session()" in page_source
-        assert "if logged_in_member_id is None:" in page_source
+        assert "require_logged_in_user_id()" in page_source
+        assert "dev_report_member_id_input_enabled" in page_source
+        assert "st.number_input(" in page_source
+        assert '"Member ID"' in page_source
 
 
 def test_report_session_user_id_coercion() -> None:

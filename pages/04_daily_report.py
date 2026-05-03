@@ -20,6 +20,10 @@ from catcher_llm.ui.date_picker import (
     render_date_picker_styles,
     select_daily_date,
 )
+from catcher_llm.ui.feedback_progress import (
+    DAILY_FEEDBACK_PROGRESS_STEPS,
+    create_feedback_progress_callback,
+)
 from catcher_llm.ui.report_auth import require_logged_in_user_id
 
 _USER_SCORE_COLUMN = "personal_score"
@@ -86,7 +90,7 @@ def extract_monthly_goal(text: str | None) -> int:
 
 
 def _get_daily_report_sqlite_db_path() -> str:
-    """일간 보고서 포인트 조회와 거래 조회에 사용할 설정 SQLite 경로를 반환한다."""
+    """일일 리포트 포인트 조회와 거래 조회에 사용할 설정 SQLite 경로를 반환한다."""
     return str(get_settings().sqlite_db_path)
 
 
@@ -778,8 +782,10 @@ def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
 inject_css()
 render_date_picker_styles()
 
-logged_in_member_id = require_logged_in_user_id()
-member_id = logged_in_member_id
+dev_report_member_id_input_enabled = (
+    st.session_state.get("dev_report_member_id_input_enabled") is True
+)
+logged_in_member_id = None if dev_report_member_id_input_enabled else require_logged_in_user_id()
 top1, top2 = st.columns([1.08, 1.12])
 
 with top1:
@@ -790,7 +796,22 @@ with top1:
     )
 
 with top2:
-    f2, f3 = st.columns([1.27, 1.08])
+    if logged_in_member_id is None:
+        f1, f2, f3 = st.columns([0.9, 1.27, 1.08])
+
+        with f1:
+            member_id = int(
+                st.number_input(
+                    "Member ID",
+                    min_value=1,
+                    value=int(st.session_state.get("dev_report_member_id", 1)),
+                    step=1,
+                )
+            )
+            st.session_state.dev_report_member_id = member_id
+    else:
+        member_id = logged_in_member_id
+        f2, f3 = st.columns([1.27, 1.08])
 
     with f2:
         analysis_date = select_daily_date(
@@ -811,6 +832,7 @@ if run:
     from catcher_llm.services.consumption_feedback.daily_feedback import generate_daily_feedback
 
     settings = get_settings()
+    progress_callback = create_feedback_progress_callback(DAILY_FEEDBACK_PROGRESS_STEPS)
 
     with st.spinner("오늘의 소비 알림장을 생성하고 있어요..."):
         result = generate_daily_feedback(
@@ -822,6 +844,7 @@ if run:
             chunk_overlap=120,
             top_k=3,
             max_queries=4,
+            timing_callback=progress_callback,
         )
 
     st.session_state.daily_report_result = result
