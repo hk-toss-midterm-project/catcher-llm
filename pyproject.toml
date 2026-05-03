@@ -20,6 +20,7 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "langchain-openai>=1.1.14",
     "langchain-text-splitters>=1.0.0",
+    "langchain-upstage>=0.7.7",
     "langsmith>=0.4.26",
     "numpy>=2.3.4",
     "opendataloader-pdf>=2.3.0",
@@ -52,9 +53,6 @@ packages = ["src/catcher_llm"]
 dev = [
     "pytest>=8.4.2",
     "ruff>=0.15.11",
-]
-upstage = [
-    "langchain-upstage>=0.7.7",
 ]
 huggingface = [
     "langchain-huggingface>=1.2.1",
