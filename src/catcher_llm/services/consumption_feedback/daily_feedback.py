@@ -91,6 +91,7 @@ _DEFAULT_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
     DocumentKind.WELFARE,
     DocumentKind.KCA_REPORT,
 )
+_DAILY_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (DocumentKind.WELFARE,)
 _DOCUMENT_KIND_QUERY_SUFFIXES: dict[DocumentKind, str] = {
     DocumentKind.SAVING_TIPS: "절약 행동 실천 방법",
     DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: (
@@ -550,12 +551,12 @@ def _normalize_feedback_document_kinds(
     return normalized_kinds
 
 
-def _build_feedback_query_summary(queries: Sequence[str]) -> str:
-    """여러 사용자 기반 검색 질의를 문서 종류별 1회 검색에 사용할 대표 질의로 합친다."""
+def _build_feedback_query_texts(queries: Sequence[str]) -> list[str]:
+    """사용자 기반 RAG 검색 질의를 정리하되 서로 다른 검색 의도를 합치지 않는다."""
     normalized_queries = [" ".join(query.split()) for query in queries if query.strip()]
     if not normalized_queries:
-        return _DEFAULT_RETRIEVAL_QUERY
-    return " / ".join(normalized_queries)
+        return [_DEFAULT_RETRIEVAL_QUERY]
+    return list(dict.fromkeys(normalized_queries))
 
 
 def _build_document_kind_query(document_kind: DocumentKind, query_summary: str) -> str:
@@ -763,61 +764,62 @@ def retrieve_feedback_contexts(
         )
 
     config = settings or get_settings()
-    query_summary = _build_feedback_query_summary(queries)
+    query_texts = _build_feedback_query_texts(queries)
     normalized_document_kinds = _normalize_feedback_document_kinds(document_kinds)
     contexts: list[RetrievedAdviceContext] = []
     fallback_candidates: list[RetrievedAdviceContext] = []
     seen_contexts: set[tuple[str, str, int | None, str]] = set()
 
     for document_kind in normalized_document_kinds:
-        query = _build_document_kind_query(document_kind, query_summary)
-        records = retrieve_context_records(
-            query,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            top_k=top_k,
-            raw_data_dir=_get_document_kind_raw_data_dir(config, document_kind),
-            source_files=None,
-            settings=config,
-        )
-        for record in records:
-            content = str(record["content"])
-            usefulness_score = _score_context_usefulness(query_summary, content)
-            page_number = record.get("page_number")
-            actual_page_number = page_number if isinstance(page_number, int) else None
-            source = str(record["source"])
-            dedupe_key = (document_kind.value, source, actual_page_number, content)
-            if dedupe_key in seen_contexts:
-                continue
-            seen_contexts.add(dedupe_key)
-            context = _record_to_advice_context(
-                record=record,
-                query=query,
-                document_kind=document_kind,
-                usefulness_score=usefulness_score,
-                usefulness_threshold=usefulness_threshold,
+        for query_text in query_texts:
+            query = _build_document_kind_query(document_kind, query_text)
+            records = retrieve_context_records(
+                query,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                top_k=top_k,
+                raw_data_dir=_get_document_kind_raw_data_dir(config, document_kind),
+                source_files=None,
+                settings=config,
             )
-            if usefulness_score < usefulness_threshold:
-                fallback_candidates.append(
-                    _record_to_advice_context(
-                        record=record,
-                        query=query,
-                        document_kind=document_kind,
-                        usefulness_score=usefulness_score,
-                        usefulness_threshold=usefulness_threshold,
-                        is_fallback=True,
-                    )
+            for record in records:
+                content = str(record["content"])
+                usefulness_score = _score_context_usefulness(query_text, content)
+                page_number = record.get("page_number")
+                actual_page_number = page_number if isinstance(page_number, int) else None
+                source = str(record["source"])
+                dedupe_key = (document_kind.value, source, actual_page_number, content)
+                if dedupe_key in seen_contexts:
+                    continue
+                seen_contexts.add(dedupe_key)
+                context = _record_to_advice_context(
+                    record=record,
+                    query=query,
+                    document_kind=document_kind,
+                    usefulness_score=usefulness_score,
+                    usefulness_threshold=usefulness_threshold,
                 )
-                continue
-            contexts.append(context)
+                if usefulness_score < usefulness_threshold:
+                    fallback_candidates.append(
+                        _record_to_advice_context(
+                            record=record,
+                            query=query,
+                            document_kind=document_kind,
+                            usefulness_score=usefulness_score,
+                            usefulness_threshold=usefulness_threshold,
+                            is_fallback=True,
+                        )
+                    )
+                    continue
+                contexts.append(context)
 
     if not contexts and fallback_candidates:
         return sorted(
             fallback_candidates,
             key=lambda context: context.usefulness_score or 0.0,
             reverse=True,
-        )[:1]
-    return contexts
+        )[:top_k]
+    return contexts[:top_k]
 
 
 def _retrieve_feedback_contexts_from_explicit_source(
@@ -1025,6 +1027,7 @@ def generate_daily_feedback(
                 top_k=top_k,
                 raw_data_dir=raw_data_dir,
                 source_files=source_files,
+                document_kinds=_DAILY_FEEDBACK_DOCUMENT_KINDS,
                 settings=config,
             ),
         )

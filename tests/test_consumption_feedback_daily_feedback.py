@@ -381,6 +381,52 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertLess(contexts[0].usefulness_score or 0.0, 0.95)
         self.assertIn("fallback", contexts[0].usefulness_reason or "")
 
+    def test_retrieve_feedback_contexts_searches_each_query_without_concatenating(
+        self,
+    ) -> None:
+        """여러 RAG 질의를 하나로 합치지 않고 문서 종류별로 각각 검색하는지 검증한다."""
+
+        def fake_retrieve_context_records(
+            question: str,
+            chunk_size: int,
+            chunk_overlap: int,
+            top_k: int,
+            *,
+            raw_data_dir: Path | str | None = None,
+            source_files: object | None = None,
+            settings: Settings | None = None,
+        ) -> list[dict[str, str | int | None]]:
+            """테스트용 검색 함수로 검색 질의별 청크를 반환한다."""
+            return [
+                {
+                    "source": "welfare.pdf",
+                    "content": f"{question} 청년 지원 혜택 신청 조건",
+                    "page_number": 1,
+                }
+            ]
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+
+            with patch(
+                "catcher_llm.services.consumption_feedback.daily_feedback.retrieve_context_records",
+                side_effect=fake_retrieve_context_records,
+            ) as retrieve_records:
+                contexts = retrieve_feedback_contexts(
+                    ["청년 주거 지원", "통신비 복지 혜택"],
+                    top_k=4,
+                    document_kinds=[DocumentKind.WELFARE],
+                    usefulness_threshold=0.1,
+                    settings=settings,
+                )
+
+        searched_questions = [call.args[0] for call in retrieve_records.call_args_list]
+        self.assertEqual(retrieve_records.call_count, 2)
+        self.assertIn("청년 주거 지원", searched_questions[0])
+        self.assertIn("통신비 복지 혜택", searched_questions[1])
+        self.assertTrue(all(" / " not in question for question in searched_questions))
+        self.assertEqual(len(contexts), 2)
+
     def test_generate_daily_feedback_orchestrates_analysis_interpretation_rag_and_feedback(
         self,
     ) -> None:
@@ -417,6 +463,8 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         interpretation_chain.invoke.return_value = interpretation_result
         feedback_chain = MagicMock()
         feedback_chain.invoke.return_value = feedback_result
+        memory_summary_chain = MagicMock()
+        memory_summary_chain.invoke.side_effect = RuntimeError("fallback summary")
         timing_records: list[DailyFeedbackTimingRecord] = []
 
         with TemporaryDirectory() as tmp_dir:
@@ -468,6 +516,11 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
                     "build_daily_feedback_chain",
                     return_value=feedback_chain,
                 ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.daily_feedback."
+                    "build_memory_summary_chain",
+                    return_value=memory_summary_chain,
+                ),
             ):
                 result = generate_daily_feedback(
                     member_id=1,
@@ -502,6 +555,10 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertEqual(result.retrieved_contexts, [advice_context])
         self.assertGreaterEqual(len(result.retrieval_queries), 1)
         retrieve_contexts.assert_called_once()
+        self.assertEqual(
+            retrieve_contexts.call_args.kwargs["document_kinds"],
+            (DocumentKind.WELFARE,),
+        )
         feedback_payload = feedback_chain.invoke.call_args.args[0]
         interpretation_payload = interpretation_chain.invoke.call_args.args[0]
         retrieval_query_text = "\n".join(result.retrieval_queries)

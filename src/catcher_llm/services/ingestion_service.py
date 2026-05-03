@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,11 +18,85 @@ from catcher_llm.retrievers.loaders import (
 )
 from catcher_llm.retrievers.vectorstore import build_local_vectorstore, ensure_vectorstore_dir
 
+logger = logging.getLogger(__name__)
+
+_FEEDBACK_VECTORSTORE_DOCUMENT_DIRS: tuple[Path, ...] = (
+    Path("pdf") / "welfare",
+    Path("markdown") / "users_report",
+    Path("pdf") / "catcher_consumption_benchmark",
+    Path("pdf") / "kca_report",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackVectorstoreEnsureResult:
+    """피드백 벡터스토어 준비 작업의 실행 결과를 표현한다."""
+
+    attempted: int
+    ready: int
+    skipped: tuple[str, ...]
+    failed: tuple[str, ...]
+
 
 def discover_source_files(settings: Settings | None = None) -> list[Path]:
     """설정된 원본 데이터 디렉터리에서 적재 가능한 파일을 찾는다."""
     config = settings or get_settings()
     return iter_source_files(config.raw_data_dir)
+
+
+def ensure_feedback_vectorstores(
+    *,
+    chunk_size: int = 800,
+    chunk_overlap: int = 120,
+    settings: Settings | None = None,
+) -> FeedbackVectorstoreEnsureResult:
+    """앱 시작 시 피드백 기능에 필요한 벡터스토어를 문서 종류별로 준비한다."""
+    config = settings or get_settings()
+    if config.embedding_model_error is not None:
+        skipped = tuple(str(path) for path in _FEEDBACK_VECTORSTORE_DOCUMENT_DIRS)
+        return FeedbackVectorstoreEnsureResult(
+            attempted=0,
+            ready=0,
+            skipped=skipped,
+            failed=(),
+        )
+
+    ensure_vectorstore_dir(config)
+
+    attempted = 0
+    ready = 0
+    skipped_dirs: list[str] = []
+    failed_dirs: list[str] = []
+    for relative_dir in _FEEDBACK_VECTORSTORE_DOCUMENT_DIRS:
+        raw_dir = config.raw_data_dir / relative_dir
+        if not iter_source_files(raw_dir):
+            skipped_dirs.append(str(relative_dir))
+            continue
+
+        attempted += 1
+        try:
+            vectorstore = build_local_vectorstore(
+                raw_dir,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                settings=config,
+            )
+        except Exception:
+            logger.exception("피드백 벡터스토어 준비 실패: %s", raw_dir)
+            failed_dirs.append(str(relative_dir))
+            continue
+
+        if vectorstore is None:
+            skipped_dirs.append(str(relative_dir))
+            continue
+        ready += 1
+
+    return FeedbackVectorstoreEnsureResult(
+        attempted=attempted,
+        ready=ready,
+        skipped=tuple(skipped_dirs),
+        failed=tuple(failed_dirs),
+    )
 
 
 def _build_manifest(

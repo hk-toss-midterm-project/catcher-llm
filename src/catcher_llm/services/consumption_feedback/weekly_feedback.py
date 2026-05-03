@@ -59,12 +59,14 @@ from catcher_llm.services.consumption_feedback.timing import (
 from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
+from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.user_data_service import ensure_user_database
 
 _WEEKLY_MEMORY_PERIOD_TYPE = "weekly"
 _DEFAULT_WEEKLY_MEMORY_SESSION_LIMIT = 8
 
 _DEFAULT_WEEKLY_RETRIEVAL_QUERY = "주간 소비 절약 실천 방법"
+_WEEKLY_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (DocumentKind.USER_REPORT,)
 
 
 def _parse_week_date(value: str | date) -> date:
@@ -912,6 +914,7 @@ def generate_weekly_feedback(
                 top_k=top_k,
                 raw_data_dir=raw_data_dir,
                 source_files=source_files,
+                document_kinds=_WEEKLY_FEEDBACK_DOCUMENT_KINDS,
                 settings=config,
             ),
         )

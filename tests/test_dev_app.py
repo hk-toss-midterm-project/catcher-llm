@@ -185,6 +185,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "17_daily_feedback_timing.py",
         "18_daily_interpretation_compare.py",
         "19_daily_feedback_unified.py",
+        "20_model_comparison.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -206,6 +207,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "일일 피드백 소요 시간",
         "일일 해석 방식 비교",
         "일일 통합 피드백",
+        "GPT 모델 성능 비교",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -227,9 +229,11 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "⏱️",
         "🧪",
         "📣",
+        "🔬",
     ]
     assert [spec.default for spec in specs] == [
         True,
+        False,
         False,
         False,
         False,
@@ -291,6 +295,41 @@ def test_dev_app_renders_default_page_without_exception() -> None:
     app.run(timeout=10)
 
     assert len(app.exception) == 0
+
+
+def test_dev_app_initializes_startup_resources() -> None:
+    """개발 앱도 실행 시작 시 사용자 DB와 피드백 벡터스토어를 준비하는지 검증한다."""
+    app_source = Path("dev_app.py").read_text(encoding="utf-8")
+
+    assert "from catcher_llm.config.settings import get_settings" in app_source
+    assert (
+        "from catcher_llm.services.ingestion_service import ensure_feedback_vectorstores"
+        in app_source
+    )
+    assert "from catcher_llm.services.user_data_service import ensure_user_database" in app_source
+    assert "@st.cache_resource" in app_source
+    assert "def init_startup_resources() -> None:" in app_source
+    assert "ensure_user_database(settings=get_settings())" in app_source
+    assert "ensure_feedback_vectorstores(settings=get_settings())" in app_source
+    assert app_source.index("init_startup_resources()") < app_source.index(
+        "navigation = st.navigation("
+    )
+
+
+def test_main_app_initializes_feedback_vectorstores_on_startup() -> None:
+    """메인 앱도 첫 실행 시 피드백 벡터스토어 준비 함수를 호출하는지 검증한다."""
+    app_source = Path("app.py").read_text(encoding="utf-8")
+
+    assert (
+        "from catcher_llm.services.ingestion_service import ensure_feedback_vectorstores"
+        in app_source
+    )
+    assert "def init_startup_resources() -> None:" in app_source
+    assert "ensure_user_database(settings=settings)" in app_source
+    assert "ensure_feedback_vectorstores(settings=settings)" in app_source
+    assert app_source.index("init_startup_resources()") < app_source.index(
+        'if "logged_in" not in st.session_state:'
+    )
 
 
 def test_daily_report_page_uses_global_calendar_default_date() -> None:

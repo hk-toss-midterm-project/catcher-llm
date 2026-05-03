@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from langchain_core.documents import Document
 
@@ -46,23 +46,57 @@ class RetrieverTests(unittest.TestCase):
             self.assertEqual(len(documents), 1)
             self.assertEqual(documents[0].page_content, "project guide")
 
-    def test_load_local_documents_uses_pdf_loader(self) -> None:
+    def test_load_local_documents_uses_opendataloader_pdf(self) -> None:
+        """PDF 원본을 opendataloader-pdf 마크다운 출력으로 페이지별 로드하는지 검증한다."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             pdf_path = root / "guide.pdf"
             pdf_path.write_bytes(b"%PDF-1.4")
 
-            with patch("catcher_llm.retrievers.loaders.PyPDFLoader") as loader_class:
-                loader_class.return_value.load.return_value = [
-                    Document(page_content="pdf page", metadata={"page": 0})
-                ]
+            def fake_convert(
+                input_path: str,
+                *,
+                output_dir: str | None = None,
+                format: str | None = None,
+                quiet: bool = False,
+                markdown_page_separator: str | None = None,
+                image_output: str | None = None,
+            ) -> None:
+                """opendataloader-pdf 변환 결과 파일을 테스트용으로 생성한다."""
+                self.assertEqual(input_path, str(pdf_path))
+                self.assertEqual(format, "markdown")
+                self.assertTrue(quiet)
+                self.assertEqual(image_output, "off")
+                self.assertIsNotNone(output_dir)
+                self.assertIsNotNone(markdown_page_separator)
+                first_separator = markdown_page_separator.replace("%page-number%", "1")
+                second_separator = markdown_page_separator.replace("%page-number%", "2")
+                Path(output_dir).joinpath("guide.md").write_text(
+                    f"{first_separator}첫 페이지 내용{second_separator}둘째 페이지 내용",
+                    encoding="utf-8",
+                )
 
+            with patch("catcher_llm.retrievers.loaders.opendataloader_pdf.convert") as convert:
+                convert.side_effect = fake_convert
                 documents = load_local_documents(root)
 
-            self.assertEqual(len(documents), 1)
-            self.assertEqual(documents[0].page_content, "pdf page")
+            self.assertEqual(len(documents), 2)
+            self.assertEqual(documents[0].page_content, "첫 페이지 내용")
+            self.assertEqual(documents[0].metadata["page"], 0)
+            self.assertEqual(documents[0].metadata["page_number"], 1)
             self.assertEqual(documents[0].metadata["source"], str(pdf_path))
-            loader_class.assert_called_once_with(str(pdf_path))
+            self.assertEqual(documents[1].page_content, "둘째 페이지 내용")
+            self.assertEqual(documents[1].metadata["page"], 1)
+            self.assertEqual(documents[1].metadata["page_number"], 2)
+            self.assertEqual(documents[1].metadata["source"], str(pdf_path))
+            convert.assert_called_once_with(
+                str(pdf_path),
+                output_dir=ANY,
+                format="markdown",
+                quiet=True,
+                markdown_page_separator=ANY,
+                image_output="off",
+            )
 
     def test_load_split_local_documents_adds_chunk_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

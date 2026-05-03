@@ -5,14 +5,18 @@ import logging
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from langchain_core.documents import Document
 
 from catcher_llm.config.settings import Settings
 from catcher_llm.schemas.chat import ChatMessage
 from catcher_llm.services.chat_service import generate_reply
-from catcher_llm.services.ingestion_service import ingest_local_documents, ingest_selected_documents
+from catcher_llm.services.ingestion_service import (
+    ensure_feedback_vectorstores,
+    ingest_local_documents,
+    ingest_selected_documents,
+)
 from catcher_llm.services.rag.config import DocumentKind, get_rag_pipeline_config
 from catcher_llm.services.rag.welfare import generate_welfare_rag_reply
 from catcher_llm.services.rag_service import generate_rag_reply, rag_target
@@ -57,6 +61,70 @@ class ServiceTests(unittest.TestCase):
             raw_data_dir=raw_data_dir,
             settings=settings,
         )
+
+    def test_ensure_feedback_vectorstores_builds_feedback_document_dirs(self) -> None:
+        """앱 시작용 벡터스토어 보장이 피드백에 필요한 문서 디렉터리만 생성하는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            raw_dir = root / "raw"
+            vectorstore_dir = root / "vectordb"
+            for relative_dir in [
+                Path("pdf") / "welfare",
+                Path("markdown") / "users_report",
+                Path("pdf") / "catcher_consumption_benchmark",
+                Path("pdf") / "kca_report",
+                Path("pdf") / "saving_tips",
+            ]:
+                source_dir = raw_dir / relative_dir
+                source_dir.mkdir(parents=True)
+                (source_dir / "source.txt").write_text("문서 내용", encoding="utf-8")
+
+            settings = Settings(
+                raw_data_dir=raw_dir,
+                vectorstore_dir=vectorstore_dir,
+                openai_api_key="test-key",
+            )
+
+            with patch(
+                "catcher_llm.services.ingestion_service.build_local_vectorstore",
+                return_value=object(),
+            ) as build_store:
+                result = ensure_feedback_vectorstores(settings=settings)
+
+            self.assertEqual(result.attempted, 4)
+            self.assertEqual(result.ready, 4)
+            self.assertEqual(result.skipped, ())
+            self.assertEqual(result.failed, ())
+            build_store.assert_has_calls(
+                [
+                    call(
+                        raw_dir / "pdf" / "welfare",
+                        chunk_size=800,
+                        chunk_overlap=120,
+                        settings=settings,
+                    ),
+                    call(
+                        raw_dir / "markdown" / "users_report",
+                        chunk_size=800,
+                        chunk_overlap=120,
+                        settings=settings,
+                    ),
+                    call(
+                        raw_dir / "pdf" / "catcher_consumption_benchmark",
+                        chunk_size=800,
+                        chunk_overlap=120,
+                        settings=settings,
+                    ),
+                    call(
+                        raw_dir / "pdf" / "kca_report",
+                        chunk_size=800,
+                        chunk_overlap=120,
+                        settings=settings,
+                    ),
+                ]
+            )
+            built_dirs = {args.args[0] for args in build_store.call_args_list}
+            self.assertNotIn(raw_dir / "pdf" / "saving_tips", built_dirs)
 
     def test_invoke_retriever_question_handles_missing_documents(self) -> None:
         with patch("catcher_llm.services.test_service.get_local_retriever", return_value=None):

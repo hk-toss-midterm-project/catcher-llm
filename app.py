@@ -5,6 +5,7 @@ from urllib.parse import quote, unquote
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.services.ingestion_service import ensure_feedback_vectorstores
 from catcher_llm.services.user_data_service import authenticate_user, ensure_user_database
 from catcher_llm.utils import format_income_to_10k_won
 
@@ -34,9 +35,10 @@ st.markdown(
 
 
 @st.cache_resource
-def init_user_database() -> None:
-    """앱 시작 시 사용자 SQLite 데이터베이스를 한 번 초기화한다."""
+def init_startup_resources() -> None:
+    """앱 시작 시 사용자 DB와 피드백 벡터스토어를 한 번 초기화한다."""
     ensure_user_database(settings=settings)
+    ensure_feedback_vectorstores(settings=settings)
 
 
 def _render_cookie_script(cookie_assignments: list[str]) -> None:
@@ -243,7 +245,7 @@ def profile_page() -> None:
     )
 
 
-init_user_database()
+init_startup_resources()
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False

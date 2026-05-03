@@ -31,6 +31,7 @@ from catcher_llm.services.consumption_feedback.weekly_feedback import (
     make_weekly_spending_analysis_input,
     parse_weekly_spending_data,
 )
+from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.user_data_service import ensure_user_database
 
 
@@ -404,7 +405,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                     "catcher_llm.services.consumption_feedback.weekly_feedback."
                     "retrieve_feedback_contexts",
                     return_value=[advice_context],
-                ),
+                ) as retrieve_contexts,
                 patch(
                     "catcher_llm.services.consumption_feedback.weekly_feedback."
                     "build_weekly_feedback_chain",
@@ -446,6 +447,11 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertEqual(result.feedback.next_week_mission, "다음 주 배달 주문은 1회만 허용합니다.")
         self.assertEqual(result.retrieved_contexts, [advice_context])
         self.assertGreaterEqual(len(result.retrieval_queries), 1)
+        retrieve_contexts.assert_called_once()
+        self.assertEqual(
+            retrieve_contexts.call_args.kwargs["document_kinds"],
+            (DocumentKind.USER_REPORT,),
+        )
         interpretation_payload = interpretation_chain.invoke.call_args.args[0]
         feedback_payload = feedback_chain.invoke.call_args.args[0]
         retrieval_query_text = "\n".join(result.retrieval_queries)

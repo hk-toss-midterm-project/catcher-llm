@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
+import opendataloader_pdf
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
@@ -15,6 +18,8 @@ _MARKDOWN_HEADERS = [
     ("###", "header3"),
     ("####", "header4"),
 ]
+_PDF_MARKDOWN_PAGE_SEPARATOR = "\n\n<!-- catcher-page:%page-number% -->\n\n"
+_PDF_MARKDOWN_PAGE_SEPARATOR_PATTERN = re.compile(r"<!-- catcher-page:(\d+) -->")
 
 
 def load_markdown_file(path: Path) -> list[Document]:
@@ -34,6 +39,102 @@ def load_markdown_file(path: Path) -> list[Document]:
         doc.metadata.setdefault("source", source)
         doc.metadata["source"] = source
     return docs
+
+
+def _find_converted_markdown_file(output_dir: Path, source_path: Path) -> Path | None:
+    """opendataloader-pdf 출력 디렉터리에서 변환된 마크다운 파일을 찾는다."""
+    markdown_files = sorted(
+        path
+        for path in output_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in {".md", ".markdown"}
+    )
+    if not markdown_files:
+        return None
+
+    preferred_names = {
+        f"{source_path.stem}.md",
+        f"{source_path.stem}.markdown",
+    }
+    for path in markdown_files:
+        if path.name in preferred_names:
+            return path
+    return markdown_files[0]
+
+
+def _build_pdf_document(source_path: Path, page_content: str, page_number: int) -> Document:
+    """PDF 한 페이지의 텍스트를 검색용 Document로 변환한다."""
+    return Document(
+        page_content=page_content.strip(),
+        metadata={
+            "source": str(source_path),
+            "page": page_number - 1,
+            "page_number": page_number,
+            "loader": "opendataloader_pdf",
+        },
+    )
+
+
+def _documents_from_pdf_markdown(markdown_text: str, source_path: Path) -> list[Document]:
+    """opendataloader-pdf 마크다운 결과를 페이지 구분자 기준으로 Document 목록화한다."""
+    parts = _PDF_MARKDOWN_PAGE_SEPARATOR_PATTERN.split(markdown_text)
+    documents: list[Document] = []
+
+    first_page_content = parts[0].strip()
+    if first_page_content:
+        documents.append(_build_pdf_document(source_path, first_page_content, page_number=1))
+
+    part_index = 1
+    while part_index < len(parts) - 1:
+        page_number = int(parts[part_index])
+        page_content = parts[part_index + 1].strip()
+        if page_content:
+            documents.append(
+                _build_pdf_document(source_path, page_content, page_number=page_number)
+            )
+        part_index += 2
+
+    if not documents and markdown_text.strip():
+        documents.append(_build_pdf_document(source_path, markdown_text.strip(), page_number=1))
+    return documents
+
+
+def _load_pdf_file_with_pypdf(path: Path) -> list[Document]:
+    """opendataloader-pdf 변환 실패 시 기존 PyPDF 로더로 PDF를 읽는다."""
+    documents = PyPDFLoader(str(path)).load()
+    for document in documents:
+        document.metadata["source"] = str(path)
+        document.metadata.setdefault("loader", "pypdf")
+        page = document.metadata.get("page")
+        if isinstance(page, int):
+            document.metadata.setdefault("page_number", page + 1)
+    return documents
+
+
+def load_pdf_file(path: Path) -> list[Document]:
+    """PDF 파일을 opendataloader-pdf로 마크다운 변환한 뒤 페이지별 Document로 읽는다."""
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir)
+            opendataloader_pdf.convert(
+                str(path),
+                output_dir=str(output_dir),
+                format="markdown",
+                quiet=True,
+                markdown_page_separator=_PDF_MARKDOWN_PAGE_SEPARATOR,
+                image_output="off",
+            )
+            markdown_path = _find_converted_markdown_file(output_dir, path)
+            if markdown_path is None:
+                return _load_pdf_file_with_pypdf(path)
+            documents = _documents_from_pdf_markdown(
+                markdown_path.read_text(encoding="utf-8", errors="ignore"),
+                path,
+            )
+            if documents:
+                return documents
+    except Exception:
+        return _load_pdf_file_with_pypdf(path)
+    return _load_pdf_file_with_pypdf(path)
 
 
 def iter_source_files(raw_dir: Path) -> list[Path]:
@@ -61,10 +162,7 @@ def load_source_documents(path: Path) -> list[Document]:
             )
         ]
     if suffix == ".pdf":
-        documents = PyPDFLoader(str(path)).load()
-        for document in documents:
-            document.metadata["source"] = str(path)
-        return documents
+        return load_pdf_file(path)
     return []
 
 

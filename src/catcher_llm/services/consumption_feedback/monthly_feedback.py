@@ -59,12 +59,18 @@ from catcher_llm.services.consumption_feedback.timing import (
     FeedbackTimingCallback,
     run_timed_feedback_step,
 )
+from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.user_data_service import ensure_user_database
 
 _MONTHLY_MEMORY_PERIOD_TYPE = "monthly"
 _DEFAULT_MONTHLY_MEMORY_SESSION_LIMIT = 6
 
 _DEFAULT_MONTHLY_RETRIEVAL_QUERY = "월간 소비 절약 실천 방법"
+_MONTHLY_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
+    DocumentKind.USER_REPORT,
+    DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
+    DocumentKind.KCA_REPORT,
+)
 
 
 def _to_json_value(value: object) -> JsonValue:
@@ -953,6 +959,7 @@ def generate_monthly_feedback(
                 top_k=top_k,
                 raw_data_dir=raw_data_dir,
                 source_files=source_files,
+                document_kinds=_MONTHLY_FEEDBACK_DOCUMENT_KINDS,
                 settings=config,
             ),
         )
