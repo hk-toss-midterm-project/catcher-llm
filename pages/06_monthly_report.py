@@ -578,6 +578,18 @@ def inject_css():
         }
 
         div[data-testid="stTextInput"] input { border-radius:14px; }
+
+        .st-key-monthly_like_btn_active button {
+            background-color:#22c55e !important;
+            color:white !important;
+            border:1px solid #22c55e !important;
+        }
+
+        .st-key-monthly_dislike_btn_active button {
+            background-color:#ef4444 !important;
+            color:white !important;
+            border:1px solid #ef4444 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1021,13 +1033,13 @@ def render_vote_buttons(member_id: str, month: str):
 
     selected = st.session_state.monthly_report_vote
 
-    like_type = "primary" if selected == "like" else "secondary"
-    dislike_type = "primary" if selected == "dislike" else "secondary"
+    like_key = "monthly_like_btn_active" if selected == "like" else "monthly_like_btn"
+    dislike_key = "monthly_dislike_btn_active" if selected == "dislike" else "monthly_dislike_btn"
 
     v1, v2 = st.columns(2)
 
     with v1:
-        if st.button("👍 좋아요", width="stretch", type=like_type):
+        if st.button("👍 좋아요", width="stretch", key=like_key):
             save_session_feedback_reaction(
                 member_id=int(member_id),
                 analysis_date=month,
@@ -1045,7 +1057,7 @@ def render_vote_buttons(member_id: str, month: str):
             st.rerun()
 
     with v2:
-        if st.button("👎 아쉬워요", width="stretch", type=dislike_type):
+        if st.button("👎 아쉬워요", width="stretch", key=dislike_key):
             save_session_feedback_reaction(
                 member_id=int(member_id),
                 analysis_date=month,
@@ -1342,6 +1354,22 @@ def render_monthly_report(result, member_id: str, month: str):
         )
         render_vote_buttons(member_id, month)
 
+    if st.session_state.monthly_report_vote == "like":
+        st.success("좋아요 감사합니다! 다음 리포트도 이 방향으로 개선해볼게요 😊")
+
+    elif st.session_state.monthly_report_vote == "dislike":
+        st.warning("어떤 점이 아쉬웠나요?")
+
+        st.session_state.monthly_feedback_reason = st.text_area(
+            "아쉬웠던 점",
+            value=st.session_state.monthly_feedback_reason,
+            placeholder="예: 피드백이 너무 뻔해요 / 그래프가 이해하기 어려워요 / 행동 규칙이 더 구체적이면 좋겠어요",
+            key="monthly_feedback_reason_input",
+        )
+
+        if st.button("의견 제출", width="stretch", key="monthly_reason_submit_btn"):
+            st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
+
     with st.expander("상세 분석 & 데이터"):
         st.subheader("월간 분석 JSON")
         st.json(monthly_data)
@@ -1408,6 +1436,9 @@ if "monthly_report_params" not in st.session_state:
         "month": DEFAULT_CALENDAR_MONTH,
     }
 
+if "monthly_feedback_reason" not in st.session_state:
+    st.session_state.monthly_feedback_reason = ""
+
 dev_report_member_id_input_enabled = (
     st.session_state.get("dev_report_member_id_input_enabled") is True
 )
@@ -1464,6 +1495,7 @@ if (
 if run:
     st.session_state.monthly_report_vote = None
     st.session_state.monthly_report_vote_log = {}
+    st.session_state.monthly_feedback_reason = ""
 
     st.session_state.monthly_report_params = selected_params
     st.session_state.monthly_report_result = None
@@ -1488,6 +1520,7 @@ if st.session_state.monthly_report_result is None:
             cached_session,
         )
         st.session_state.monthly_report_vote = cached_session.feedback_reaction
+        st.session_state.monthly_feedback_reason = cached_session.feedback_reaction_reason or ""
         st.session_state.monthly_report_params = params
         st.caption("저장된 월간 세션을 불러왔습니다.")
     elif run or force_regen:

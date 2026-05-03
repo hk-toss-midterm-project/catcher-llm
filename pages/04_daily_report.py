@@ -404,6 +404,24 @@ def inject_css():
             100% { opacity: 1; transform: translateY(0px) scale(1); }
         }
 
+        div[data-testid="stButton"] button {
+            border-radius:18px;
+            height:48px;
+            font-weight:900;
+        }
+
+        .st-key-daily_like_btn_active button {
+            background-color:#22c55e !important;
+            color:white !important;
+            border:1px solid #22c55e !important;
+        }
+
+        .st-key-daily_dislike_btn_active button {
+            background-color:#ef4444 !important;
+            color:white !important;
+            border:1px solid #ef4444 !important;
+        }
+
         div[data-testid="stExpander"] {
             border-radius: 14px;
             border: 1px solid #e5e7eb;
@@ -707,6 +725,9 @@ def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
     if "daily_report_feedback" not in st.session_state:
         st.session_state.daily_report_feedback = None
 
+    if "daily_feedback_reason" not in st.session_state:
+        st.session_state.daily_feedback_reason = ""
+
     if "daily_report_rewarded" not in st.session_state:
         st.session_state.daily_report_rewarded = False
 
@@ -733,6 +754,8 @@ def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
 
     like_selected = st.session_state.daily_report_feedback == "like"
     dislike_selected = st.session_state.daily_report_feedback == "dislike"
+    like_key = "daily_like_btn_active" if like_selected else "daily_like_btn"
+    dislike_key = "daily_dislike_btn_active" if dislike_selected else "daily_dislike_btn"
 
     def reward_once():
         if not st.session_state.daily_report_rewarded:
@@ -745,9 +768,8 @@ def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
     with c1:
         if st.button(
             "👍 좋아요",
-            type="primary" if like_selected else "secondary",
             width="stretch",
-            key="daily_report_like",
+            key=like_key,
         ):
             save_session_feedback_reaction(
                 member_id=member_id,
@@ -763,10 +785,9 @@ def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
 
     with c2:
         if st.button(
-            "👎 싫어요",
-            type="primary" if dislike_selected else "secondary",
+            "👎 아쉬워요",
             width="stretch",
-            key="daily_report_dislike",
+            key=dislike_key,
         ):
             save_session_feedback_reaction(
                 member_id=member_id,
@@ -783,9 +804,19 @@ def render_report_feedback(*, member_id: int, analysis_date: date) -> None:
     render_point_animation()
 
     if st.session_state.daily_report_feedback == "like":
-        st.success("좋아요가 저장되었습니다.")
+        st.success("좋아요 감사합니다! 다음 리포트도 이 방향으로 개선해볼게요 😊")
     elif st.session_state.daily_report_feedback == "dislike":
-        st.warning("싫어요가 저장되었습니다.")
+        st.warning("어떤 점이 아쉬웠나요?")
+
+        st.session_state.daily_feedback_reason = st.text_area(
+            "아쉬웠던 점",
+            value=st.session_state.daily_feedback_reason,
+            placeholder="예: 피드백이 너무 뻔해요 / 그래프가 이해하기 어려워요 / 행동 규칙이 더 구체적이면 좋겠어요",
+            key="daily_feedback_reason_input",
+        )
+
+        if st.button("의견 제출", width="stretch", key="daily_reason_submit_btn"):
+            st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
 
 
 inject_css()
@@ -863,6 +894,7 @@ if cached_session is not None and has_cached_session and not force_regen:
     st.session_state.daily_report_result = build_daily_report_result_from_session(cached_session)
     st.session_state.daily_report_params = selected_report_params
     st.session_state.daily_report_feedback = cached_session.feedback_reaction
+    st.session_state.daily_feedback_reason = cached_session.feedback_reaction_reason or ""
     st.caption("저장된 일일 세션을 불러왔습니다.")
 
     if st.button("일일 리포트 재생성", width="stretch"):
@@ -896,6 +928,7 @@ elif run or force_regen:
     st.session_state.daily_report_result = result
     st.session_state.daily_report_params = selected_report_params
     st.session_state.daily_report_feedback = None
+    st.session_state.daily_feedback_reason = ""
     st.session_state.daily_report_rewarded = False
     st.session_state.daily_report_point_popup = False
 
