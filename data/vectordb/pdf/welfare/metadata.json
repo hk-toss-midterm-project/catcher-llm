@@ -1,7 +1,7 @@
 {
   "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/pdf/welfare",
-  "embedding_provider": "openai",
-  "embedding_model": "text-embedding-3-small",
+  "embedding_provider": "upstage",
+  "embedding_model": "solar-embedding-1-large",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
