@@ -1,4 +1,6 @@
 import html
+import json
+from urllib.parse import quote, unquote
 
 import streamlit as st
 
@@ -7,6 +9,10 @@ from catcher_llm.services.user_data_service import authenticate_user, ensure_use
 from catcher_llm.utils import format_income_to_10k_won
 
 settings = get_settings()
+
+LOGIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+LOGIN_USER_ID_COOKIE = "catcher_login_user_id"
+LOGIN_USER_NAME_COOKIE = "catcher_login_user_name"
 
 st.set_page_config(
     page_title="Catcher",
@@ -33,12 +39,96 @@ def init_user_database() -> None:
     ensure_user_database(settings=settings)
 
 
-def logout() -> None:
-    """현재 로그인 세션 정보를 지우고 로그인 화면으로 되돌린다."""
+def _render_cookie_script(cookie_assignments: list[str]) -> None:
+    """브라우저 쿠키 변경 스크립트를 숨김 컴포넌트로 실행한다."""
+    script_lines = [
+        f"document.cookie = {json.dumps(assignment)};" for assignment in cookie_assignments
+    ]
+    st.iframe(f"<script>{''.join(script_lines)}</script>", height=1)
+
+
+def persist_login_cookie(user_id: int, user_name: str) -> None:
+    """로그인 성공 후 새로고침 복원을 위한 사용자 식별 쿠키를 저장한다."""
+    cookie_options = f"path=/; max-age={LOGIN_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax"
+    _render_cookie_script(
+        [
+            f"{LOGIN_USER_ID_COOKIE}={user_id}; {cookie_options}",
+            f"{LOGIN_USER_NAME_COOKIE}={quote(user_name, safe='')}; {cookie_options}",
+        ]
+    )
+
+
+def clear_login_cookie() -> None:
+    """로그아웃 또는 쿠키 인증 실패 시 로그인 쿠키를 즉시 만료한다."""
+    expired_cookie_options = "path=/; max-age=0; SameSite=Lax"
+    _render_cookie_script(
+        [
+            f"{LOGIN_USER_ID_COOKIE}=; {expired_cookie_options}",
+            f"{LOGIN_USER_NAME_COOKIE}=; {expired_cookie_options}",
+        ]
+    )
+
+
+def _read_context_cookie(cookie_name: str) -> str | None:
+    """Streamlit 요청 컨텍스트에서 지정한 쿠키 값을 문자열로 읽는다."""
+    try:
+        cookie_value = st.context.cookies.get(cookie_name)
+    except (AttributeError, RuntimeError):
+        return None
+
+    if cookie_value is None:
+        return None
+
+    normalized_value = str(cookie_value).strip()
+    if normalized_value == "":
+        return None
+
+    return normalized_value
+
+
+def restore_login_from_cookie() -> None:
+    """새 Streamlit 세션이 시작될 때 쿠키 기반 로그인 상태를 복원한다."""
+    if st.session_state.logged_in:
+        return
+
+    raw_user_id = _read_context_cookie(LOGIN_USER_ID_COOKIE)
+    raw_user_name = _read_context_cookie(LOGIN_USER_NAME_COOKIE)
+    if raw_user_id is None or raw_user_name is None:
+        return
+
+    try:
+        user_id = int(raw_user_id)
+    except ValueError:
+        clear_login_cookie()
+        return
+
+    user_name = unquote(raw_user_name)
+    profile = authenticate_user(user_id, user_name, settings=settings)
+    if profile is None:
+        clear_login_cookie()
+        return
+
+    st.session_state.logged_in = True
+    st.session_state.user_id = user_id
+    st.session_state.user_profile = profile
+
+
+def apply_pending_logout() -> bool:
+    """로그아웃 버튼 요청을 쿠키 자동 복원보다 먼저 반영한다."""
+    if st.session_state.get("logout_requested") is not True:
+        return False
+
+    clear_login_cookie()
     st.session_state.logged_in = False
     st.session_state.user_id = None
     st.session_state.user_profile = None
-    st.rerun()
+    st.session_state.logout_requested = False
+    return True
+
+
+def logout() -> None:
+    """로그아웃 버튼 클릭을 다음 앱 실행 시작부에서 처리하도록 표시한다."""
+    st.session_state.logout_requested = True
 
 
 def render_profile_text_panel(
@@ -164,6 +254,13 @@ if "user_id" not in st.session_state:
 if "user_profile" not in st.session_state:
     st.session_state.user_profile = None
 
+if "logout_requested" not in st.session_state:
+    st.session_state.logout_requested = False
+
+logout_was_applied = apply_pending_logout()
+if not logout_was_applied:
+    restore_login_from_cookie()
+
 login_pg = st.Page(login_page, title="로그인", url_path="login", default=True)
 signup_pg = st.Page("pages/00_user_signup.py", title="회원 가입", icon="🧾", url_path="signup")
 profile_pg = st.Page(profile_page, title="프로필", icon="🙀", url_path="profile", default=True)
@@ -241,6 +338,7 @@ with st.sidebar:
                     st.session_state.logged_in = True
                     st.session_state.user_id = user_id
                     st.session_state.user_profile = profile
+                    persist_login_cookie(user_id, input_user_name.strip())
                     st.rerun()
 
         st.markdown("---")
@@ -248,6 +346,9 @@ with st.sidebar:
 
     else:
         if profile := st.session_state.user_profile:
+            if st.session_state.user_id is not None:
+                persist_login_cookie(int(st.session_state.user_id), str(profile["name"]))
+
             st.markdown(
                 f"""
 <div style="
@@ -272,7 +373,6 @@ with st.sidebar:
 
         st.markdown("---")
 
-        if st.button("로그아웃", width="stretch"):
-            logout()
+        st.button("로그아웃", width="stretch", on_click=logout)
 
 pg.run()
