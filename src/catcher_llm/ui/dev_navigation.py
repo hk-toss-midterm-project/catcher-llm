@@ -23,6 +23,7 @@ _DEV_PAGE_METADATA: dict[str, tuple[str, str]] = {
     "17_daily_feedback_timing": ("일일 피드백 소요 시간", "⏱️"),
     "18_daily_interpretation_compare": ("일일 해석 방식 비교", "🧪"),
     "19_daily_feedback_unified": ("일일 통합 피드백", "📣"),
+    "20_model_comparison": ("모델 성능/토큰 비교", "🤖"),
 }
 
 
