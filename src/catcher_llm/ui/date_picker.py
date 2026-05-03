@@ -98,26 +98,62 @@ div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPopover"]) div[data-
 _DATE_PICKER_POPOVER_CSS = """
 <style>
 div[data-baseweb="popover"] {
+    --catcher-date-picker-content-width: 360px;
+    --catcher-date-picker-popover-width: 350px;
+    width: 350px !important;
+    min-width: 350px !important;
+    max-width: 350px !important;
     min-height: 400px !important;
+    box-sizing: border-box !important;
     overflow: visible !important;
 }
 
 div[data-baseweb="popover"] > div {
+    width: 350px !important;
+    min-width: 350px !important;
+    max-width: 350px !important;
     min-height: 400px !important;
+    box-sizing: border-box !important;
     overflow: visible !important;
+}
+
+div[data-testid="stPopoverBody"] {
+    width: 350px !important;
+    min-width: 350px !important;
+    max-width: 350px !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+}
+
+div[data-testid="stPopoverBody"] > div,
+div[data-baseweb="popover"] > div:has(> div[data-testid="stVerticalBlock"]),
+div[data-baseweb="popover"] div:has(> div[data-testid="stVerticalBlock"]),
+div[data-testid="stPopoverBody"] div[data-testid="stVerticalBlock"],
+div[data-testid="stPopoverBody"] div[data-testid="stElementContainer"],
+div[data-testid="stPopoverBody"] div[data-testid="stElementContainer"] > div {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
 }
 
 div[data-baseweb="popover"] div[style*="height: 50px"],
 div[data-testid="stPopoverBody"] div[style*="height: 50px"] {
+    max-width: 100% !important;
     min-height: 400px !important;
     height: 400px !important;
-    overflow: visible !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
 }
 
 div[data-testid="stPopoverBody"] div[data-testid="stCustomComponentV1"],
 div[data-testid="stPopoverBody"] div[data-testid="stCustomComponentV1"] iframe {
+    max-width: 100% !important;
     min-height: 400px !important;
     height: 400px !important;
+    box-sizing: border-box !important;
 }
 </style>
 """

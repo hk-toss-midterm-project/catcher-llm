@@ -258,6 +258,7 @@ def _render_page_styles() -> None:
     border: 1px solid #e7eef8;
     border-radius: 22px;
     padding: 16px 18px;
+    margin-bottom: 10px;
 }
 
 .leaderboard-item:first-child {
@@ -323,6 +324,7 @@ def _render_page_styles() -> None:
     border-radius: 28px;
     padding: 24px;
     box-shadow: var(--shadow);
+    margin-bottom: 18px;
 }
 
 .feedback-header {
@@ -403,6 +405,23 @@ div[data-baseweb="input"],
 div[data-baseweb="textarea"],
 div[data-baseweb="select"] {
     border-radius: 16px;
+}
+
+button[aria-label="Help for 초대할 사용자 ID"] {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: 999px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+button[aria-label="Help for 초대할 사용자 ID"] svg {
+    width: 15px;
+    height: 15px;
 }
 
 div.stButton > button,
@@ -691,7 +710,7 @@ with dashboard_col:
         """
 <div class="toss-card">
     <div class="card-title">활동할 그룹 선택</div>
-    <p class="card-desc">선택한 그룹 기준으로 리더보드와 피드백 실천 현황이 바뀝니다.</p>
+    <p class="card-desc">선택한 그룹 기준으로 리더보드와 피드백 실천 현황이 바뀝니다.<br>&nbsp;</p>
 </div>
         """,
         unsafe_allow_html=True,

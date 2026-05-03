@@ -420,6 +420,24 @@ def test_date_picker_helper_uses_streamlit_date_picker_popover() -> None:
     assert "_ensure_date_picker_bundle_height" in helper_source
     assert "min-height: 400px" in helper_source
     assert "height: 400px" in helper_source
+    assert "--catcher-date-picker-content-width: 360px" in helper_source
+    assert "--catcher-date-picker-popover-width: 350px" in helper_source
+    assert "width: 350px" in helper_source
+    assert "min-width: 350px" in helper_source
+    assert "max-width: 350px" in helper_source
+    assert "padding: 16px" in helper_source
+    assert "box-sizing: border-box" in helper_source
+    assert 'div[data-testid="stPopoverBody"] > div' in helper_source
+    assert "width: 100%" in helper_source
+    assert "min-width: 0" in helper_source
+    assert (
+        'div[data-baseweb="popover"] > div:has(> div[data-testid="stVerticalBlock"])'
+        in helper_source
+    )
+    assert 'div[data-testid="stPopoverBody"] div[data-testid="stVerticalBlock"]' in helper_source
+    assert 'div[data-testid="stPopoverBody"] div[data-testid="stElementContainer"]' in helper_source
+    assert "max-width: 100%" in helper_source
+    assert "overflow: hidden" in helper_source
     assert "PickerType.week" in helper_source
     assert "PickerType.month" in helper_source
     assert "streamlit_calendar" not in helper_source
@@ -1206,8 +1224,8 @@ def test_streamlit_pages_do_not_use_deprecated_container_width_argument() -> Non
     assert offenders == []
 
 
-def test_main_profile_page_renders_long_persona_as_separate_panel() -> None:
-    """메인 사용자 프로필 페이지가 카드 등급을 숨기고 긴 페르소나를 별도 패널로 표시하는지 검증한다."""
+def test_main_profile_page_renders_long_persona_as_collapsible_panel() -> None:
+    """메인 사용자 프로필 페이지가 긴 페르소나를 접이식 패널로 표시하는지 검증한다."""
     app_source = Path("app.py").read_text(encoding="utf-8")
 
     assert 'st.metric("최상위 카드 등급"' not in app_source
@@ -1215,6 +1233,8 @@ def test_main_profile_page_renders_long_persona_as_separate_panel() -> None:
     assert 'persona_text = profile.get("persona")' in app_source
     assert "나의 페르소나" in app_source
     assert "아직 등록된 페르소나가 없습니다." in app_source
+    assert "with st.expander(title, expanded=expanded):" in app_source
+    assert "collapsible=True" in app_source
 
 
 def test_signup_page_uses_korean_labels_and_grouped_layout() -> None:

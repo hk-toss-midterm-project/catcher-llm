@@ -14,6 +14,23 @@ def format_chat_history(history: Sequence[ChatMessage]) -> str:
     return "\n".join(f"{message.role.title()}: {message.content}" for message in history)
 
 
+def format_income_to_10k_won(income: object) -> str:
+    """원 단위 연소득 값을 만원 단위 표시 문자열로 변환한다."""
+    if income is None:
+        return "-"
+
+    income_text = str(income).strip()
+    if income_text == "":
+        return "-"
+
+    normalized_income = income_text.replace(",", "")
+    if not normalized_income.isdigit():
+        return income_text
+
+    income_won = int(normalized_income)
+    return f"{income_won // 10_000} 만원"
+
+
 def extract_page_number(metadata: Mapping[str, Any]) -> int | None:
     """문서 메타데이터에서 사용자 표시용 1-based 페이지 번호를 추출한다."""
     page_number = metadata.get("page_number")

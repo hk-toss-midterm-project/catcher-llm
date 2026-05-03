@@ -4,10 +4,11 @@ from pathlib import Path
 
 
 def test_app_profile_page_renders_personal_score_metric() -> None:
-    """메인 프로필 페이지가 personal_score 메트릭을 노출하는지 검증한다."""
+    """메인 프로필 페이지가 개인 점수 메트릭을 한국어 라벨로 노출하는지 검증한다."""
     app_source = Path("app.py").read_text(encoding="utf-8")
 
-    assert 'st.metric("personal_score", profile.get("personal_score") or 0)' in app_source
+    assert 'st.metric("개인 점수", profile.get("personal_score") or 0)' in app_source
+    assert 'st.metric("personal_score"' not in app_source
     assert "refreshed_profile = authenticate_user(" in app_source
 
 

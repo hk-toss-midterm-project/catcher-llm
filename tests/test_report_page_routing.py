@@ -17,15 +17,66 @@ def test_report_page_routes_daily_weekly_monthly_buttons_to_wrapper_pages() -> N
     assert "월간 리포트" in page_source
 
 
-def test_report_wrapper_pages_delegate_to_matching_dev_pages() -> None:
-    """래퍼 리포트 페이지가 로그인 확인 후 대응하는 dev_pages 스크립트를 실행하는지 검증한다."""
-    daily_wrapper = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
-    weekly_wrapper = Path("pages/05_weekly_report.py").read_text(encoding="utf-8")
-    monthly_wrapper = Path("pages/06_monthly_report.py").read_text(encoding="utf-8")
+def test_report_detail_pages_are_implemented_in_pages_directory() -> None:
+    """일일·주간·월간 상세 리포트가 dev 페이지 래퍼 없이 pages에서 직접 구현되는지 검증한다."""
+    daily_page = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
+    weekly_page = Path("pages/05_weekly_report.py").read_text(encoding="utf-8")
+    monthly_page = Path("pages/06_monthly_report.py").read_text(encoding="utf-8")
 
-    assert 'run_logged_in_report_page("dev_pages/13_daily_report_rim.py")' in daily_wrapper
-    assert 'run_logged_in_report_page("dev_pages/14_weekly_report_rim.py")' in weekly_wrapper
-    assert 'run_logged_in_report_page("dev_pages/15_monthly_report_rim.py")' in monthly_wrapper
+    assert "run_logged_in_report_page" not in daily_page
+    assert "run_logged_in_report_page" not in weekly_page
+    assert "run_logged_in_report_page" not in monthly_page
+    assert "select_daily_date" in daily_page
+    assert "select_week_range" in weekly_page
+    assert "select_month" in monthly_page
+
+
+def test_report_pages_use_consistent_top_date_picker_layout() -> None:
+    """일일·주간·월간 리포트 상단에서 같은 제목·날짜 선택 레이아웃을 쓰는지 검증한다."""
+    daily_page = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
+    weekly_page = Path("pages/05_weekly_report.py").read_text(encoding="utf-8")
+    monthly_page = Path("pages/06_monthly_report.py").read_text(encoding="utf-8")
+
+    assert "top1, top2 = st.columns([1.08, 1.12])" in daily_page
+    assert "f2, f3 = st.columns([1.27, 1.08])" in daily_page
+    assert "비교 기준일" not in daily_page
+    assert "top1, top2 = st.columns([1.08, 1.12])" in weekly_page
+    assert "f1, f2, f3 = st.columns([0.9, 1.32, 1.08])" in weekly_page
+    assert "f2, f3 = st.columns([1.32, 1.08])" in weekly_page
+    assert "top1, top2 = st.columns([1.08, 1.12])" in monthly_page
+    assert "f1, f2, f3 = st.columns([0.9, 1.27, 1.08])" in monthly_page
+    assert "f2, f3 = st.columns([1.27, 1.08])" in monthly_page
+
+
+def test_report_pages_do_not_force_global_light_background() -> None:
+    """일일·주간·월간 리포트가 다크 모드에서 전역 배경을 강제로 밝게 고정하지 않는지 검증한다."""
+    page_paths = [
+        Path("pages/04_daily_report.py"),
+        Path("pages/05_weekly_report.py"),
+        Path("pages/06_monthly_report.py"),
+    ]
+
+    for page_path in page_paths:
+        page_source = page_path.read_text(encoding="utf-8")
+        assert ".stApp { background:#f8fafc; }" not in page_source
+
+
+def test_report_page_titles_follow_streamlit_theme_text_color() -> None:
+    """일일·주간·월간 리포트 제목이 다크 모드에서 고정 어두운 색을 쓰지 않는지 검증한다."""
+    page_paths = [
+        Path("pages/04_daily_report.py"),
+        Path("pages/05_weekly_report.py"),
+        Path("pages/06_monthly_report.py"),
+    ]
+
+    for page_path in page_paths:
+        page_source = page_path.read_text(encoding="utf-8")
+        page_title_css = page_source.split(".page-title {", maxsplit=1)[1].split(
+            "}",
+            maxsplit=1,
+        )[0]
+        assert "color: var(--text-color)" in page_title_css
+        assert "#0f172a" not in page_title_css
 
 
 def test_app_registers_report_detail_pages_for_logged_in_navigation() -> None:

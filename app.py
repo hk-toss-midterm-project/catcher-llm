@@ -4,6 +4,7 @@ import streamlit as st
 
 from catcher_llm.config.settings import get_settings
 from catcher_llm.services.user_data_service import authenticate_user, ensure_user_database
+from catcher_llm.utils import format_income_to_10k_won
 
 settings = get_settings()
 
@@ -45,13 +46,31 @@ def render_profile_text_panel(
     title: str,
     text: object,
     empty_message: str,
+    collapsible: bool = False,
+    expanded: bool = False,
 ) -> None:
-    """긴 프로필 텍스트를 별도 패널로 읽기 쉽게 렌더링한다."""
+    """긴 프로필 텍스트를 별도 패널 또는 접이식 패널로 읽기 쉽게 렌더링한다."""
     if text is None or str(text).strip() == "":
-        st.info(empty_message)
+        if collapsible:
+            with st.expander(title, expanded=expanded):
+                st.info(empty_message)
+        else:
+            st.info(empty_message)
         return
 
     escaped_text = html.escape(str(text).strip()).replace("\n", "<br>")
+    if collapsible:
+        with st.expander(title, expanded=expanded):
+            st.markdown(
+                f"""
+                <div style="background-color:#F5F9FF; border:1px solid #D6E4F0; padding:22px 24px; border-radius:18px;">
+                    <div style="margin:0; font-size:18px; color:#1D4ED8; font-weight:700; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere;">{escaped_text}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        return
+
     st.markdown(
         f"""
         <div style="background-color:#F5F9FF; border:1px solid #D6E4F0; padding:22px 24px; border-radius:18px;">
@@ -97,8 +116,8 @@ def profile_page() -> None:
     with col2:
         st.metric("직업", profile["job"])
         st.metric("지역", profile["region"])
-        st.metric("연소득", profile["income"])
-        st.metric("personal_score", profile.get("personal_score") or 0)
+        st.metric("연소득", format_income_to_10k_won(profile.get("income")))
+        st.metric("개인 점수", profile.get("personal_score") or 0)
 
     st.markdown("---")
     persona_text = profile.get("persona")
@@ -106,6 +125,7 @@ def profile_page() -> None:
         title="🧩 나의 페르소나",
         text=persona_text,
         empty_message="아직 등록된 페르소나가 없습니다.",
+        collapsible=True,
     )
 
     st.markdown("---")
