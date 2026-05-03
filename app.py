@@ -151,19 +151,19 @@ upload_pg = st.Page("pages/01_csv_upload.py", title="CSV 업로드", icon="📥"
 report_pg = st.Page("pages/02_report.py", title="리포트 조회", icon="📫", url_path="report")
 daily_report_pg = st.Page(
     "pages/04_daily_report.py",
-    title="일간 레포트",
+    title="일일 리포트",
     icon="📝",
     url_path="daily-report",
 )
 weekly_report_pg = st.Page(
     "pages/05_weekly_report.py",
-    title="주간 레포트",
+    title="주간 리포트",
     icon="🗓️",
     url_path="weekly-report",
 )
 monthly_report_pg = st.Page(
     "pages/06_monthly_report.py",
-    title="월간 레포트",
+    title="월간 리포트",
     icon="📈",
     url_path="monthly-report",
 )

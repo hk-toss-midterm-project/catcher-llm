@@ -12,9 +12,9 @@ def test_report_page_routes_daily_weekly_monthly_buttons_to_wrapper_pages() -> N
     assert 'st.switch_page("pages/04_daily_report.py")' in page_source
     assert 'st.switch_page("pages/05_weekly_report.py")' in page_source
     assert 'st.switch_page("pages/06_monthly_report.py")' in page_source
-    assert "일간 레포트" in page_source
-    assert "주간 레포트" in page_source
-    assert "월간 레포트" in page_source
+    assert "일일 리포트" in page_source
+    assert "주간 리포트" in page_source
+    assert "월간 리포트" in page_source
 
 
 def test_report_wrapper_pages_delegate_to_matching_dev_pages() -> None:
@@ -46,6 +46,8 @@ def test_app_registers_report_detail_pages_for_logged_in_navigation() -> None:
 
     for snippet in expected_snippets:
         assert snippet in app_source
+
+    assert 'title="일일 리포트"' in app_source
 
 
 def test_report_pages_use_logged_in_user_id_when_session_exists() -> None:

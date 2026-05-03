@@ -608,7 +608,7 @@ if groups:
         [
             (
                 f'<div class="group-chip">👥 {group["name"]} · '
-                f'{group["member_count"]}명 · {group["role"]}</div>'
+                f"{group['member_count']}명 · {group['role']}</div>"
             )
             for group in groups
         ]

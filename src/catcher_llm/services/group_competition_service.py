@@ -140,7 +140,9 @@ def _get_membership_or_raise(
 def _get_transaction_or_raise(settings: Settings, *, transaction_id: int) -> TransactionModel:
     """주어진 거래 ID가 존재하는지 확인하고 거래 모델을 반환한다."""
     with session_scope(settings) as session:
-        transaction = session.scalar(select(TransactionModel).where(TransactionModel.id == transaction_id))
+        transaction = session.scalar(
+            select(TransactionModel).where(TransactionModel.id == transaction_id)
+        )
     if transaction is None:
         raise ValueError(f"거래 {transaction_id}번을 찾을 수 없습니다.")
     return transaction
@@ -488,7 +490,8 @@ def get_group_member_feedback_status(
         checked_sessions = [
             session_row
             for session_row in member_sessions
-            if session_row.feedback_reaction is not None and session_row.feedback_reaction.strip() != ""
+            if session_row.feedback_reaction is not None
+            and session_row.feedback_reaction.strip() != ""
         ]
         positive_reaction_count = sum(
             1 for session_row in checked_sessions if session_row.feedback_reaction == "like"

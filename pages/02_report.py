@@ -32,15 +32,15 @@ st.markdown("## 리포트 유형 선택")
 daily_col, weekly_col, monthly_col = st.columns(3)
 
 with daily_col:
-    if st.button("일간 레포트", width="stretch"):
+    if st.button("일일 리포트", width="stretch"):
         st.switch_page("pages/04_daily_report.py")
 
 with weekly_col:
-    if st.button("주간 레포트", width="stretch"):
+    if st.button("주간 리포트", width="stretch"):
         st.switch_page("pages/05_weekly_report.py")
 
 with monthly_col:
-    if st.button("월간 레포트", width="stretch"):
+    if st.button("월간 리포트", width="stretch"):
         st.switch_page("pages/06_monthly_report.py")
 
 st.markdown("---")
