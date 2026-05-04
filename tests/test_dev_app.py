@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1263,6 +1264,18 @@ def test_streamlit_pages_do_not_use_deprecated_container_width_argument() -> Non
     ]
 
     assert offenders == []
+
+
+def test_model_comparison_gpt5_uses_large_completion_limit() -> None:
+    """모델 비교 페이지가 GPT-5 구조화 출력 JSON을 자르지 않도록 충분한 출력 한도를 쓰는지 검증한다."""
+    source = Path("dev_pages/20_model_comparison.py").read_text(encoding="utf-8")
+    match = re.search(r"_GPT5_MAX_COMPLETION_TOKENS\s*=\s*(\d+)", source)
+
+    assert match is not None
+    assert int(match.group(1)) >= 8192
+    assert 'model.lower().startswith("gpt-5")' in source
+    assert 'kwargs["max_completion_tokens"] = _GPT5_MAX_COMPLETION_TOKENS' in source
+    assert 'kwargs["reasoning_effort"] = _GPT5_REASONING_EFFORT' in source
 
 
 def test_main_profile_page_renders_long_persona_as_collapsible_panel() -> None:

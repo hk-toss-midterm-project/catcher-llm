@@ -105,6 +105,51 @@ _DOCUMENT_KIND_QUERY_SUFFIXES: dict[DocumentKind, str] = {
     DocumentKind.WELFARE: "복지 지원 정책 혜택 가능성",
     DocumentKind.KCA_REPORT: "소비자 주의사항 피해 예방 근거",
 }
+_MAX_COMPACT_FEEDBACK_CONTEXTS = 5
+_MAX_COMPACT_CONTEXT_CONTENT_LENGTH = 500
+_MAX_COMPACT_MEMORY_SESSIONS = 3
+_MAX_COMPACT_MEMORY_TEXT_LENGTH = 240
+_MAX_COMPACT_INTERPRETATION_ITEMS = 2
+_COMPACT_DAILY_METRIC_KEYS: tuple[str, ...] = (
+    "daily_total_amount",
+    "daily_transaction_count",
+    "daily_average_transaction_amount",
+    "daily_max_transaction_amount",
+    "late_night_ratio_percent",
+    "daily_budget_usage_rate_percent",
+    "daily_remaining_budget",
+    "daily_overspend_amount",
+    "daily_income_usage_rate_percent",
+    "month_to_date_budget_usage_rate_percent",
+    "projected_monthly_spending",
+    "projected_monthly_budget_usage_rate_percent",
+    "required_daily_budget_until_month_end",
+    "no_spending_day",
+    "daily_anomaly_score",
+    "special_metrics",
+)
+_COMPACT_USER_PROFILE_KEYS: tuple[str, ...] = (
+    "user_id",
+    "job",
+    "persona",
+    "saving_goal_text",
+    "income",
+    "card_grade",
+    "annual_income",
+    "monthly_income",
+    "target_max_spending_amount",
+)
+_COMPACT_MEMORY_KEYS: tuple[str, ...] = (
+    "user_id",
+    "period_type",
+    "memory_summary",
+    "user_feedback_memory",
+)
+_COMPACT_MEMORY_SESSION_KEYS: tuple[str, ...] = (
+    "analysis_date",
+    "feedback_reason",
+    "todo_tomorrow",
+)
 type DailyFeedbackInterpretationMode = Literal["split", "balanced", "unified"]
 
 
@@ -252,6 +297,176 @@ def serialize_context_object(value: object) -> str:
         _to_json_object(value),
         ensure_ascii=False,
     )
+
+
+def _has_json_content(value: JsonValue) -> bool:
+    """프롬프트 입력에 남길 실제 값이 있는지 확인한다."""
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def _compact_json_dumps(value: JsonObject | list[JsonObject]) -> str:
+    """토큰 절약을 위해 불필요한 공백 없이 JSON 문자열을 만든다."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _select_compact_fields(payload: JsonObject, keys: Sequence[str]) -> JsonObject:
+    """지정한 키 중 비어 있지 않은 값만 최종 피드백 입력으로 추린다."""
+    return {key: payload[key] for key in keys if key in payload and _has_json_content(payload[key])}
+
+
+def _truncate_json_text(value: JsonValue, *, max_length: int) -> JsonValue:
+    """문자열 JSON 값은 한 줄 요약 길이로 제한하고 나머지는 그대로 둔다."""
+    if isinstance(value, str):
+        return truncate_context_text(value, max_length=max_length)
+    return value
+
+
+def _compact_daily_metrics(user_data: UserSpendingData) -> JsonObject:
+    """최종 피드백에 필요한 일일 예산·소득·위험 지표만 추출한다."""
+    raw_metrics = _to_json_object(user_data.daily_metrics)
+    return _select_compact_fields(raw_metrics, _COMPACT_DAILY_METRIC_KEYS)
+
+
+def _compact_daily_analysis(user_data: UserSpendingData) -> JsonObject:
+    """최종 피드백용 일일 분석 JSON에서 출처와 임계값 같은 저활용 필드를 제외한다."""
+    raw_anomaly = _to_json_object(user_data.anomaly_detection)
+    compact_anomaly = _select_compact_fields(
+        raw_anomaly,
+        (
+            "spike_ratio",
+            "is_spike",
+            "high_spending_threshold",
+            "high_spending_items",
+        ),
+    )
+    return {
+        "member_id": user_data.member_id,
+        "analysis_date": user_data.analysis_date,
+        "stable_metrics": _to_json_object(user_data.stable_metrics),
+        "anomaly_detection": compact_anomaly,
+        "previous_day_comparison": _to_json_object(user_data.previous_day_comparison),
+        "daily_comparisons": _to_json_object(user_data.daily_comparisons),
+        "time_slot_analysis": _to_json_object(user_data.time_slot_analysis),
+        "payment_behavior_analysis": _to_json_object(user_data.payment_behavior_analysis),
+        "daily_metrics": _compact_daily_metrics(user_data),
+    }
+
+
+def _compact_list_value(value: JsonValue) -> JsonValue:
+    """리스트 값은 상위 일부 항목만 남기고 긴 문자열은 짧게 자른다."""
+    if not isinstance(value, list):
+        return _compact_nested_value(value)
+    compact_items = [
+        _compact_nested_value(item) for item in value[:_MAX_COMPACT_INTERPRETATION_ITEMS]
+    ]
+    return [item for item in compact_items if _has_json_content(item)]
+
+
+def _compact_nested_value(value: JsonValue) -> JsonValue:
+    """해석 결과 JSON을 재귀적으로 줄여 최종 피드백 판단에 필요한 정보만 남긴다."""
+    if isinstance(value, dict):
+        compact: JsonObject = {}
+        for key, item in value.items():
+            compact_item = (
+                _compact_list_value(item) if isinstance(item, list) else _compact_nested_value(item)
+            )
+            if _has_json_content(compact_item):
+                compact[key] = compact_item
+        return compact
+    if isinstance(value, str):
+        return truncate_context_text(value, max_length=_MAX_COMPACT_MEMORY_TEXT_LENGTH)
+    return value
+
+
+def _serialize_compact_interpretation_result(
+    interpretation_result: dict[str, object],
+) -> str:
+    """소비 해석 결과를 상위 일부 근거와 후보 중심의 축약 JSON으로 직렬화한다."""
+    raw_result = _to_json_object(interpretation_result)
+    compact_result: JsonObject = {}
+    for key in ("pattern_result", "problem_result", "cause_result", "action_result"):
+        if key in raw_result:
+            compact_result[key] = _compact_nested_value(raw_result[key])
+    if not compact_result:
+        compact_result = cast(JsonObject, _compact_nested_value(raw_result))
+    return _compact_json_dumps(compact_result)
+
+
+def _advice_context_rank_key(item: tuple[int, RetrievedAdviceContext]) -> tuple[float, int]:
+    """RAG 근거 정렬에서 유용성 점수를 우선하고 같은 점수에서는 기존 순서를 유지한다."""
+    index, context = item
+    score = context.usefulness_score if context.usefulness_score is not None else -1.0
+    return (-score, index)
+
+
+def _serialize_compact_advice_contexts(
+    contexts: Sequence[RetrievedAdviceContext],
+) -> str:
+    """RAG 문서 근거를 상위 일부와 짧은 본문만 남긴 JSON 문자열로 만든다."""
+    compact_contexts: list[JsonObject] = []
+    ranked_contexts = sorted(enumerate(contexts), key=_advice_context_rank_key)
+    for _, context in ranked_contexts[:_MAX_COMPACT_FEEDBACK_CONTEXTS]:
+        compact_context: JsonObject = {
+            "query": context.query,
+            "source": context.source,
+            "content": truncate_context_text(
+                context.content,
+                max_length=_MAX_COMPACT_CONTEXT_CONTENT_LENGTH,
+            ),
+        }
+        if context.page_number is not None:
+            compact_context["page_number"] = context.page_number
+        if context.document_kind:
+            compact_context["document_kind"] = context.document_kind
+        if context.usefulness_score is not None:
+            compact_context["usefulness_score"] = context.usefulness_score
+        compact_contexts.append(compact_context)
+    return _compact_json_dumps(compact_contexts)
+
+
+def _serialize_compact_user_profile(value: object) -> str:
+    """사용자 프로필에서 최종 피드백 개인화에 필요한 필드만 직렬화한다."""
+    raw_profile = _to_json_object(value)
+    return _compact_json_dumps(_select_compact_fields(raw_profile, _COMPACT_USER_PROFILE_KEYS))
+
+
+def _compact_memory_session(raw_session: JsonValue) -> JsonObject:
+    """최근 세션에서 과거 분석 전체 JSON을 제외하고 근거·미션 요약만 남긴다."""
+    if not isinstance(raw_session, dict):
+        return {}
+    session = cast(JsonObject, raw_session)
+    compact_session: JsonObject = {}
+    for key in _COMPACT_MEMORY_SESSION_KEYS:
+        value = session.get(key)
+        if value is None:
+            continue
+        compact_value = _truncate_json_text(value, max_length=_MAX_COMPACT_MEMORY_TEXT_LENGTH)
+        if _has_json_content(compact_value):
+            compact_session[key] = compact_value
+    return compact_session
+
+
+def _serialize_compact_memory_context(value: object) -> str:
+    """최종 피드백용 메모리 컨텍스트를 장기 요약과 최근 미션 중심으로 줄인다."""
+    raw_memory = _to_json_object(value)
+    compact_memory = _select_compact_fields(raw_memory, _COMPACT_MEMORY_KEYS)
+    for key in ("memory_summary", "user_feedback_memory"):
+        if key in compact_memory:
+            compact_memory[key] = _truncate_json_text(
+                compact_memory[key],
+                max_length=_MAX_COMPACT_MEMORY_TEXT_LENGTH,
+            )
+
+    raw_sessions = raw_memory.get("recent_sessions")
+    if isinstance(raw_sessions, list):
+        compact_sessions = [
+            compact_session
+            for raw_session in raw_sessions[-_MAX_COMPACT_MEMORY_SESSIONS:]
+            if (compact_session := _compact_memory_session(raw_session))
+        ]
+        if compact_sessions:
+            compact_memory["recent_sessions"] = compact_sessions
+    return _compact_json_dumps(compact_memory)
 
 
 def load_user_profile_context(
@@ -874,14 +1089,24 @@ def make_daily_feedback_input(
     advice_contexts: Sequence[RetrievedAdviceContext],
     user_profile: object | None = None,
     memory_context: object | None = None,
+    compact_input: bool = True,
 ) -> dict[str, str]:
     """최종 일일 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
+    if not compact_input:
+        return {
+            "daily_json": user_data.model_dump_json(),
+            "interpretation_json": serialize_interpretation_result(interpretation_result),
+            "retrieved_contexts": serialize_advice_contexts(advice_contexts),
+            "user_profile_json": serialize_context_object(user_profile or {}),
+            "memory_context_json": serialize_context_object(memory_context or {}),
+        }
+
     return {
-        "daily_json": user_data.model_dump_json(),
-        "interpretation_json": serialize_interpretation_result(interpretation_result),
-        "retrieved_contexts": serialize_advice_contexts(advice_contexts),
-        "user_profile_json": serialize_context_object(user_profile or {}),
-        "memory_context_json": serialize_context_object(memory_context or {}),
+        "daily_json": _compact_json_dumps(_compact_daily_analysis(user_data)),
+        "interpretation_json": _serialize_compact_interpretation_result(interpretation_result),
+        "retrieved_contexts": _serialize_compact_advice_contexts(advice_contexts),
+        "user_profile_json": _serialize_compact_user_profile(user_profile or {}),
+        "memory_context_json": _serialize_compact_memory_context(memory_context or {}),
     }
 
 
@@ -927,6 +1152,7 @@ def generate_daily_feedback(
     feedback_temperature: float = 0.0,
     persona_key: str | None = None,
     interpretation_mode: DailyFeedbackInterpretationMode = "split",
+    compact_feedback_input: bool = True,
     timing_callback: DailyFeedbackTimingCallback | None = None,
 ) -> DailyFeedbackServiceResult:
     """일일 소비 분석, 해석, RAG 검색, 최종 소비 피드백 생성을 한 번에 실행한다."""
@@ -1067,6 +1293,7 @@ def generate_daily_feedback(
             advice_contexts=advice_contexts,
             user_profile=user_profile,
             memory_context=memory_context,
+            compact_input=compact_feedback_input,
         )
         feedback = _run_timed_daily_feedback_step(
             step_key="feedback_chain",

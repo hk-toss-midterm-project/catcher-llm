@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import date
 from pathlib import Path
@@ -260,6 +261,86 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("비상금", payload["user_profile_json"])
         self.assertIn("식비가 반복적으로 높다", payload["memory_context_json"])
         self.assertIn("guide.pdf", serialize_advice_contexts([context]))
+
+    def test_make_daily_feedback_input_switches_compact_and_full_payloads(self) -> None:
+        """최종 피드백 입력을 토큰 절감 버전과 원본 전체 버전으로 전환할 수 있는지 검증한다."""
+        user_data = load_user_spending_data(Path("notebook/team02/02_Layer4/user_data.json"))
+        advice_contexts = [
+            RetrievedAdviceContext(
+                query=f"절약 방법 {index}",
+                source=f"guide-{index}.pdf",
+                content="긴 근거 문장 " * 120,
+                page_number=index,
+                document_kind="saving_tips",
+                usefulness_score=1.0 - (index * 0.01),
+                usefulness_reason="토큰 절약 입력에는 필요 없는 긴 유용성 설명",
+            )
+            for index in range(7)
+        ]
+        memory_context = {
+            "user_id": 1,
+            "period_type": "daily",
+            "memory_summary": "식비가 반복적으로 높다",
+            "recent_sessions": [
+                {
+                    "analysis_date": "2024-03-31",
+                    "analysis_result": '{"stable_metrics": {"today_total": 999999}}',
+                    "feedback_reason": '[{"title": "전일 소비"}]',
+                    "todo_tomorrow": "간식 결제를 줄인다.",
+                }
+            ],
+        }
+
+        compact_payload = make_daily_feedback_input(
+            user_data=user_data,
+            interpretation_result={"cause_result": CauseAnalysisResult()},
+            advice_contexts=advice_contexts,
+            user_profile={
+                "user_id": 1,
+                "name": None,
+                "job": "개발자",
+                "region": None,
+                "saving_goal_text": "비상금",
+            },
+            memory_context=memory_context,
+        )
+        full_payload = make_daily_feedback_input(
+            user_data=user_data,
+            interpretation_result={"cause_result": CauseAnalysisResult()},
+            advice_contexts=advice_contexts,
+            user_profile={
+                "user_id": 1,
+                "name": None,
+                "job": "개발자",
+                "region": None,
+                "saving_goal_text": "비상금",
+            },
+            memory_context=memory_context,
+            compact_input=False,
+        )
+
+        compact_daily = json.loads(compact_payload["daily_json"])
+        full_daily = json.loads(full_payload["daily_json"])
+        compact_contexts = json.loads(compact_payload["retrieved_contexts"])
+        full_contexts = json.loads(full_payload["retrieved_contexts"])
+        compact_profile = json.loads(compact_payload["user_profile_json"])
+        full_profile = json.loads(full_payload["user_profile_json"])
+        compact_memory = json.loads(compact_payload["memory_context_json"])
+        full_memory = json.loads(full_payload["memory_context_json"])
+
+        self.assertNotIn("source_paths", compact_daily)
+        self.assertNotIn("outlier_thresholds", compact_daily)
+        self.assertIn("source_paths", full_daily)
+        self.assertIn("outlier_thresholds", full_daily)
+        self.assertEqual(len(compact_contexts), 5)
+        self.assertEqual(len(full_contexts), 7)
+        self.assertLessEqual(len(compact_contexts[0]["content"]), 500)
+        self.assertNotIn("usefulness_reason", compact_contexts[0])
+        self.assertIn("usefulness_reason", full_contexts[0])
+        self.assertNotIn("name", compact_profile)
+        self.assertIsNone(full_profile["name"])
+        self.assertNotIn("analysis_result", compact_memory["recent_sessions"][0])
+        self.assertIn("analysis_result", full_memory["recent_sessions"][0])
 
     def test_retrieve_feedback_contexts_searches_each_document_kind_and_filters_useful_records(
         self,
@@ -670,12 +751,16 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
                     previous_date=date(2024, 3, 31),
                     settings=settings,
                     interpretation_mode="balanced",
+                    compact_feedback_input=False,
                 )
 
         self.assertIsNone(result.error)
         balanced_builder.assert_called_once()
         split_builder.assert_not_called()
         unified_builder.assert_not_called()
+        feedback_payload = feedback_chain.invoke.call_args.args[0]
+        self.assertIn("source_paths", feedback_payload["daily_json"])
+        self.assertIn("outlier_thresholds", feedback_payload["daily_json"])
 
 
 if __name__ == "__main__":
