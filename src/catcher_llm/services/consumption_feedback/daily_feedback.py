@@ -874,6 +874,33 @@ def _record_to_advice_context(
     )
 
 
+def _select_balanced_contexts(
+    contexts: Sequence[RetrievedAdviceContext],
+    max_contexts: int,
+) -> list[RetrievedAdviceContext]:
+    """문서 종류별 후보를 순환 선택해 앞선 문서 종류가 최종 결과를 독점하지 않게 한다."""
+    if max_contexts <= 0:
+        return []
+
+    grouped_contexts: dict[str | None, list[RetrievedAdviceContext]] = {}
+    for context in contexts:
+        grouped_contexts.setdefault(context.document_kind, []).append(context)
+
+    selected_contexts: list[RetrievedAdviceContext] = []
+    while len(selected_contexts) < max_contexts:
+        selected_in_round = False
+        for grouped_items in grouped_contexts.values():
+            if not grouped_items:
+                continue
+            selected_contexts.append(grouped_items.pop(0))
+            selected_in_round = True
+            if len(selected_contexts) >= max_contexts:
+                break
+        if not selected_in_round:
+            break
+    return selected_contexts
+
+
 def _iter_action_missions(action_result: object) -> list[ActionMission]:
     """해석 결과의 개선 후보 모델 또는 dict에서 RAG 검색 후보 목록을 추출한다."""
     if isinstance(action_result, ActionAnalysisResult):
@@ -1050,12 +1077,13 @@ def retrieve_feedback_contexts(
                 contexts.append(context)
 
     if not contexts and fallback_candidates:
-        return sorted(
+        ranked_fallback_candidates = sorted(
             fallback_candidates,
             key=lambda context: context.usefulness_score or 0.0,
             reverse=True,
-        )[:top_k]
-    return contexts[:top_k]
+        )
+        return _select_balanced_contexts(ranked_fallback_candidates, top_k)
+    return _select_balanced_contexts(contexts, top_k)
 
 
 def _retrieve_feedback_contexts_from_explicit_source(

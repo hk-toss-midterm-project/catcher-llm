@@ -1164,7 +1164,9 @@ if _llm_data:
         if _key3 not in _llm_data:
             continue
         _llm_score3 = float(_llm_data[_key3]["score"])
-        _cost3 = _run3.cost_usd or _calc_cost(_run3.model, _run3.prompt_tokens, _run3.completion_tokens)
+        _cost3 = _run3.cost_usd or _calc_cost(
+            _run3.model, _run3.prompt_tokens, _run3.completion_tokens
+        )
         _tok3 = _run3.total_tokens or 1  # 0-div 방지
         _lat3 = _run3.latency_sec or 0.001
         _cost_krw3 = _cost3 * _KRW_PER_USD
@@ -1206,20 +1208,26 @@ if _llm_data:
         # 세 효율 지표를 min-max 정규화 후 균등 평균 → 종합효율점수
         for _col in ["LLM점수_1K토큰", "LLM점수_비용1KKRW", "LLM점수_지연"]:
             _mn, _mx = _eff_agg[_col].min(), _eff_agg[_col].max()
-            _eff_agg[f"_norm_{_col}"] = (
-                (_eff_agg[_col] - _mn) / (_mx - _mn) if _mx > _mn else 0.5
-            )
+            _eff_agg[f"_norm_{_col}"] = (_eff_agg[_col] - _mn) / (_mx - _mn) if _mx > _mn else 0.5
         _eff_agg["종합효율점수"] = (
-            _eff_agg[["_norm_LLM점수_1K토큰", "_norm_LLM점수_비용1KKRW", "_norm_LLM점수_지연"]].mean(axis=1)
+            _eff_agg[
+                ["_norm_LLM점수_1K토큰", "_norm_LLM점수_비용1KKRW", "_norm_LLM점수_지연"]
+            ].mean(axis=1)
         ).round(4)
-        _eff_agg = _eff_agg.drop(
-            columns=[c for c in _eff_agg.columns if c.startswith("_norm_")]
-        )
+        _eff_agg = _eff_agg.drop(columns=[c for c in _eff_agg.columns if c.startswith("_norm_")])
         _eff_agg = _eff_agg.sort_values("종합효율점수", ascending=False).reset_index(drop=True)
         _eff_agg["순위"] = range(1, len(_eff_agg) + 1)
         _eff_agg = _eff_agg.round(
-            {"평균LLM점수": 3, "평균전체토큰": 0, "평균비용_usd": 6, "평균비용_krw": 2,
-             "평균지연": 3, "LLM점수_1K토큰": 4, "LLM점수_비용1KKRW": 4, "LLM점수_지연": 4}
+            {
+                "평균LLM점수": 3,
+                "평균전체토큰": 0,
+                "평균비용_usd": 6,
+                "평균비용_krw": 2,
+                "평균지연": 3,
+                "LLM점수_1K토큰": 4,
+                "LLM점수_비용1KKRW": 4,
+                "LLM점수_지연": 4,
+            }
         )
 
         # 종합효율점수 바 차트
@@ -1278,24 +1286,51 @@ if _llm_data:
         _best_tok = _eff_agg.loc[_eff_agg["LLM점수_1K토큰"].idxmax()]
         _best_cost = _eff_agg.loc[_eff_agg["LLM점수_비용1KKRW"].idxmax()]
         _best_speed = _eff_agg.loc[_eff_agg["LLM점수_지연"].idxmax()]
-        _medal_cols[0].metric("🏆 종합효율 1위", str(_best_overall["모델"]),
-                              f"종합={_best_overall['종합효율점수']:.4f}")
-        _medal_cols[1].metric("🪙 토큰효율 1위", str(_best_tok["모델"]),
-                              f"LLM점수/1K={_best_tok['LLM점수_1K토큰']:.4f}")
-        _medal_cols[2].metric("💵 비용효율 1위", str(_best_cost["모델"]),
-                              f"LLM점수/1K₩={_best_cost['LLM점수_비용1KKRW']:.4f}")
-        _medal_cols[3].metric("⏱️ 속도효율 1위", str(_best_speed["모델"]),
-                              f"LLM점수/초={_best_speed['LLM점수_지연']:.4f}")
+        _medal_cols[0].metric(
+            "🏆 종합효율 1위",
+            str(_best_overall["모델"]),
+            f"종합={_best_overall['종합효율점수']:.4f}",
+        )
+        _medal_cols[1].metric(
+            "🪙 토큰효율 1위",
+            str(_best_tok["모델"]),
+            f"LLM점수/1K={_best_tok['LLM점수_1K토큰']:.4f}",
+        )
+        _medal_cols[2].metric(
+            "💵 비용효율 1위",
+            str(_best_cost["모델"]),
+            f"LLM점수/1K₩={_best_cost['LLM점수_비용1KKRW']:.4f}",
+        )
+        _medal_cols[3].metric(
+            "⏱️ 속도효율 1위",
+            str(_best_speed["모델"]),
+            f"LLM점수/초={_best_speed['LLM점수_지연']:.4f}",
+        )
 
         # 상세 테이블
         _disp_eff = _eff_agg[
-            ["순위", "모델", "평균LLM점수", "평균전체토큰", "평균비용_usd", "평균비용_krw",
-             "평균지연", "LLM점수_1K토큰", "LLM점수_비용1KKRW", "LLM점수_지연", "종합효율점수"]
-        ].rename(columns={
-            "평균비용_usd": "평균비용($)",
-            "평균비용_krw": "평균비용(₩)",
-            "평균지연": "평균지연(초)",
-        })
+            [
+                "순위",
+                "모델",
+                "평균LLM점수",
+                "평균전체토큰",
+                "평균비용_usd",
+                "평균비용_krw",
+                "평균지연",
+                "LLM점수_1K토큰",
+                "LLM점수_비용1KKRW",
+                "LLM점수_지연",
+                "종합효율점수",
+            ]
+        ].rename(
+            columns={
+                "평균비용_usd": "평균비용($)",
+                "평균비용_krw": "평균비용(₩)",
+                "평균지연": "평균지연(초)",
+            }
+        )
         st.dataframe(_disp_eff, hide_index=True, width="stretch")
     else:
-        st.info("토큰·비용 정보가 있는 실행 결과가 없습니다. 먼저 비교 실행 후 LLM 평가를 실행해주세요.")
+        st.info(
+            "토큰·비용 정보가 있는 실행 결과가 없습니다. 먼저 비교 실행 후 LLM 평가를 실행해주세요."
+        )

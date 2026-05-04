@@ -514,6 +514,71 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertTrue(all(" / " not in question for question in searched_questions))
         self.assertEqual(len(contexts), 2)
 
+    def test_retrieve_feedback_contexts_balances_document_kinds_before_final_limit(
+        self,
+    ) -> None:
+        """최종 top_k 제한 전에 앞선 문서 종류 결과만 남지 않도록 문서 종류를 분산하는지 검증한다."""
+
+        def fake_retrieve_context_records(
+            question: str,
+            chunk_size: int,
+            chunk_overlap: int,
+            top_k: int,
+            *,
+            raw_data_dir: Path | str | None = None,
+            source_files: object | None = None,
+            settings: Settings | None = None,
+        ) -> list[dict[str, str | int | None]]:
+            """테스트용 검색 함수로 문서 종류별 유용한 청크 수를 다르게 반환한다."""
+            if raw_data_dir is None:
+                return []
+            raw_dir = Path(raw_data_dir)
+            if raw_dir.name == "saving_tips":
+                return [
+                    {
+                        "source": "saving-1.pdf",
+                        "content": "배달 주문 예산을 정하면 반복 지출을 줄일 수 있다.",
+                        "page_number": 1,
+                    },
+                    {
+                        "source": "saving-2.pdf",
+                        "content": "배달 주문 횟수 제한은 월간 지출 관리에 도움이 된다.",
+                        "page_number": 2,
+                    },
+                ]
+            if raw_dir.name == "catcher_consumption_benchmark":
+                return [
+                    {
+                        "source": "benchmark.pdf",
+                        "content": "배달 주문 결제는 반복될수록 소비 패턴 비교 근거가 된다.",
+                        "page_number": 3,
+                    }
+                ]
+            return []
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+
+            with patch(
+                "catcher_llm.services.consumption_feedback.daily_feedback.retrieve_context_records",
+                side_effect=fake_retrieve_context_records,
+            ):
+                contexts = retrieve_feedback_contexts(
+                    ["배달 주문 지출 줄이는 방법"],
+                    top_k=2,
+                    document_kinds=[
+                        DocumentKind.SAVING_TIPS,
+                        DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
+                    ],
+                    usefulness_threshold=0.25,
+                    settings=settings,
+                )
+
+        self.assertEqual(
+            [context.document_kind for context in contexts],
+            ["saving_tips", "catcher_consumption_benchmark"],
+        )
+
     def test_generate_daily_feedback_orchestrates_analysis_interpretation_rag_and_feedback(
         self,
     ) -> None:
