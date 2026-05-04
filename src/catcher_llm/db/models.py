@@ -103,10 +103,28 @@ class UserMemoryModel(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     period_type: Mapped[str] = mapped_column(String(20), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
-    user_feedback_memory: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
+class UserFeedbackMemoryModel(Base):
+    """사용자 피드백 거부 이유를 개별 행으로 저장하는 테이블.
+
+    user_memories.user_feedback_memory 컬럼을 분리해 독립 테이블로 관리한다.
+    created_at 기준으로 오래된 항목부터 주기별 초기화가 이루어진다.
+    """
+
+    __tablename__ = "user_feedback_memories"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

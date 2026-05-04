@@ -5,7 +5,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,7 @@ from catcher_llm.db.models import (
     USER_CSV_COLUMN_TO_DB_COLUMN,
     SessionModel,
     TransactionModel,
+    UserFeedbackMemoryModel,
     UserMemoryModel,
     UserModel,
 )
@@ -34,7 +35,13 @@ _SESSION_FEEDBACK_REACTION_COLUMN_NAMES = (
     "feedback_reaction_reason",
 )
 _TRANSACTION_MERCHANT_NAME_COLUMN_NAME = "merchant_name"
-_USER_FEEDBACK_MEMORY_COLUMN_NAME = "user_feedback_memory"
+
+# 주기별 메모리 만료 기간 (일 단위)
+_MEMORY_EXPIRY_DAYS: dict[str, int] = {
+    "daily": 7,
+    "weekly": 28,   # 4주
+    "monthly": 365, # 1년
+}
 _USER_REGISTRATION_COLUMNS: tuple[str, ...] = (
     "id",
     "name",
@@ -402,13 +409,65 @@ def _ensure_session_feedback_reaction_columns(config: Settings) -> None:
     )
 
 
-def _ensure_user_feedback_memory_column(config: Settings) -> None:
-    """기존 user_memories 테이블에 사용자 피드백 메모리 누적 컬럼을 보강한다."""
-    _ensure_dynamic_sqlite_columns(
-        config,
-        table_name=UserMemoryModel.__tablename__,
-        column_names=(_USER_FEEDBACK_MEMORY_COLUMN_NAME,),
-    )
+def _ensure_user_feedback_memories_table(config: Settings) -> None:
+    """user_feedback_memories 테이블이 없으면 생성하고, 기존 컬럼 데이터를 마이그레이션한다."""
+    from sqlalchemy import text
+
+    engine = get_engine(config)
+
+    # 테이블 존재 여부 확인 후 CREATE
+    with engine.connect() as conn:
+        existing_tables = inspect(engine).get_table_names()
+        if UserFeedbackMemoryModel.__tablename__ not in existing_tables:
+            UserFeedbackMemoryModel.__table__.create(engine, checkfirst=True)
+
+        # 구 컬럼이 아직 user_memories에 남아있으면 데이터 마이그레이션 후 제거
+        cols = [c["name"] for c in inspect(engine).get_columns("user_memories")]
+        if "user_feedback_memory" in cols:
+            _migrate_feedback_memory_column_to_table(config)
+            # SQLite 3.35+ DROP COLUMN 지원
+            try:
+                conn.execute(text("ALTER TABLE user_memories DROP COLUMN user_feedback_memory"))
+                conn.commit()
+            except Exception:
+                pass  # 이미 제거됐거나 구 SQLite 버전일 때 무시
+
+
+def _migrate_feedback_memory_column_to_table(config: Settings) -> None:
+    """user_memories.user_feedback_memory 텍스트를 user_feedback_memories 개별 행으로 이전한다."""
+    import re
+
+    def _extract_reason(line: str) -> str:
+        line = line.strip()
+        match = re.search(r"—\s*이유:\s*(.+)", line)
+        if match:
+            return match.group(1).strip()
+        return re.sub(r"^\[거부/제약\]\s*", "", line).strip()
+
+    with session_scope(config) as session:
+        from sqlalchemy import text as sa_text
+
+        rows = list(
+            session.execute(
+                sa_text("SELECT id, user_id, period_type, user_feedback_memory FROM user_memories"
+                        " WHERE user_feedback_memory IS NOT NULL AND user_feedback_memory != ''")
+            )
+        )
+        now = datetime.now(UTC)
+        for row in rows:
+            raw: str = row[3] or ""
+            lines = [l.strip() for l in raw.splitlines() if l.strip()]
+            seen: set[str] = set()
+            for line in lines:
+                reason = _extract_reason(line)
+                if reason and reason not in seen:
+                    seen.add(reason)
+                    session.add(UserFeedbackMemoryModel(
+                        user_id=row[1],
+                        period_type=row[2],
+                        reason=reason,
+                        created_at=now,
+                    ))
 
 
 def _ensure_transaction_merchant_name_column(config: Settings) -> None:
@@ -420,37 +479,56 @@ def _ensure_transaction_merchant_name_column(config: Settings) -> None:
     )
 
 
-def _migrate_user_feedback_memory_format(config: Settings) -> None:
-    """기존 [거부/제약] {todo} — 이유: {reason} 형식을 이유 텍스트만 남기도록 정리한다."""
-    import re
+def reset_expired_user_memories(settings: Settings | None = None) -> dict[str, int]:
+    """만료된 user_memories 요약과 user_feedback_memories 항목을 오래된 순으로 초기화한다.
 
-    def _extract_reason(line: str) -> str:
-        line = line.strip()
-        match = re.search(r"—\s*이유:\s*(.+)", line)
-        if match:
-            return match.group(1).strip()
-        cleaned = re.sub(r"^\[거부/제약\]\s*", "", line).strip()
-        return cleaned
+    주기별 만료 기간:
+    - daily  : 7일
+    - weekly : 28일 (4주)
+    - monthly: 365일 (1년)
+
+    Returns:
+        period_type별 초기화된 user_memories 행 수 딕셔너리
+    """
+    config = settings or get_settings()
+    now = datetime.now(UTC)
+    reset_counts: dict[str, int] = {}
 
     with session_scope(config) as session:
-        memories = list(
-            session.scalars(
-                select(UserMemoryModel).where(UserMemoryModel.user_feedback_memory.isnot(None))
+        for period_type, days in _MEMORY_EXPIRY_DAYS.items():
+            cutoff = now - timedelta(days=days)
+
+            # 1) user_memories.summary 초기화 (오래된 것부터)
+            expired_memories = list(
+                session.scalars(
+                    select(UserMemoryModel)
+                    .where(
+                        UserMemoryModel.period_type == period_type,
+                        UserMemoryModel.updated_at < cutoff,
+                    )
+                    .order_by(UserMemoryModel.updated_at.asc())
+                )
             )
-        )
-        for memory in memories:
-            raw = memory.user_feedback_memory or ""
-            if "[거부/제약]" not in raw:
-                continue
-            lines = [line for line in raw.splitlines() if line.strip()]
-            reasons: list[str] = []
-            seen: set[str] = set()
-            for line in lines:
-                reason = _extract_reason(line)
-                if reason and reason not in seen:
-                    seen.add(reason)
-                    reasons.append(reason)
-            memory.user_feedback_memory = "\n".join(reasons) + "\n" if reasons else None
+            for mem in expired_memories:
+                mem.summary = ""
+                mem.updated_at = now
+            reset_counts[period_type] = len(expired_memories)
+
+            # 2) user_feedback_memories 개별 항목 삭제 (오래된 것부터)
+            expired_fb = list(
+                session.scalars(
+                    select(UserFeedbackMemoryModel)
+                    .where(
+                        UserFeedbackMemoryModel.period_type == period_type,
+                        UserFeedbackMemoryModel.created_at < cutoff,
+                    )
+                    .order_by(UserFeedbackMemoryModel.created_at.asc())
+                )
+            )
+            for fb in expired_fb:
+                session.delete(fb)
+
+    return reset_counts
 
 
 def _reflect_sqlite_table(config: Settings, *, table_name: str) -> Table:
@@ -641,8 +719,7 @@ def ensure_user_database(settings: Settings | None = None) -> DatabaseSeedResult
     create_database_tables(config)
     _ensure_session_feedback_reaction_columns(config)
     _ensure_transaction_merchant_name_column(config)
-    _ensure_user_feedback_memory_column(config)
-    _migrate_user_feedback_memory_format(config)
+    _ensure_user_feedback_memories_table(config)
     _seed_users_if_empty(config)
     _seed_transactions_if_empty(config)
     _write_seed_metadata(config, csv_signature)

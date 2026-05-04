@@ -21,7 +21,7 @@ from catcher_llm.chains.consumption_feedback import (
     build_unified_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
-from catcher_llm.db.models import SessionModel, UserMemoryModel, UserModel
+from catcher_llm.db.models import SessionModel, UserFeedbackMemoryModel, UserMemoryModel, UserModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
@@ -535,11 +535,28 @@ def load_daily_feedback_memory_context(
         )
 
     chronological_sessions = list(reversed(recent_sessions))
+
+    # user_feedback_memories 테이블에서 거부 이유 목록 로드
+    with session_scope(config) as _fb_session:
+        fb_rows = list(
+            _fb_session.scalars(
+                select(UserFeedbackMemoryModel)
+                .where(
+                    UserFeedbackMemoryModel.user_id == member_id,
+                    UserFeedbackMemoryModel.period_type == _DAILY_MEMORY_PERIOD_TYPE,
+                )
+                .order_by(UserFeedbackMemoryModel.created_at.asc())
+            )
+        )
+    feedback_memory_text: str | None = (
+        "\n".join(r.reason for r in fb_rows) + "\n" if fb_rows else None
+    )
+
     return DailyFeedbackMemoryContext(
         user_id=member_id,
         period_type=_DAILY_MEMORY_PERIOD_TYPE,
         memory_summary=memory.summary if memory is not None else None,
-        user_feedback_memory=memory.user_feedback_memory if memory is not None else None,
+        user_feedback_memory=feedback_memory_text,
         recent_sessions=[
             DailyFeedbackSessionContext(
                 analysis_date=item.analysis_date,

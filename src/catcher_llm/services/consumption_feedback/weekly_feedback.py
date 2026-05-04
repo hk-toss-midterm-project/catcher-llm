@@ -15,7 +15,7 @@ from catcher_llm.chains.consumption_feedback import (
     build_weekly_spending_analysis_chain,
 )
 from catcher_llm.config.settings import Settings, get_settings
-from catcher_llm.db.models import SessionModel, UserMemoryModel
+from catcher_llm.db.models import SessionModel, UserFeedbackMemoryModel, UserMemoryModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
     ActionAnalysisResult,
@@ -651,11 +651,27 @@ def load_weekly_feedback_memory_context(
         )
 
     chronological_sessions = list(reversed(recent_sessions))
+
+    with session_scope(config) as _fb_session:
+        fb_rows = list(
+            _fb_session.scalars(
+                select(UserFeedbackMemoryModel)
+                .where(
+                    UserFeedbackMemoryModel.user_id == member_id,
+                    UserFeedbackMemoryModel.period_type == _WEEKLY_MEMORY_PERIOD_TYPE,
+                )
+                .order_by(UserFeedbackMemoryModel.created_at.asc())
+            )
+        )
+    feedback_memory_text: str | None = (
+        "\n".join(r.reason for r in fb_rows) + "\n" if fb_rows else None
+    )
+
     return DailyFeedbackMemoryContext(
         user_id=member_id,
         period_type=_WEEKLY_MEMORY_PERIOD_TYPE,
         memory_summary=memory.summary if memory is not None else None,
-        user_feedback_memory=memory.user_feedback_memory if memory is not None else None,
+        user_feedback_memory=feedback_memory_text,
         recent_sessions=[
             DailyFeedbackSessionContext(
                 analysis_date=item.analysis_date,
@@ -1021,4 +1037,23 @@ def generate_weekly_feedback(
         memory_context=memory_context,
         retrieval_queries=retrieval_queries,
         retrieved_contexts=advice_contexts,
+    )
+r(exc),
+            user_profile=user_profile,
+            memory_context=memory_context,
+        )
+
+    return WeeklyFeedbackServiceResult(
+        member_id=member_id,
+        week_start=str(start_day),
+        week_end=str(end_day),
+        feedback=feedback_result,
+        weekly_analysis=weekly_data,
+        interpretation_result=_to_json_object(interpretation_result),
+        user_profile=user_profile,
+        memory_context=memory_context,
+        retrieval_queries=retrieval_queries,
+        retrieved_contexts=advice_contexts,
+    )
+ontexts,
     )

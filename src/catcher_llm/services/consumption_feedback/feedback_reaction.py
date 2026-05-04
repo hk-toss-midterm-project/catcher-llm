@@ -7,7 +7,7 @@ from typing import Literal, cast
 from sqlalchemy import select
 
 from catcher_llm.config.settings import Settings, get_settings
-from catcher_llm.db.models import SessionModel, UserMemoryModel
+from catcher_llm.db.models import SessionModel, UserFeedbackMemoryModel, UserMemoryModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.services.user_data_service import ensure_user_database
 
@@ -118,13 +118,20 @@ def save_session_feedback_reaction(
                 )
                 db_session.add(memory_row)
                 db_session.flush()
-            # 기존 이유 목록 + 신규 이유 합산 (이유 텍스트만, 프리픽스 없음)
-            existing_entries = [
-                line.strip()
-                for line in (memory_row.user_feedback_memory or "").splitlines()
-                if line.strip()
-            ]
+            # 기존 피드백 메모리 항목 조회 (user_feedback_memories 테이블)
+            existing_fb_rows = list(
+                db_session.scalars(
+                    select(UserFeedbackMemoryModel)
+                    .where(
+                        UserFeedbackMemoryModel.user_id == memory_row.user_id,
+                        UserFeedbackMemoryModel.period_type == normalized_period_type,
+                    )
+                    .order_by(UserFeedbackMemoryModel.created_at.asc())
+                )
+            )
+            existing_entries = [r.reason for r in existing_fb_rows]
             all_entries = existing_entries + [normalized_reason]
+
             # 항목이 2개 이상일 때만 LLM 구체성 기반 재정렬
             if len(all_entries) >= 2:
                 from catcher_llm.chains.consumption_feedback import (
@@ -134,13 +141,30 @@ def save_session_feedback_reaction(
                 rank_chain = build_feedback_memory_rank_chain(config, temperature=0.0)
                 ranked_text = rank_chain.invoke({"entries": "\n".join(all_entries)})
                 ranked_lines = [line.strip() for line in ranked_text.splitlines() if line.strip()]
-                # LLM 출력 항목 수가 일치하면 재정렬 적용, 아니면 원본 순서 유지
+                # LLM 재정렬이 성공하면 기존 행 삭제 후 순서대로 재삽입
                 if len(ranked_lines) == len(all_entries):
-                    memory_row.user_feedback_memory = "\n".join(ranked_lines) + "\n"
+                    for fb_row in existing_fb_rows:
+                        db_session.delete(fb_row)
+                    db_session.flush()
+                    for reason_text in ranked_lines:
+                        db_session.add(UserFeedbackMemoryModel(
+                            user_id=memory_row.user_id,
+                            period_type=normalized_period_type,
+                            reason=reason_text,
+                        ))
                 else:
-                    memory_row.user_feedback_memory = "\n".join(all_entries) + "\n"
+                    # 재정렬 실패 시 신규 항목만 추가
+                    db_session.add(UserFeedbackMemoryModel(
+                        user_id=memory_row.user_id,
+                        period_type=normalized_period_type,
+                        reason=normalized_reason,
+                    ))
             else:
-                memory_row.user_feedback_memory = normalized_reason + "\n"
+                db_session.add(UserFeedbackMemoryModel(
+                    user_id=memory_row.user_id,
+                    period_type=normalized_period_type,
+                    reason=normalized_reason,
+                ))
             db_session.flush()
 
         return FeedbackReactionSaveResult(
