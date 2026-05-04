@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from dataclasses import replace
 from datetime import date
@@ -337,6 +338,76 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("비상금 300만원 만들기", payload["user_profile_json"])
         self.assertIn("{}", payload["memory_context_json"])
 
+    def test_make_weekly_feedback_input_switches_compact_and_full_payloads(self) -> None:
+        """최종 주간 피드백 입력을 토큰 절감 버전과 원본 전체 버전으로 전환할 수 있는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_weekly_settings(Path(tmp_dir))
+            weekly_payload = build_weekly_consumption_analysis_json(
+                member_id=1,
+                week_start=date(2024, 4, 1),
+                week_end=date(2024, 4, 7),
+                settings=settings,
+            )
+        weekly_data = parse_weekly_spending_data(weekly_payload)
+        memory_context = {
+            "user_id": 1,
+            "period_type": "weekly",
+            "memory_summary": "배달 소비가 반복적으로 높다",
+            "recent_sessions": [
+                {
+                    "analysis_date": "2024-03-25",
+                    "analysis_result": '{"weekly_summary": {"this_week_total": 999999}}',
+                    "feedback_reason": '[{"title": "전주 소비"}]',
+                    "todo_tomorrow": "배달 주문 횟수를 줄인다.",
+                }
+            ],
+        }
+
+        compact_payload = make_weekly_feedback_input(
+            weekly_data=weekly_data,
+            interpretation_result={"cause_result": CauseAnalysisResult()},
+            user_profile={
+                "user_id": 1,
+                "name": "김토스",
+                "job": "개발자",
+                "region": None,
+                "saving_goal_text": "비상금",
+            },
+            memory_context=memory_context,
+        )
+        full_payload = make_weekly_feedback_input(
+            weekly_data=weekly_data,
+            interpretation_result={"cause_result": CauseAnalysisResult()},
+            user_profile={
+                "user_id": 1,
+                "name": "김토스",
+                "job": "개발자",
+                "region": None,
+                "saving_goal_text": "비상금",
+            },
+            memory_context=memory_context,
+            compact_input=False,
+        )
+
+        compact_weekly = json.loads(compact_payload["weekly_json"])
+        full_weekly = json.loads(full_payload["weekly_json"])
+        compact_profile = json.loads(compact_payload["user_profile_json"])
+        full_profile = json.loads(full_payload["user_profile_json"])
+        compact_memory = json.loads(compact_payload["memory_context_json"])
+        full_memory = json.loads(full_payload["memory_context_json"])
+
+        self.assertNotIn("source_path", compact_weekly)
+        self.assertNotIn("outlier_thresholds", compact_weekly)
+        self.assertIn("source_path", full_weekly)
+        self.assertIn("outlier_thresholds", full_weekly)
+        self.assertNotIn("category_spending", compact_weekly["weekly_metrics"])
+        self.assertIn("category_spending", full_weekly["weekly_metrics"])
+        self.assertNotIn("name", compact_profile)
+        self.assertEqual(full_profile["name"], "김토스")
+        self.assertNotIn("analysis_result", compact_memory["recent_sessions"][0])
+        self.assertIn("analysis_result", full_memory["recent_sessions"][0])
+        self.assertLess(len(compact_payload["weekly_json"]), len(full_payload["weekly_json"]))
+
     def test_generate_weekly_feedback_orchestrates_analysis_interpretation_and_feedback(
         self,
     ) -> None:
@@ -445,6 +516,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                     week_start="2024-04-01",
                     week_end="2024-04-07",
                     settings=settings,
+                    compact_feedback_input=False,
                     timing_callback=timing_records.append,
                 )
 
@@ -483,6 +555,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertNotIn("retrieved_contexts", feedback_payload)
         self.assertIn("user_profile_json", feedback_payload)
         self.assertIn("memory_context_json", feedback_payload)
+        self.assertIn("outlier_thresholds", feedback_payload["weekly_json"])
         self.assertIsNotNone(result.memory_context)
         assert result.memory_context is not None
         self.assertEqual(

@@ -34,6 +34,11 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklySpendingIndicatorPayload,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import (
+    _compact_json_dumps,
+    _select_compact_fields,
+    _serialize_compact_interpretation_result,
+    _serialize_compact_memory_context,
+    _serialize_compact_user_profile,
     load_user_profile_context,
     serialize_context_object,
     serialize_interpretation_result,
@@ -59,6 +64,24 @@ from catcher_llm.services.user_data_service import ensure_user_database
 
 _WEEKLY_MEMORY_PERIOD_TYPE = "weekly"
 _DEFAULT_WEEKLY_MEMORY_SESSION_LIMIT = 8
+_COMPACT_WEEKLY_METRIC_KEYS: tuple[str, ...] = (
+    "weekly_total_amount",
+    "weekly_average_daily_amount",
+    "weekly_transaction_count",
+    "weekday_spending_ratio_percent",
+    "weekend_spending_ratio_percent",
+    "previous_week_change_rate_percent",
+    "weekly_spending_volatility",
+    "weekly_budget_usage_rate_percent",
+    "weekly_remaining_budget",
+    "weekly_overspend_amount",
+    "weekly_income_usage_rate_percent",
+    "weekly_budget_burn_rate",
+    "month_to_date_budget_usage_rate_percent",
+    "projected_monthly_spending_from_weekly_pace",
+    "special_metrics",
+    "weekend_overspending_index",
+)
 
 
 def _parse_week_date(value: str | date) -> date:
@@ -92,6 +115,30 @@ def _to_json_object(value: object) -> JsonObject:
 def parse_weekly_spending_data(payload: object) -> WeeklySpendingData:
     """이미 메모리에 있는 주간 소비 분석 JSON 객체를 검증된 입력 모델로 변환한다."""
     return WeeklySpendingData.model_validate(payload)
+
+
+def _compact_weekly_metrics(weekly_data: WeeklySpendingData) -> JsonObject:
+    """최종 피드백에 필요한 주간 예산·소득·패턴 지표만 추출한다."""
+    raw_metrics = _to_json_object(weekly_data.weekly_metrics)
+    return _select_compact_fields(raw_metrics, _COMPACT_WEEKLY_METRIC_KEYS)
+
+
+def _compact_weekly_analysis(weekly_data: WeeklySpendingData) -> JsonObject:
+    """최종 피드백용 주간 분석 JSON에서 출처와 임계값 같은 저활용 필드를 제외한다."""
+    return {
+        "member_id": weekly_data.member_id,
+        "week_start": weekly_data.week_start,
+        "week_end": weekly_data.week_end,
+        "weekly_summary": _to_json_object(weekly_data.weekly_summary),
+        "category_summary": _to_json_value(weekly_data.category_summary),
+        "weekly_comparisons": _to_json_object(weekly_data.weekly_comparisons),
+        "repeat_patterns": _to_json_object(weekly_data.repeat_patterns),
+        "weekday_pattern": _to_json_object(weekly_data.weekday_pattern),
+        "waste_detection": _to_json_object(weekly_data.waste_detection),
+        "saving_potential": _to_json_object(weekly_data.saving_potential),
+        "elasticity_analysis": _to_json_object(weekly_data.elasticity_analysis),
+        "weekly_metrics": _compact_weekly_metrics(weekly_data),
+    }
 
 
 def _build_weekly_category_change_indicators(
@@ -403,14 +450,23 @@ def make_weekly_feedback_input(
     advice_contexts: Sequence[RetrievedAdviceContext] | None = None,
     user_profile: object | None = None,
     memory_context: object | None = None,
+    compact_input: bool = True,
 ) -> dict[str, str]:
     """최종 주간 피드백 체인에 전달할 분석, 해석, 개인화 컨텍스트 입력을 만든다."""
     _ = advice_contexts
+    if not compact_input:
+        return {
+            "weekly_json": weekly_data.model_dump_json(),
+            "interpretation_json": serialize_interpretation_result(interpretation_result),
+            "user_profile_json": serialize_context_object(user_profile or {}),
+            "memory_context_json": serialize_context_object(memory_context or {}),
+        }
+
     return {
-        "weekly_json": weekly_data.model_dump_json(),
-        "interpretation_json": serialize_interpretation_result(interpretation_result),
-        "user_profile_json": serialize_context_object(user_profile or {}),
-        "memory_context_json": serialize_context_object(memory_context or {}),
+        "weekly_json": _compact_json_dumps(_compact_weekly_analysis(weekly_data)),
+        "interpretation_json": _serialize_compact_interpretation_result(interpretation_result),
+        "user_profile_json": _serialize_compact_user_profile(user_profile or {}),
+        "memory_context_json": _serialize_compact_memory_context(memory_context or {}),
     }
 
 
@@ -688,6 +744,7 @@ def generate_weekly_feedback(
     interpretation_temperature: float = 0.0,
     feedback_temperature: float = 0.0,
     persona_key: str | None = None,
+    compact_feedback_input: bool = True,
     timing_callback: FeedbackTimingCallback | None = None,
 ) -> WeeklyFeedbackServiceResult:
     """주간 소비 분석, 해석, 메모리 조회, 최종 주간 피드백 생성을 한 번에 실행한다."""
@@ -779,6 +836,7 @@ def generate_weekly_feedback(
                     interpretation_result=interpretation_result,
                     user_profile=user_profile,
                     memory_context=memory_context,
+                    compact_input=compact_feedback_input,
                 )
             ),
         )

@@ -40,6 +40,12 @@ from catcher_llm.schemas.consumption_feedback import (
     UserProfileContext,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import (
+    _compact_json_dumps,
+    _select_compact_fields,
+    _serialize_compact_advice_contexts,
+    _serialize_compact_interpretation_result,
+    _serialize_compact_memory_context,
+    _serialize_compact_user_profile,
     load_user_profile_context,
     retrieve_feedback_contexts,
     serialize_advice_contexts,
@@ -75,6 +81,29 @@ _MONTHLY_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
     DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
     DocumentKind.KCA_REPORT,
 )
+_COMPACT_MONTHLY_METRIC_KEYS: tuple[str, ...] = (
+    "monthly_total_amount",
+    "monthly_budget_usage_rate_percent",
+    "monthly_remaining_budget",
+    "monthly_overspend_amount",
+    "monthly_income_usage_rate_percent",
+    "target_spending_to_income_rate_percent",
+    "estimated_saving_amount",
+    "estimated_saving_rate_percent",
+    "target_saving_amount",
+    "target_saving_rate_percent",
+    "previous_month_change_rate_percent",
+    "fixed_cost_amount",
+    "fixed_cost_ratio_percent",
+    "variable_cost_amount",
+    "subscription_total",
+    "post_salary_spending_increase_rate_percent",
+    "month_end_pressure_index",
+    "special_metrics",
+    "fixed_cost_burden_rate_percent",
+    "spending_capacity",
+    "nonessential_spending_income_rate_percent",
+)
 
 
 def _to_json_value(value: object) -> JsonValue:
@@ -101,6 +130,37 @@ def _to_json_object(value: object) -> JsonObject:
 def parse_monthly_spending_data(payload: object) -> MonthlySpendingData:
     """이미 메모리에 있는 월간 소비 분석 JSON 객체를 검증된 입력 모델로 변환한다."""
     return MonthlySpendingData.model_validate(payload)
+
+
+def _compact_monthly_metrics(monthly_data: MonthlySpendingData) -> JsonObject:
+    """최종 피드백에 필요한 월간 예산·소득·위험 지표만 추출한다."""
+    raw_metrics = _to_json_object(monthly_data.monthly_metrics)
+    return _select_compact_fields(raw_metrics, _COMPACT_MONTHLY_METRIC_KEYS)
+
+
+def _compact_monthly_analysis(monthly_data: MonthlySpendingData) -> JsonObject:
+    """최종 피드백용 월간 분석 JSON에서 출처와 임계값 같은 저활용 필드를 제외한다."""
+    return {
+        "member_id": monthly_data.member_id,
+        "analysis_month": monthly_data.analysis_month,
+        "prev_month": monthly_data.prev_month,
+        "monthly_summary": _to_json_object(monthly_data.monthly_summary),
+        "monthly_comparisons": _to_json_object(monthly_data.monthly_comparisons),
+        "fixed_variable": _to_json_object(monthly_data.fixed_variable),
+        "category_deep": _to_json_value(monthly_data.category_deep),
+        "top_savable_categories": _to_json_value(monthly_data.top_savable_categories),
+        "repeat_patterns": _to_json_object(monthly_data.repeat_patterns),
+        "weekly_trend": _to_json_object(monthly_data.weekly_trend),
+        "micro_spending": _to_json_object(monthly_data.micro_spending),
+        "late_night_spending": _to_json_object(monthly_data.late_night_spending),
+        "high_spending": _to_json_object(monthly_data.high_spending),
+        "saving_potential": _to_json_object(monthly_data.saving_potential),
+        "cash_flow_volatility": _to_json_object(monthly_data.cash_flow_volatility),
+        "spending_concentration": _to_json_object(monthly_data.spending_concentration),
+        "frictionless_and_density": _to_json_object(monthly_data.frictionless_and_density),
+        "installment_debt_pressure": _to_json_object(monthly_data.installment_debt_pressure),
+        "monthly_metrics": _compact_monthly_metrics(monthly_data),
+    }
 
 
 def _build_monthly_category_change_indicators(
@@ -599,14 +659,24 @@ def make_monthly_feedback_input(
     advice_contexts: Sequence[RetrievedAdviceContext],
     user_profile: object | None = None,
     memory_context: object | None = None,
+    compact_input: bool = True,
 ) -> dict[str, str]:
     """최종 월간 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
+    if not compact_input:
+        return {
+            "monthly_json": monthly_data.model_dump_json(),
+            "interpretation_json": serialize_interpretation_result(interpretation_result),
+            "retrieved_contexts": serialize_advice_contexts(advice_contexts),
+            "user_profile_json": serialize_context_object(user_profile or {}),
+            "memory_context_json": serialize_context_object(memory_context or {}),
+        }
+
     return {
-        "monthly_json": monthly_data.model_dump_json(),
-        "interpretation_json": serialize_interpretation_result(interpretation_result),
-        "retrieved_contexts": serialize_advice_contexts(advice_contexts),
-        "user_profile_json": serialize_context_object(user_profile or {}),
-        "memory_context_json": serialize_context_object(memory_context or {}),
+        "monthly_json": _compact_json_dumps(_compact_monthly_analysis(monthly_data)),
+        "interpretation_json": _serialize_compact_interpretation_result(interpretation_result),
+        "retrieved_contexts": _serialize_compact_advice_contexts(advice_contexts),
+        "user_profile_json": _serialize_compact_user_profile(user_profile or {}),
+        "memory_context_json": _serialize_compact_memory_context(memory_context or {}),
     }
 
 
@@ -884,6 +954,7 @@ def generate_monthly_feedback(
     interpretation_temperature: float = 0.0,
     feedback_temperature: float = 0.0,
     persona_key: str | None = None,
+    compact_feedback_input: bool = True,
     timing_callback: FeedbackTimingCallback | None = None,
 ) -> MonthlyFeedbackServiceResult:
     """월간 소비 분석, 해석, RAG 검색, 최종 월간 피드백 생성을 한 번에 실행한다."""
@@ -1023,6 +1094,7 @@ def generate_monthly_feedback(
                     advice_contexts=advice_contexts,
                     user_profile=user_profile,
                     memory_context=memory_context,
+                    compact_input=compact_feedback_input,
                 )
             ),
         )

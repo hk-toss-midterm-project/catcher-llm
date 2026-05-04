@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -245,6 +246,99 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertIn("비상금 300만원 만들기", payload["user_profile_json"])
         self.assertIn("{}", payload["memory_context_json"])
 
+    def test_make_monthly_feedback_input_switches_compact_and_full_payloads(self) -> None:
+        """최종 월간 피드백 입력을 토큰 절감 버전과 원본 전체 버전으로 전환할 수 있는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_monthly_settings(Path(tmp_dir))
+            monthly_payload = build_monthly_consumption_analysis_json(
+                member_id=1,
+                analysis_month="2024-04",
+                settings=settings,
+            )
+        monthly_data = parse_monthly_spending_data(monthly_payload)
+        advice_contexts = [
+            RetrievedAdviceContext(
+                query=f"절약 방법 {index}",
+                source=f"guide-{index}.pdf",
+                content="긴 월간 근거 문장 " * 120,
+                page_number=index,
+                document_kind="saving_tips",
+                usefulness_score=1.0 - (index * 0.01),
+                usefulness_reason="토큰 절약 입력에는 필요 없는 긴 유용성 설명",
+            )
+            for index in range(7)
+        ]
+        memory_context = {
+            "user_id": 1,
+            "period_type": "monthly",
+            "memory_summary": "고정비와 식비 점검이 반복적으로 필요하다",
+            "recent_sessions": [
+                {
+                    "analysis_date": "2024-03",
+                    "analysis_result": '{"monthly_summary": {"this_month_total": 999999}}',
+                    "feedback_reason": '[{"title": "전월 소비"}]',
+                    "todo_tomorrow": "자동이체 항목을 점검한다.",
+                }
+            ],
+        }
+
+        compact_payload = make_monthly_feedback_input(
+            monthly_data=monthly_data,
+            interpretation_result={"cause_result": CauseAnalysisResult()},
+            advice_contexts=advice_contexts,
+            user_profile={
+                "user_id": 1,
+                "name": "김토스",
+                "job": "개발자",
+                "region": None,
+                "saving_goal_text": "비상금",
+            },
+            memory_context=memory_context,
+        )
+        full_payload = make_monthly_feedback_input(
+            monthly_data=monthly_data,
+            interpretation_result={"cause_result": CauseAnalysisResult()},
+            advice_contexts=advice_contexts,
+            user_profile={
+                "user_id": 1,
+                "name": "김토스",
+                "job": "개발자",
+                "region": None,
+                "saving_goal_text": "비상금",
+            },
+            memory_context=memory_context,
+            compact_input=False,
+        )
+
+        compact_monthly = json.loads(compact_payload["monthly_json"])
+        full_monthly = json.loads(full_payload["monthly_json"])
+        compact_contexts = json.loads(compact_payload["retrieved_contexts"])
+        full_contexts = json.loads(full_payload["retrieved_contexts"])
+        compact_profile = json.loads(compact_payload["user_profile_json"])
+        full_profile = json.loads(full_payload["user_profile_json"])
+        compact_memory = json.loads(compact_payload["memory_context_json"])
+        full_memory = json.loads(full_payload["memory_context_json"])
+
+        self.assertNotIn("source_path", compact_monthly)
+        self.assertNotIn("outlier_thresholds", compact_monthly)
+        self.assertIn("source_path", full_monthly)
+        self.assertIn("outlier_thresholds", full_monthly)
+        self.assertNotIn(
+            "category_monthly_spending_ratio",
+            compact_monthly["monthly_metrics"],
+        )
+        self.assertIn("category_monthly_spending_ratio", full_monthly["monthly_metrics"])
+        self.assertEqual(len(compact_contexts), 5)
+        self.assertEqual(len(full_contexts), 7)
+        self.assertLessEqual(len(compact_contexts[0]["content"]), 500)
+        self.assertNotIn("usefulness_reason", compact_contexts[0])
+        self.assertIn("usefulness_reason", full_contexts[0])
+        self.assertNotIn("name", compact_profile)
+        self.assertEqual(full_profile["name"], "김토스")
+        self.assertNotIn("analysis_result", compact_memory["recent_sessions"][0])
+        self.assertIn("analysis_result", full_memory["recent_sessions"][0])
+        self.assertLess(len(compact_payload["monthly_json"]), len(full_payload["monthly_json"]))
+
     def test_generate_monthly_feedback_orchestrates_analysis_interpretation_rag_and_feedback(
         self,
     ) -> None:
@@ -357,6 +451,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
                     member_id=1,
                     analysis_month="2024-04",
                     settings=settings,
+                    compact_feedback_input=False,
                     timing_callback=timing_records.append,
                 )
 
@@ -411,6 +506,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertIn("retrieved_contexts", feedback_payload)
         self.assertIn("user_profile_json", feedback_payload)
         self.assertIn("memory_context_json", feedback_payload)
+        self.assertIn("outlier_thresholds", feedback_payload["monthly_json"])
         self.assertIsNotNone(result.memory_context)
         assert result.memory_context is not None
         self.assertEqual(
