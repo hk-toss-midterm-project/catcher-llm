@@ -1,24 +1,24 @@
 {
-  "raw_data_dir": "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/markdown/users_report",
-  "embedding_provider": "upstage",
-  "embedding_model": "solar-embedding-1-large",
+  "raw_data_dir": "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\markdown\\users_report",
+  "embedding_provider": "openai",
+  "embedding_model": "text-embedding-3-small",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/markdown/users_report/period_2026-01-01_to_2026-01-31/users_trend_report.md",
-      1777508801797456246,
-      6185
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\markdown\\users_report\\period_2026-01-01_to_2026-01-31\\users_trend_report.md",
+      1777442923101723800,
+      6285
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/markdown/users_report/period_2026-01-01_to_2026-04-30/users_trend_report.md",
-      1777807901508917931,
-      13221
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\markdown\\users_report\\period_2026-01-01_to_2026-04-30\\users_trend_report.md",
+      1777442852256674000,
+      13402
     ],
     [
-      "/Users/elixir/dev/project/hk-toss/catcher/catcher-llm/data/raw/markdown/users_report/users_trend_report.md",
-      1777626210320409522,
-      13813
+      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\markdown\\users_report\\users_trend_report.md",
+      1777435915349945900,
+      13984
     ]
   ]
 }
