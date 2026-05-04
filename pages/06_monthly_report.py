@@ -1234,31 +1234,6 @@ def render_monthly_report(result, member_id: str, month: str):
         reward_point=reward_point,
     )
 
-    st.markdown('<div class="section">월간 소비 대시보드</div>', unsafe_allow_html=True)
-
-    d1, d2, d3 = st.columns([1.15, 1.15, 1.15])
-
-    with d1:
-        with st.container(border=True):
-            st.markdown("### 주차별 소비 흐름")
-            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), width="stretch")
-
-    with d2:
-        with st.container(border=True):
-            st.markdown("### 전월 대비 카테고리 증감")
-            st.plotly_chart(make_category_change_chart(monthly_data), width="stretch")
-
-    with d3:
-        with st.container(border=True):
-            st.markdown("### TOP 5 가맹점")
-
-            top5_merchant_fig = make_top5_merchant_chart_from_sqlite(member_id_int, month)
-
-            if top5_merchant_fig is not None:
-                st.plotly_chart(top5_merchant_fig, width="stretch")
-            else:
-                st.info("가맹점 데이터가 없습니다.")
-
     st.markdown('<div class="section">이번 달 판단</div>', unsafe_allow_html=True)
 
     p1, p2 = st.columns([1, 1])
@@ -1363,6 +1338,32 @@ def render_monthly_report(result, member_id: str, month: str):
 
         if st.button("의견 제출", width="stretch", key="monthly_reason_submit_btn"):
             st.success("의견 감사합니다! 다음 리포트 개선에 반영할게요 🙏")
+
+    st.markdown('<div class="section">월간 소비 대시보드</div>', unsafe_allow_html=True)
+
+    d1, d2, d3 = st.columns([1.15, 1.15, 1.15])
+
+    with d1:
+        with st.container(border=True):
+            st.markdown("### 주차별 소비 흐름")
+            st.plotly_chart(make_weekly_trend_chart(monthly_analysis), width="stretch")
+
+    with d2:
+        with st.container(border=True):
+            st.markdown("### 전월 대비 카테고리 증감")
+            st.plotly_chart(make_category_change_chart(monthly_data), width="stretch")
+
+    with d3:
+        with st.container(border=True):
+            st.markdown("### TOP 5 가맹점")
+
+            top5_merchant_fig = make_top5_merchant_chart_from_sqlite(member_id_int, month)
+
+            if top5_merchant_fig is not None:
+                st.plotly_chart(top5_merchant_fig, width="stretch")
+            else:
+                st.info("가맹점 데이터가 없습니다.")
+
 
     with st.expander("상세 분석 & 데이터"):
         st.subheader("월간 분석 JSON")
