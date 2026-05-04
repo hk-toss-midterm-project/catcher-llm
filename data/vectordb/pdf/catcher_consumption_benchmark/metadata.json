@@ -1,13 +1,13 @@
 {
-  "raw_data_dir": "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\catcher_consumption_benchmark",
-  "embedding_provider": "openai",
-  "embedding_model": "text-embedding-3-small",
+  "raw_data_dir": "pdf/catcher_consumption_benchmark",
+  "embedding_provider": "upstage",
+  "embedding_model": "solar-embedding-1-large",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "C:\\Users\\user\\dev\\catcher-llm\\data\\raw\\pdf\\catcher_consumption_benchmark\\catcher_consumption_benchmark_201807_201812.pdf",
-      1777532996295915200,
+      "pdf/catcher_consumption_benchmark/catcher_consumption_benchmark_201807_201812.pdf",
+      1776931207130412385,
       1344180
     ]
   ]
