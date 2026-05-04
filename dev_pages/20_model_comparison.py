@@ -70,7 +70,7 @@ _DEFAULT_MODELS: list[str] = [
     "gpt-4.1-nano",
     "gpt-5-mini",
     "gpt-5-nano",
-    "gpt5.4",
+    "gpt-5.4",
     "claude-haiku-4-5",
     "claude-sonnet-4-6",
 ]
