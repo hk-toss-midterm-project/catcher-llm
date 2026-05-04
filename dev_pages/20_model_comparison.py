@@ -303,7 +303,7 @@ def _run_feedback_for_model(
                 None  # max_tokens 대신 max_completion_tokens 사용을 위해 초기화할 수 있으나 ChatOpenAI 인터페이스 확인 필요
             )
             # LangChain ChatOpenAI는 모델 파라미터로 max_completion_tokens를 지원함
-            kwargs["model_kwargs"] = {"max_completion_tokens": 512}
+            kwargs["model_kwargs"] = {"max_completion_tokens": 8192}
 
         llm = ChatOpenAI(**kwargs)
 
