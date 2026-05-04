@@ -51,6 +51,7 @@ class WeeklyCategorySummary(BaseModel):
     prev_week_amount: int
     diff_amount: int
     diff_rate_percent: float
+    ratio_context_warning: JsonObject | None = None
 
 
 class WeeklyPeriodComparison(BaseModel):

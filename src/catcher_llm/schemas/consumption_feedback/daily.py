@@ -25,6 +25,7 @@ class CategoryRatioChange(BaseModel):
     usual_ratio_percent: float
     today_ratio_percent: float
     diff_point: float
+    ratio_context_warning: JsonObject | None = None
 
 
 class StableMetrics(BaseModel):

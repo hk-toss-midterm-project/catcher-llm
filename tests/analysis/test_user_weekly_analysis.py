@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from catcher_llm.analysis.user_weekly_analysis import build_weekly_consumption_analysis_from_frames
+from catcher_llm.services.consumption_feedback.weekly_feedback import parse_weekly_spending_data
 
 # ---------------------------------------------------------------------------
 # 픽스처: 최소 재현 데이터
@@ -286,6 +287,34 @@ def test_category_summary_ratio_sums_to_100(base_frame: pd.DataFrame) -> None:
     result = _run(base_frame)
     total_ratio = sum(row["ratio_percent"] for row in result["category_summary"])
     assert abs(total_ratio - 100.0) < 0.1
+
+
+def test_category_summary_marks_ratio_context_warning() -> None:
+    """주간 카테고리 비중이 작은 총지출 분모로 과장될 때 경고를 포함하는지 검증한다."""
+    frame = pd.DataFrame(
+        [
+            _make_row(1, "2024-03-25 10:00:00", 100_000, "마트", "생활"),
+            _make_row(1, "2024-03-26 10:00:00", 100_000, "식당", "식비"),
+            _make_row(1, "2024-04-01 10:00:00", 62_600, "택시", "교통"),
+            _make_row(1, "2024-04-02 10:00:00", 8_700, "편의점", "식비"),
+        ]
+    )
+
+    result = build_weekly_consumption_analysis_from_frames(
+        frame,
+        member_id=1,
+        week_start="2024-04-01",
+        week_end="2024-04-07",
+    )
+    traffic_row = next(row for row in result["category_summary"] if row["category"] == "교통")
+    warning = traffic_row["ratio_context_warning"]
+    parsed = parse_weekly_spending_data(result)
+    parsed_traffic_row = next(row for row in parsed.category_summary if row.category == "교통")
+
+    assert "비중 수치만으로 급증" in warning["interpretation_rule"]
+    assert warning["current_amount"] == 62_600
+    assert warning["current_count"] == 1
+    assert parsed_traffic_row.ratio_context_warning is not None
 
 
 # ---------------------------------------------------------------------------

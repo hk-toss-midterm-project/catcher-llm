@@ -119,6 +119,7 @@ class MonthlyCategoryDeep(BaseModel):
     prev_month_amount: int
     diff_amount: int
     diff_rate_percent: float
+    ratio_context_warning: JsonObject | None = None
 
 
 class MonthlyMerchantSummary(BaseModel):

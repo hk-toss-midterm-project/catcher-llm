@@ -52,6 +52,10 @@ from catcher_llm.services.consumption_feedback.interpretation import (
     make_spending_metric,
     truncate_context_text,
 )
+from catcher_llm.services.consumption_feedback.ratio_guard import (
+    coerce_ratio_context_message,
+    collect_ratio_context_warnings,
+)
 from catcher_llm.services.consumption_feedback.timing import (
     FeedbackTimingCallback,
     run_timed_feedback_step,
@@ -966,6 +970,12 @@ def generate_weekly_feedback(
             feedback
             if isinstance(feedback, WeeklyFeedbackResult)
             else WeeklyFeedbackResult.model_validate(feedback)
+        )
+        feedback_result.feedback_message = coerce_ratio_context_message(
+            message=feedback_result.feedback_message,
+            warnings=collect_ratio_context_warnings(weekly_data.category_summary),
+            period_label="이번 주",
+            mission=feedback_result.next_week_mission,
         )
         run_timed_feedback_step(
             step_key="save_session",

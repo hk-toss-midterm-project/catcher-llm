@@ -7,6 +7,7 @@ from typing import cast
 
 import pandas as pd
 
+from catcher_llm.analysis.ratio_context import build_ratio_context_warning
 from catcher_llm.schemas.consumption_feedback import JsonObject, JsonValue
 
 _REQUIRED_COLUMNS = {
@@ -272,17 +273,44 @@ def _build_same_weekday_average_comparison(
 
 def _build_category_ratio_changes(
     category_comparison: pd.DataFrame,
+    today_frame: pd.DataFrame,
+    *,
+    today_total: float,
+    reference_total: float,
 ) -> list[JsonValue]:
     """평소 대비 당일 업종 카테고리 비중 변화 목록을 JSON 값 목록으로 만든다."""
     rows: list[JsonValue] = []
+    today_amounts = today_frame.groupby("업종 카테고리")["사용 금액"].sum()
+    today_counts = today_frame.groupby("업종 카테고리").size()
     for category, row in category_comparison.sort_values("diff_point", ascending=False).iterrows():
+        category_name = str(category)
+        current_amount = float(today_amounts.get(category, 0))
+        current_count = int(today_counts.get(category, 0))
+        usual_ratio = float(cast(float, row["usual_ratio_percent"]))
+        today_ratio = float(cast(float, row["today_ratio_percent"]))
+        diff_point = float(cast(float, row["diff_point"]))
+        ratio_row: JsonObject = {
+            "category": category_name,
+            "usual_ratio_percent": _round_float(usual_ratio),
+            "today_ratio_percent": _round_float(today_ratio),
+            "diff_point": _round_float(diff_point),
+        }
+        warning = build_ratio_context_warning(
+            category=category_name,
+            period_label="오늘",
+            reference_label="평소 하루 평균",
+            current_ratio_percent=today_ratio,
+            reference_ratio_percent=usual_ratio,
+            current_amount=current_amount,
+            current_total=today_total,
+            reference_total=reference_total,
+            current_count=current_count,
+            low_count_threshold=2,
+        )
+        if warning is not None:
+            ratio_row["ratio_context_warning"] = warning
         rows.append(
-            {
-                "category": str(category),
-                "usual_ratio_percent": _round_float(float(cast(float, row["usual_ratio_percent"]))),
-                "today_ratio_percent": _round_float(float(cast(float, row["today_ratio_percent"]))),
-                "diff_point": _round_float(float(cast(float, row["diff_point"]))),
-            }
+            ratio_row,
         )
     return rows
 
@@ -615,7 +643,12 @@ def build_daily_consumption_analysis_from_frames(
         "past_daily_stable_average": _round_float(past_daily_stable_avg),
         "today_total": _to_amount(today_total),
         "increase_rate_percent": _round_float(increase_rate),
-        "category_ratio_changes": _build_category_ratio_changes(category_comparison),
+        "category_ratio_changes": _build_category_ratio_changes(
+            category_comparison,
+            today_frame,
+            today_total=today_total,
+            reference_total=past_daily_stable_avg,
+        ),
     }
     anomaly_detection: JsonObject = {
         "past_daily_original_average": _round_float(past_daily_original_avg),

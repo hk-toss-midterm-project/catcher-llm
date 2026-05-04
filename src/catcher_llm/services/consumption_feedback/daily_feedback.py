@@ -52,6 +52,10 @@ from catcher_llm.services.consumption_feedback.interpretation import (
     parse_user_spending_data,
     truncate_context_text,
 )
+from catcher_llm.services.consumption_feedback.ratio_guard import (
+    coerce_ratio_context_message,
+    collect_ratio_context_warnings,
+)
 from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.rag.core import retrieve_context_records
 from catcher_llm.services.user_data_service import ensure_user_database
@@ -1075,6 +1079,14 @@ def generate_daily_feedback(
             feedback
             if isinstance(feedback, DailyFeedbackResult)
             else DailyFeedbackResult.model_validate(feedback)
+        )
+        feedback_result.scolding_message = coerce_ratio_context_message(
+            message=feedback_result.scolding_message,
+            warnings=collect_ratio_context_warnings(
+                user_data.stable_metrics.category_ratio_changes
+            ),
+            period_label="오늘",
+            mission=feedback_result.tomorrow_mission,
         )
         _run_timed_daily_feedback_step(
             step_key="save_session",

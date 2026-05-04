@@ -20,6 +20,7 @@ import pytest
 from catcher_llm.analysis.user_monthly_analysis import (
     build_monthly_consumption_analysis_from_frames,
 )
+from catcher_llm.services.consumption_feedback.monthly_feedback import parse_monthly_spending_data
 
 # ---------------------------------------------------------------------------
 # 픽스처: 최소 재현 데이터
@@ -303,6 +304,33 @@ def test_top_savable_categories_are_waste_type(base_frame: pd.DataFrame) -> None
     result = _run(base_frame)
     for row in result["top_savable_categories"]:
         assert row["type"] == "낭비성"
+
+
+def test_category_deep_marks_ratio_context_warning() -> None:
+    """월간 카테고리 비중이 작은 총지출 분모로 과장될 때 경고를 포함하는지 검증한다."""
+    frame = pd.DataFrame(
+        [
+            _make_row(1, "2024-03-05 10:00:00", 100_000, "마트", "생활"),
+            _make_row(1, "2024-03-15 10:00:00", 100_000, "식당", "식비"),
+            _make_row(1, "2024-04-01 10:00:00", 62_600, "택시", "교통"),
+            _make_row(1, "2024-04-02 10:00:00", 8_700, "편의점", "식비"),
+        ]
+    )
+
+    result = build_monthly_consumption_analysis_from_frames(
+        frame,
+        member_id=1,
+        analysis_month="2024-04",
+    )
+    traffic_row = next(row for row in result["category_deep"] if row["category"] == "교통")
+    warning = traffic_row["ratio_context_warning"]
+    parsed = parse_monthly_spending_data(result)
+    parsed_traffic_row = next(row for row in parsed.category_deep if row.category == "교통")
+
+    assert "비중 수치만으로 급증" in warning["interpretation_rule"]
+    assert warning["current_amount"] == 62_600
+    assert warning["current_count"] == 1
+    assert parsed_traffic_row.ratio_context_warning is not None
 
 
 # ---------------------------------------------------------------------------

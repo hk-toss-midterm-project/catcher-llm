@@ -14,6 +14,7 @@ from catcher_llm.schemas.consumption_feedback import JsonObject
 from catcher_llm.services.consumption_feedback.daily_analysis import (
     build_daily_consumption_analysis_json,
 )
+from catcher_llm.services.consumption_feedback.interpretation import parse_user_spending_data
 
 
 def _write_feedback_seed_csvs(csv_dir: Path) -> None:
@@ -234,6 +235,74 @@ class ConsumptionFeedbackDailyAnalysisTests(unittest.TestCase):
         self.assertEqual(recent_average["reference_day_count"], 4)
         self.assertAlmostEqual(float(recent_average["average_total"]), 25_000.0)
         self.assertAlmostEqual(float(recent_average["amount_diff_rate_percent"]), 100.0)
+
+    def test_daily_ratio_context_warning_marks_small_denominator_spike(self) -> None:
+        """일일 카테고리 비중 급등이 작은 총지출 분모 때문일 수 있음을 JSON에 표시하는지 검증한다."""
+        past_frame = pd.DataFrame(
+            [
+                {
+                    "멤버 id": 1,
+                    "id": idx,
+                    "사용 금액": 100_000,
+                    "사용 시간": used_at,
+                    "결제 내역": "식당",
+                    "업종 카테고리": "식비",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                }
+                for idx, used_at in enumerate(
+                    [
+                        "2024-03-28 12:00:00",
+                        "2024-03-29 12:00:00",
+                        "2024-03-30 12:00:00",
+                        "2024-03-31 12:00:00",
+                    ],
+                    start=1,
+                )
+            ]
+        )
+        today_frame = pd.DataFrame(
+            [
+                {
+                    "멤버 id": 1,
+                    "id": 5,
+                    "사용 금액": 62_600,
+                    "사용 시간": "2024-04-01 09:00:00",
+                    "결제 내역": "택시",
+                    "업종 카테고리": "교통",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+                {
+                    "멤버 id": 1,
+                    "id": 6,
+                    "사용 금액": 8_700,
+                    "사용 시간": "2024-04-01 12:00:00",
+                    "결제 내역": "편의점",
+                    "업종 카테고리": "식비",
+                    "결제 방식 (온/오프라인)": "오프라인",
+                },
+            ]
+        )
+
+        result = build_daily_consumption_analysis_from_frames(
+            past_frame,
+            today_frame,
+            member_id=1,
+            analysis_date="2024-04-01",
+            previous_date="2024-03-31",
+        )
+
+        stable_metrics = cast(JsonObject, result["stable_metrics"])
+        ratio_changes = cast(list[JsonObject], stable_metrics["category_ratio_changes"])
+        traffic_row = next(row for row in ratio_changes if row["category"] == "교통")
+        warning = cast(JsonObject, traffic_row["ratio_context_warning"])
+        parsed = parse_user_spending_data(result)
+        parsed_warning = parsed.stable_metrics.category_ratio_changes[0].ratio_context_warning
+
+        self.assertIn("비중 수치만으로 급증", str(warning["interpretation_rule"]))
+        self.assertEqual(warning["current_amount"], 62_600)
+        self.assertEqual(warning["current_count"], 1)
+        self.assertIsNotNone(parsed_warning)
+        self.assertIn("current_amount", parsed.model_dump_json())
 
     def test_build_daily_consumption_analysis_from_frames_matches_notebook_contract(
         self,

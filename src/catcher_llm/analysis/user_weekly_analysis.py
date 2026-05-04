@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from catcher_llm.analysis.ratio_context import build_ratio_context_warning
 from catcher_llm.schemas.consumption_feedback import JsonObject, JsonValue
 
 # ===== 가맹점 분류 키워드 (노트북과 동일) =====
@@ -437,6 +438,7 @@ def _build_category_summary(
     this_cat = df_this.groupby("업종 카테고리")["사용 금액"].sum()
     prev_cat = df_prev.groupby("업종 카테고리")["사용 금액"].sum()
     this_cat_cnt = df_this.groupby("업종 카테고리").size()
+    prev_total = float(df_prev["사용 금액"].sum())
 
     all_cats = sorted(set(this_cat.index) | set(prev_cat.index))
     rows: list[JsonValue] = []
@@ -446,17 +448,31 @@ def _build_category_summary(
         diff = ta - pa
         ratio = _safe_rate(ta, this_total) * 100
         diff_rate = _safe_rate(diff, pa) * 100 if pa != 0 else 0.0
-        rows.append(
-            {
-                "category": str(cat),
-                "total_amount": _to_amount(ta),
-                "ratio_percent": _round_float(ratio),
-                "transaction_count": int(this_cat_cnt.get(cat, 0)),
-                "prev_week_amount": _to_amount(pa),
-                "diff_amount": _to_amount(diff),
-                "diff_rate_percent": _round_float(diff_rate),
-            }
+        transaction_count = int(this_cat_cnt.get(cat, 0))
+        row: JsonObject = {
+            "category": str(cat),
+            "total_amount": _to_amount(ta),
+            "ratio_percent": _round_float(ratio),
+            "transaction_count": transaction_count,
+            "prev_week_amount": _to_amount(pa),
+            "diff_amount": _to_amount(diff),
+            "diff_rate_percent": _round_float(diff_rate),
+        }
+        warning = build_ratio_context_warning(
+            category=str(cat),
+            period_label="이번 주",
+            reference_label="전주",
+            current_ratio_percent=ratio,
+            current_amount=ta,
+            reference_amount=pa,
+            current_total=this_total,
+            reference_total=prev_total,
+            current_count=transaction_count,
+            low_count_threshold=3,
         )
+        if warning is not None:
+            row["ratio_context_warning"] = warning
+        rows.append(row)
     rows.sort(key=lambda r: r["total_amount"], reverse=True)  # type: ignore[arg-type]
     return rows
 

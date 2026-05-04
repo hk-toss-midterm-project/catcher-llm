@@ -170,6 +170,12 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("action_result가 포함된 경우에도 최종 행동이 아니므로", content)
         self.assertIn("RAG 문서 근거와 사용자 메모리", content)
         self.assertIn("그대로 복사하지 마라", content)
+        self.assertIn("ratio_context_warning", content)
+        self.assertIn("내부 판단에만 사용", content)
+        self.assertIn("분모", content)
+        self.assertIn("노출하지 마라", content)
+        self.assertIn("결론은 반복 여부와 절대금액 점검 중심", content)
+        self.assertIn("비중만으로 '급증', '습관 악화', '예산 초과'를 단정하지 마라", content)
 
     def test_daily_feedback_result_expands_blank_scolding_message(self) -> None:
         """최종 일일 피드백 본문이 비어 있으면 근거와 미션으로 저장 가능한 본문을 보강하는지 검증한다."""

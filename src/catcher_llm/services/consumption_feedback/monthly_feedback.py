@@ -55,6 +55,10 @@ from catcher_llm.services.consumption_feedback.interpretation import (
 from catcher_llm.services.consumption_feedback.monthly_analysis import (
     build_monthly_consumption_analysis_json,
 )
+from catcher_llm.services.consumption_feedback.ratio_guard import (
+    coerce_ratio_context_message,
+    collect_ratio_context_warnings,
+)
 from catcher_llm.services.consumption_feedback.timing import (
     FeedbackTimingCallback,
     run_timed_feedback_step,
@@ -1010,6 +1014,12 @@ def generate_monthly_feedback(
             feedback
             if isinstance(feedback, MonthlyFeedbackResult)
             else MonthlyFeedbackResult.model_validate(feedback)
+        )
+        feedback_result.feedback_message = coerce_ratio_context_message(
+            message=feedback_result.feedback_message,
+            warnings=collect_ratio_context_warnings(monthly_data.category_deep),
+            period_label="이번 달",
+            mission=feedback_result.next_month_mission,
         )
         run_timed_feedback_step(
             step_key="save_session",

@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from catcher_llm.analysis.ratio_context import build_ratio_context_warning
 from catcher_llm.schemas.consumption_feedback import JsonObject, JsonValue
 
 # ===== 가맹점 분류 키워드 (노트북과 동일) =====
@@ -404,6 +405,7 @@ def _build_category_deep(
     this_cat = df_this.groupby("업종 카테고리")["사용 금액"].sum()
     prev_cat = df_prev.groupby("업종 카테고리")["사용 금액"].sum()
     this_cat_cnt = df_this.groupby("업종 카테고리").size()
+    prev_total = float(df_prev["사용 금액"].sum())
 
     all_cats = sorted(set(this_cat.index) | set(prev_cat.index))
     cat_deep: list[JsonValue] = []
@@ -420,18 +422,32 @@ def _build_category_deep(
             if cat in _WASTE_CATEGORIES
             else "기타"
         )
-        cat_deep.append(
-            {
-                "category": str(cat),
-                "type": cat_type,
-                "total_amount": _to_amount(ta),
-                "ratio_percent": _round_float(ratio),
-                "transaction_count": int(this_cat_cnt.get(cat, 0)),
-                "prev_month_amount": _to_amount(pa),
-                "diff_amount": _to_amount(diff),
-                "diff_rate_percent": _round_float(diff_r),
-            }
+        transaction_count = int(this_cat_cnt.get(cat, 0))
+        row: JsonObject = {
+            "category": str(cat),
+            "type": cat_type,
+            "total_amount": _to_amount(ta),
+            "ratio_percent": _round_float(ratio),
+            "transaction_count": transaction_count,
+            "prev_month_amount": _to_amount(pa),
+            "diff_amount": _to_amount(diff),
+            "diff_rate_percent": _round_float(diff_r),
+        }
+        warning = build_ratio_context_warning(
+            category=str(cat),
+            period_label="이번 달",
+            reference_label="전월",
+            current_ratio_percent=ratio,
+            current_amount=ta,
+            reference_amount=pa,
+            current_total=this_total,
+            reference_total=prev_total,
+            current_count=transaction_count,
+            low_count_threshold=5,
         )
+        if warning is not None:
+            row["ratio_context_warning"] = warning
+        cat_deep.append(row)
     cat_deep.sort(key=lambda r: r["total_amount"], reverse=True)  # type: ignore[arg-type]
 
     top_savable: list[JsonValue] = sorted(
