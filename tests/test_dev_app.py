@@ -1226,7 +1226,7 @@ def test_feedback_dev_pages_render_generation_progress() -> None:
 
 
 def test_report_pages_render_generated_feedback_fields() -> None:
-    """리포트 페이지가 피드백 개발 페이지와 같은 생성 피드백 필드를 메인 화면에 반영하는지 검증한다."""
+    """리포트 페이지가 메인 화면에 노출할 생성 피드백 필드만 반영하는지 검증한다."""
     daily_source = Path("pages/04_daily_report.py").read_text(encoding="utf-8")
     weekly_source = Path("pages/05_weekly_report.py").read_text(encoding="utf-8")
     monthly_source = Path("pages/06_monthly_report.py").read_text(encoding="utf-8")
@@ -1237,13 +1237,13 @@ def test_report_pages_render_generated_feedback_fields() -> None:
     assert "feedback.action_items" in daily_source
 
     assert "feedback.feedback_message" in weekly_source
-    assert "feedback.next_week_mission" in weekly_source
+    assert "feedback.next_week_mission" not in weekly_source
     assert "feedback.key_evidences" in weekly_source
     assert "feedback.action_items" in weekly_source
     assert 'getattr(feedback, "scolding_message"' not in weekly_source
 
     assert "feedback.feedback_message" in monthly_source
-    assert "feedback.next_month_mission" in monthly_source
+    assert "feedback.next_month_mission" not in monthly_source
     assert "feedback.key_evidences" in monthly_source
     assert "feedback.action_items" in monthly_source
     assert 'getattr(feedback, "scolding_message"' not in monthly_source

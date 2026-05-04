@@ -28,6 +28,7 @@ import streamlit as st
 from langchain_anthropic import ChatAnthropic
 from langchain_community.callbacks import get_openai_callback
 from langchain_openai import ChatOpenAI
+from langsmith import Client, traceable
 from pydantic import SecretStr
 from streamlit_date_picker import PickerType
 
@@ -58,7 +59,6 @@ from catcher_llm.ui.date_picker import (
     _session_key,
     render_date_picker_styles,
 )
-from langsmith import Client, traceable
 
 # ── 상수 ──────────────────────────────────────────────────────────────────────
 _COMPARE_RESULTS_KEY = "model_compare_results"
@@ -73,22 +73,24 @@ _DEFAULT_MODELS: list[str] = [
 ]
 
 _EVAL_DATASET_NAME = "catcher-feedback-model-eval"
+_GPT5_MAX_COMPLETION_TOKENS = 8192
+_GPT5_REASONING_EFFORT = "minimal"
 
 # ── 모델 단가 테이블 (input_$/1M, output_$/1M) ────────────────────────────────
 # 출처: OpenAI / Anthropic 공식 pricing 페이지 기준
 # gpt-5 계열은 아직 공식 확정 전으로 추정치 사용 — 실제 과금 후 업데이트 필요
 _MODEL_PRICING: dict[str, tuple[float, float]] = {
-    "gpt-4o":           (2.50,  10.00),
-    "gpt-4o-mini":      (0.15,   0.60),
-    "gpt-4.1":          (2.00,   8.00),
-    "gpt-4.1-mini":     (0.40,   1.60),
-    "gpt-4.1-nano":     (0.10,   0.40),
-    "gpt-5":            (10.00, 40.00),   # 추정치
-    "gpt-5-mini":       (1.00,   4.00),   # 추정치
-    "gpt-5-nano":       (0.50,   2.00),   # 추정치
-    "claude-opus-4":    (15.00, 75.00),
-    "claude-sonnet-4":  (3.00,  15.00),
-    "claude-haiku-4":   (0.80,   4.00),
+    "gpt-4o": (2.50, 10.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1-nano": (0.10, 0.40),
+    "gpt-5": (10.00, 40.00),  # 추정치
+    "gpt-5-mini": (1.00, 4.00),  # 추정치
+    "gpt-5-nano": (0.50, 2.00),  # 추정치
+    "claude-opus-4": (15.00, 75.00),
+    "claude-sonnet-4": (3.00, 15.00),
+    "claude-haiku-4": (0.80, 4.00),
 }
 _KRW_PER_USD: float = 1_380.0  # 참고용 환율 (변동 가능)
 _LLM_JUDGE_MODEL = "claude-sonnet-4-6"
@@ -109,7 +111,7 @@ def _calc_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
             break
     if matched is None:
         return 0.0
-    in_cost  = prompt_tokens     * matched[0] / 1_000_000
+    in_cost = prompt_tokens * matched[0] / 1_000_000
     out_cost = completion_tokens * matched[1] / 1_000_000
     return round(in_cost + out_cost, 7)
 
@@ -145,7 +147,9 @@ class SharedInput:
     date: str  # 일일: YYYY-MM-DD / 주간: YYYY-MM-DD (week_start) / 월간: YYYY-MM
     feedback_input: dict[str, str]
     period: str = "daily"  # "daily" | "weekly" | "monthly"
-    baseline_feedback: DailyFeedbackResult | WeeklyFeedbackResult | MonthlyFeedbackResult | None = None
+    baseline_feedback: DailyFeedbackResult | WeeklyFeedbackResult | MonthlyFeedbackResult | None = (
+        None
+    )
     # 렌더링용 정규화 필드
     baseline_title: str = ""
     baseline_message: str = ""
@@ -166,7 +170,7 @@ class ModelRunResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     tokens_per_sec: float = 0.0
-    cost_usd: float = 0.0   # 예상 비용 (USD)
+    cost_usd: float = 0.0  # 예상 비용 (USD)
     llm_quality_score: float | None = None
     llm_quality_reason: str = ""
     error: str | None = None
@@ -297,13 +301,10 @@ def _run_feedback_for_model(
             "model": model,
             "temperature": temperature,
         }
-        if "gpt-5" in model:
-            # 노트북 로직 참고: gpt-5는 max_completion_tokens 권장
-            kwargs["max_tokens"] = (
-                None  # max_tokens 대신 max_completion_tokens 사용을 위해 초기화할 수 있으나 ChatOpenAI 인터페이스 확인 필요
-            )
-            # LangChain ChatOpenAI는 모델 파라미터로 max_completion_tokens를 지원함
-            kwargs["model_kwargs"] = {"max_completion_tokens": 8192}
+        if model.lower().startswith("gpt-5"):
+            # GPT-5 구조화 출력은 reasoning 토큰까지 completion 한도를 공유하므로 여유를 둔다.
+            kwargs["max_completion_tokens"] = _GPT5_MAX_COMPLETION_TOKENS
+            kwargs["reasoning_effort"] = _GPT5_REASONING_EFFORT
 
         llm = ChatOpenAI(**kwargs)
 
@@ -381,7 +382,11 @@ def _build_summary_frame(model_runs: Sequence[ModelRunResult]) -> pd.DataFrame:
         msg = run.scolding_message
         quality = _composite_quality(msg)
         q_per_1k = round(quality / (run.total_tokens / 1000), 4) if run.total_tokens > 0 else 0.0
-        cost = run.cost_usd if run.cost_usd else _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
+        cost = (
+            run.cost_usd
+            if run.cost_usd
+            else _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
+        )
         rows.append(
             {
                 "모델": run.model,
@@ -459,7 +464,7 @@ def _llm_judge_feedback(text: str, settings: Settings) -> tuple[float, str]:
     Catcher 소비 분석 프로젝트에 특화된 기준으로 채점한다.
     Returns: (score 0.0~1.0, reason str)
     """
-    _sys = '''당신은 Catcher 소비 분석 피드백의 품질을 평가하는 전문가입니다.
+    _sys = """당신은 Catcher 소비 분석 피드백의 품질을 평가하는 전문가입니다.
 Catcher는 사용자의 실제 소비 데이터를 분석해 맞춤형 피드백과 미션을 제공하는 앱입니다.
 
 다음 기준으로 피드백을 0.0~1.0 점수로 평가하세요:
@@ -477,7 +482,7 @@ Catcher는 사용자의 실제 소비 데이터를 분석해 맞춤형 피드백
 - 0.0~0.3: 불량. 소비 분석 피드백으로서 기능을 하지 못함
 
 JSON만 반환하세요 (다른 텍스트 절대 금지):
-{"score": 0.85, "reason": "평가 이유를 2문장 이내로 간결하게"}'''
+{"score": 0.85, "reason": "평가 이유를 2문장 이내로 간결하게"}"""
 
     llm = ChatAnthropic(
         api_key=SecretStr(settings.anthropic_api_key),
@@ -485,10 +490,12 @@ JSON만 반환하세요 (다른 텍스트 절대 금지):
         temperature=0.0,
     )
     try:
-        response = llm.invoke([
-            {"role": "system", "content": _sys},
-            {"role": "user", "content": f"피드백:\n{text}"},
-        ])
+        response = llm.invoke(
+            [
+                {"role": "system", "content": _sys},
+                {"role": "user", "content": f"피드백:\n{text}"},
+            ]
+        )
         content = str(response.content).strip()
         if content.startswith("```"):
             content = re.sub(r"^```(?:json)?\n?", "", content)
@@ -500,6 +507,7 @@ JSON만 반환하세요 (다른 텍스트 절대 금지):
     except Exception as exc:
         return 0.5, f"평가 오류: {str(exc)[:80]}"
     return 0.5, "파싱 실패"
+
 
 def _render_shared_inputs_summary(shared_inputs: Sequence[SharedInput]) -> None:
     """공통 파이프라인 입력 생성 결과(기준선)를 간략히 표시한다."""
@@ -522,7 +530,7 @@ def _render_summary_table(agg: pd.DataFrame) -> None:
         st.info("표시할 결과가 없습니다.")
         return
     _disp = agg.rename(columns={"평균종합품질": "서빈님의 임의 기준 품질 평가"})
-    st.dataframe(_disp, use_container_width=True, hide_index=True)
+    st.dataframe(_disp, width="stretch", hide_index=True)
 
 
 def _render_quality_per_token_chart(agg: pd.DataFrame) -> None:
@@ -545,7 +553,7 @@ def _render_quality_per_token_chart(agg: pd.DataFrame) -> None:
         yaxis_title="품질 / 1K토큰",
         xaxis_title=None,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _render_model_feedback_columns(
@@ -592,8 +600,10 @@ def _render_model_feedback_columns(
                     unsafe_allow_html=True,
                 )
                 st.write("")
-                cost = run.cost_usd or _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
-                krw  = cost * _KRW_PER_USD
+                cost = run.cost_usd or _calc_cost(
+                    run.model, run.prompt_tokens, run.completion_tokens
+                )
+                krw = cost * _KRW_PER_USD
                 st.metric("서빈님의 임의 기준 품질 평가", f"{quality:.3f}")
                 st.caption(
                     f"⏱️ {run.latency_sec:.2f}s | 🪙 {run.total_tokens}tok | "
@@ -607,16 +617,18 @@ def _render_ranking(agg: pd.DataFrame) -> None:
         return
     st.markdown("---")
     col1, col2, col3, col4, col5 = st.columns(5)
-    best_eff  = agg.iloc[0]
+    best_eff = agg.iloc[0]
     best_qual = agg.loc[agg["평균종합품질"].idxmax()]
     least_tok = agg.loc[agg["평균전체토큰"].idxmin()]
-    fastest   = agg.loc[agg["평균속도"].idxmax()]
-    cheapest  = agg.loc[agg["평균비용"].idxmin()]
+    fastest = agg.loc[agg["평균속도"].idxmax()]
+    cheapest = agg.loc[agg["평균비용"].idxmin()]
     col1.metric(
         "🏆 토큰 효율 1위", str(best_eff["모델"]), f"품질/1K = {best_eff['품질_1K토큰']:.4f}"
     )
     col2.metric(
-        "🎯 임의 기준 품질 1위", str(best_qual["모델"]), f"서빈기준 = {best_qual['평균종합품질']:.3f}"
+        "🎯 임의 기준 품질 1위",
+        str(best_qual["모델"]),
+        f"서빈기준 = {best_qual['평균종합품질']:.3f}",
     )
     col3.metric("💡 최소 토큰", str(least_tok["모델"]), f"평균 {least_tok['평균전체토큰']:.0f}tok")
     col4.metric("⚡ 최고 속도", str(fastest["모델"]), f"{fastest['평균속도']:.1f} tok/s")
@@ -727,7 +739,7 @@ if not selected_models:
 
 
 # ── 실행 ──────────────────────────────────────────────────────────────────────
-if st.button("🚀 비교 실행", use_container_width=True):
+if st.button("🚀 비교 실행", width="stretch"):
     compare_results = CompareResults()
     base_settings = Settings()
     shared_inputs_list: list[SharedInput] = []
@@ -748,7 +760,10 @@ if st.button("🚀 비교 실행", use_container_width=True):
             if baseline_result.error:
                 st.warning(f"파이프라인 오류: {baseline_result.error}")
                 compare_results.errors.append({"date": date_label, "error": baseline_result.error})
-            elif baseline_result.daily_analysis is None or baseline_result.interpretation_result is None:
+            elif (
+                baseline_result.daily_analysis is None
+                or baseline_result.interpretation_result is None
+            ):
                 st.warning("분석 또는 해석 결과가 없습니다.")
             else:
                 feedback_input = make_daily_feedback_input(
@@ -759,18 +774,22 @@ if st.button("🚀 비교 실행", use_container_width=True):
                     memory_context=baseline_result.memory_context,
                 )
                 fb = baseline_result.feedback
-                shared_inputs_list.append(SharedInput(
-                    date=date_label,
-                    feedback_input=feedback_input,
-                    period=period,
-                    baseline_feedback=fb,
-                    baseline_title=fb.summary_title if fb else "",
-                    baseline_message=fb.scolding_message if fb else "",
-                    baseline_mission=fb.tomorrow_mission if fb else "",
-                ))
+                shared_inputs_list.append(
+                    SharedInput(
+                        date=date_label,
+                        feedback_input=feedback_input,
+                        period=period,
+                        baseline_feedback=fb,
+                        baseline_title=fb.summary_title if fb else "",
+                        baseline_message=fb.scolding_message if fb else "",
+                        baseline_mission=fb.tomorrow_mission if fb else "",
+                    )
+                )
 
         elif period == "weekly":
-            progress_bar.progress(0.1, text=f"주간 피드백 파이프라인 실행 중: {week_start} ~ {week_end}...")
+            progress_bar.progress(
+                0.1, text=f"주간 피드백 파이프라인 실행 중: {week_start} ~ {week_end}..."
+            )
             baseline_result = generate_weekly_feedback(
                 member_id=int(member_id),
                 week_start=week_start,
@@ -780,7 +799,10 @@ if st.button("🚀 비교 실행", use_container_width=True):
             if baseline_result.error:
                 st.warning(f"파이프라인 오류: {baseline_result.error}")
                 compare_results.errors.append({"date": date_label, "error": baseline_result.error})
-            elif baseline_result.weekly_analysis is None or baseline_result.interpretation_result is None:
+            elif (
+                baseline_result.weekly_analysis is None
+                or baseline_result.interpretation_result is None
+            ):
                 st.warning("주간 분석 또는 해석 결과가 없습니다.")
             else:
                 feedback_input = make_weekly_feedback_input(
@@ -791,15 +813,17 @@ if st.button("🚀 비교 실행", use_container_width=True):
                     memory_context=baseline_result.memory_context,
                 )
                 fb = baseline_result.feedback
-                shared_inputs_list.append(SharedInput(
-                    date=date_label,
-                    feedback_input=feedback_input,
-                    period=period,
-                    baseline_feedback=fb,
-                    baseline_title=fb.summary_title if fb else "",
-                    baseline_message=fb.feedback_message if fb else "",
-                    baseline_mission=fb.next_week_mission if fb else "",
-                ))
+                shared_inputs_list.append(
+                    SharedInput(
+                        date=date_label,
+                        feedback_input=feedback_input,
+                        period=period,
+                        baseline_feedback=fb,
+                        baseline_title=fb.summary_title if fb else "",
+                        baseline_message=fb.feedback_message if fb else "",
+                        baseline_mission=fb.next_week_mission if fb else "",
+                    )
+                )
 
         else:  # monthly
             progress_bar.progress(0.1, text=f"월간 피드백 파이프라인 실행 중: {selected_month}...")
@@ -811,7 +835,10 @@ if st.button("🚀 비교 실행", use_container_width=True):
             if baseline_result.error:
                 st.warning(f"파이프라인 오류: {baseline_result.error}")
                 compare_results.errors.append({"date": date_label, "error": baseline_result.error})
-            elif baseline_result.monthly_analysis is None or baseline_result.interpretation_result is None:
+            elif (
+                baseline_result.monthly_analysis is None
+                or baseline_result.interpretation_result is None
+            ):
                 st.warning("월간 분석 또는 해석 결과가 없습니다.")
             else:
                 feedback_input = make_monthly_feedback_input(
@@ -822,15 +849,17 @@ if st.button("🚀 비교 실행", use_container_width=True):
                     memory_context=baseline_result.memory_context,
                 )
                 fb = baseline_result.feedback
-                shared_inputs_list.append(SharedInput(
-                    date=date_label,
-                    feedback_input=feedback_input,
-                    period=period,
-                    baseline_feedback=fb,
-                    baseline_title=fb.summary_title if fb else "",
-                    baseline_message=fb.feedback_message if fb else "",
-                    baseline_mission=fb.next_month_mission if fb else "",
-                ))
+                shared_inputs_list.append(
+                    SharedInput(
+                        date=date_label,
+                        feedback_input=feedback_input,
+                        period=period,
+                        baseline_feedback=fb,
+                        baseline_title=fb.summary_title if fb else "",
+                        baseline_message=fb.feedback_message if fb else "",
+                        baseline_mission=fb.next_month_mission if fb else "",
+                    )
+                )
 
     except Exception as exc:
         st.warning(f"공통 파이프라인 예외: {exc}")
@@ -924,7 +953,7 @@ with tab_summary:
         for run in compare_results.model_runs:
             if run.error:
                 continue
-            msg  = run.scolding_message
+            msg = run.scolding_message
             cost = run.cost_usd or _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
             detail_rows.append(
                 {
@@ -945,7 +974,7 @@ with tab_summary:
                 }
             )
         if detail_rows:
-            st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(detail_rows), width="stretch", hide_index=True)
 
 with tab_charts:
     # 상단: 토큰 효율 + 레이더
@@ -973,7 +1002,7 @@ with tab_charts:
             title="모델별 품질 레이더 차트",
             margin=dict(t=60, b=20, l=20, r=20),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     st.markdown("---")
 
@@ -1001,7 +1030,7 @@ with tab_charts:
                 yaxis_title="비용 (USD)",
                 xaxis_title=None,
             )
-            st.plotly_chart(fig_cost, use_container_width=True)
+            st.plotly_chart(fig_cost, width="stretch")
 
         with cost_col2:
             fig_scatter = px.scatter(
@@ -1012,7 +1041,10 @@ with tab_charts:
                 size="평균전체토큰",
                 color="모델",
                 title="비용 vs 품질 (버블=전체토큰)",
-                labels={"평균비용": "평균 비용 (USD)", "평균종합품질": "서빈님의 임의 기준 품질 평가"},
+                labels={
+                    "평균비용": "평균 비용 (USD)",
+                    "평균종합품질": "서빈님의 임의 기준 품질 평가",
+                },
             )
             fig_scatter.update_traces(textposition="top center")
             fig_scatter.update_layout(
@@ -1020,7 +1052,7 @@ with tab_charts:
                 margin=dict(t=50, b=20, l=20, r=20),
                 showlegend=False,
             )
-            st.plotly_chart(fig_scatter, use_container_width=True)
+            st.plotly_chart(fig_scatter, width="stretch")
 
         with st.expander("사용된 모델 단가표 (수동 업데이트 필요)"):
             pricing_rows = [
@@ -1049,7 +1081,7 @@ st.caption(
     "수치 인용·실용성·동기부여·자연스러움·톤을 종합 평가합니다."
 )
 
-if st.button("🤖 LLM 평가 실행", key="run_llm_judge", use_container_width=True):
+if st.button("🤖 LLM 평가 실행", key="run_llm_judge", width="stretch"):
     _llm_res: dict[tuple[str, str], dict[str, object]] = {}
     _base_s2 = Settings()
     _runs_eval = [r for r in compare_results.model_runs if not r.error and r.scolding_message]
@@ -1101,7 +1133,7 @@ if _llm_data:
         xaxis_title=None,
         margin=dict(t=50, b=20, l=20, r=20),
     )
-    st.plotly_chart(_fig_j, use_container_width=True)
+    st.plotly_chart(_fig_j, width="stretch")
 
     # 상세 결과 테이블
-    st.dataframe(_jdf, hide_index=True, use_container_width=True)
+    st.dataframe(_jdf, hide_index=True, width="stretch")

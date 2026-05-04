@@ -231,7 +231,8 @@ class RetrieverTests(unittest.TestCase):
             self.assertEqual(metadata["embedding_model"], settings.embedding_model_name)
             self.assertEqual(metadata["chunk_size"], 100)
             self.assertEqual(metadata["chunk_overlap"], 10)
-            self.assertEqual(metadata["raw_data_dir"], str(raw_dir.resolve()))
+            self.assertEqual(metadata["raw_data_dir"], "pdf/saving_tips")
+            self.assertEqual(metadata["file_signature"][0][0], "pdf/saving_tips/guide.txt")
 
     def test_build_local_vectorstore_loads_saved_index_when_metadata_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -249,14 +250,14 @@ class RetrieverTests(unittest.TestCase):
             metadata_path.write_text(
                 json.dumps(
                     {
-                        "raw_data_dir": str(raw_dir.resolve()),
+                        "raw_data_dir": "pdf/saving_tips",
                         "embedding_provider": settings.embedding_model_provider,
                         "embedding_model": settings.embedding_model_name,
                         "chunk_size": 100,
                         "chunk_overlap": 10,
                         "file_signature": [
                             [
-                                str(source_path),
+                                "pdf/saving_tips/guide.txt",
                                 source_path.stat().st_mtime_ns,
                                 source_path.stat().st_size,
                             ]
@@ -355,10 +356,10 @@ class RetrieverTests(unittest.TestCase):
             )
             self.assertTrue(metadata_path.exists())
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            self.assertEqual(metadata["raw_data_dir"], str(raw_root.resolve()))
-            self.assertEqual(metadata["source_files"], [str(source_path.resolve())])
+            self.assertEqual(metadata["raw_data_dir"], ".")
+            self.assertEqual(metadata["source_files"], ["pdf/welfare/guide.txt"])
             self.assertEqual(len(metadata["file_signature"]), 1)
-            self.assertEqual(metadata["file_signature"][0][0], str(source_path))
+            self.assertEqual(metadata["file_signature"][0][0], "pdf/welfare/guide.txt")
 
 
 if __name__ == "__main__":
