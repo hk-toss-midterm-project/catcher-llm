@@ -66,11 +66,51 @@ _SHARED_INPUTS_KEY = "model_compare_shared_inputs"
 _DEFAULT_MODELS: list[str] = [
     "gpt-4o-mini",
     "gpt-4.1-mini",
+    "gpt-4.1-nano",
     "gpt-5-mini",
+    "gpt-5-nano",
     "claude-haiku-4-5",
 ]
 
 _EVAL_DATASET_NAME = "catcher-feedback-model-eval"
+
+# ── 모델 단가 테이블 (input_$/1M, output_$/1M) ────────────────────────────────
+# 출처: OpenAI / Anthropic 공식 pricing 페이지 기준
+# gpt-5 계열은 아직 공식 확정 전으로 추정치 사용 — 실제 과금 후 업데이트 필요
+_MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "gpt-4o":           (2.50,  10.00),
+    "gpt-4o-mini":      (0.15,   0.60),
+    "gpt-4.1":          (2.00,   8.00),
+    "gpt-4.1-mini":     (0.40,   1.60),
+    "gpt-4.1-nano":     (0.10,   0.40),
+    "gpt-5":            (10.00, 40.00),   # 추정치
+    "gpt-5-mini":       (1.00,   4.00),   # 추정치
+    "gpt-5-nano":       (0.50,   2.00),   # 추정치
+    "claude-opus-4":    (15.00, 75.00),
+    "claude-sonnet-4":  (3.00,  15.00),
+    "claude-haiku-4":   (0.80,   4.00),
+}
+_KRW_PER_USD: float = 1_380.0  # 참고용 환율 (변동 가능)
+
+
+def _calc_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """모델명·토큰 수로 예상 비용(USD)을 계산한다.
+
+    _MODEL_PRICING에서 가장 긴 prefix가 일치하는 항목을 선택한다.
+    매칭 실패 시 0.0 반환.
+    """
+    m = model.lower()
+    matched: tuple[float, float] | None = None
+    for key in sorted(_MODEL_PRICING, key=len, reverse=True):
+        if m.startswith(key.lower()):
+            matched = _MODEL_PRICING[key]
+            break
+    if matched is None:
+        return 0.0
+    in_cost  = prompt_tokens     * matched[0] / 1_000_000
+    out_cost = completion_tokens * matched[1] / 1_000_000
+    return round(in_cost + out_cost, 7)
+
 
 # 금지 패턴: 노트북과 동일하게 유지
 _FORBIDDEN_RE = re.compile(r"급증하여|평소\s*\d+[\d.]*%와|diff_point|avg_ratio")
@@ -124,6 +164,7 @@ class ModelRunResult:
     completion_tokens: int = 0
     total_tokens: int = 0
     tokens_per_sec: float = 0.0
+    cost_usd: float = 0.0   # 예상 비용 (USD)
     error: str | None = None
 
 
@@ -298,6 +339,7 @@ def _run_feedback_for_model(
         # Anthropic 모델의 경우 callback에서 토큰이 0으로 나올 수 있음 (기본 연동 기준)
         # 이 경우 대략적인 추정치를 사용하거나 로깅에만 의존
         spd = round(c_tok / latency, 1) if latency > 0 and c_tok else 0.0
+        cost = _calc_cost(model, p_tok, c_tok)
 
         return ModelRunResult(
             model=model,
@@ -310,6 +352,7 @@ def _run_feedback_for_model(
             completion_tokens=c_tok,
             total_tokens=t_tok,
             tokens_per_sec=spd,
+            cost_usd=cost,
         )
     except Exception as exc:
         latency = round(time.perf_counter() - t0, 3)
@@ -334,6 +377,7 @@ def _build_summary_frame(model_runs: Sequence[ModelRunResult]) -> pd.DataFrame:
         msg = run.scolding_message
         quality = _composite_quality(msg)
         q_per_1k = round(quality / (run.total_tokens / 1000), 4) if run.total_tokens > 0 else 0.0
+        cost = run.cost_usd if run.cost_usd else _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
         rows.append(
             {
                 "모델": run.model,
@@ -343,6 +387,7 @@ def _build_summary_frame(model_runs: Sequence[ModelRunResult]) -> pd.DataFrame:
                 "전체토큰": run.total_tokens,
                 "지연(초)": run.latency_sec,
                 "속도(tok/s)": run.tokens_per_sec,
+                "비용($)": cost,
                 "정확성": _score_accuracy(msg),
                 "구용성": _score_utility(msg),
                 "형식": _score_format(msg),
@@ -361,17 +406,20 @@ def _build_summary_frame(model_runs: Sequence[ModelRunResult]) -> pd.DataFrame:
             평균전체토큰=("전체토큰", "mean"),
             평균지연=("지연(초)", "mean"),
             평균속도=("속도(tok/s)", "mean"),
+            평균비용=("비용($)", "mean"),
             평균정확성=("정확성", "mean"),
             평균구용성=("구용성", "mean"),
             평균형식=("형식", "mean"),
             평균종합품질=("종합품질", "mean"),
             품질_1K토큰=("품질/1K토큰", "mean"),
         )
-        .round(3)
         .reset_index()
-        .sort_values("품질_1K토큰", ascending=False)
-        .reset_index(drop=True)
     )
+    # 비용은 소수점 6자리, 나머지는 3자리 반올림
+    cost_col = agg["평균비용"]
+    agg = agg.round(3)
+    agg["평균비용"] = cost_col.round(6)
+    agg = agg.sort_values("품질_1K토큰", ascending=False).reset_index(drop=True)
     return agg
 
 
@@ -488,20 +536,26 @@ def _render_model_feedback_columns(
                     unsafe_allow_html=True,
                 )
                 st.write("")
+                cost = run.cost_usd or _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
+                krw  = cost * _KRW_PER_USD
                 st.metric("종합 품질", f"{quality:.3f}")
-                st.caption(f"⏱️ {run.latency_sec:.2f}s | 🪙 {run.total_tokens}tok")
+                st.caption(
+                    f"⏱️ {run.latency_sec:.2f}s | 🪙 {run.total_tokens}tok | "
+                    f"💵 ${cost:.5f} (≈₩{krw:.2f})"
+                )
 
 
 def _render_ranking(agg: pd.DataFrame) -> None:
-    """토큰 효율 및 절대 품질 랭킹을 표시한다."""
+    """토큰 효율·절대 품질·비용 랭킹을 표시한다."""
     if agg.empty:
         return
     st.markdown("---")
-    col1, col2, col3, col4 = st.columns(4)
-    best_eff = agg.iloc[0]
+    col1, col2, col3, col4, col5 = st.columns(5)
+    best_eff  = agg.iloc[0]
     best_qual = agg.loc[agg["평균종합품질"].idxmax()]
     least_tok = agg.loc[agg["평균전체토큰"].idxmin()]
-    fastest = agg.loc[agg["평균속도"].idxmax()]
+    fastest   = agg.loc[agg["평균속도"].idxmax()]
+    cheapest  = agg.loc[agg["평균비용"].idxmin()]
     col1.metric(
         "🏆 토큰 효율 1위", str(best_eff["모델"]), f"품질/1K = {best_eff['품질_1K토큰']:.4f}"
     )
@@ -510,6 +564,11 @@ def _render_ranking(agg: pd.DataFrame) -> None:
     )
     col3.metric("💡 최소 토큰", str(least_tok["모델"]), f"평균 {least_tok['평균전체토큰']:.0f}tok")
     col4.metric("⚡ 최고 속도", str(fastest["모델"]), f"{fastest['평균속도']:.1f} tok/s")
+    col5.metric(
+        "💰 최저 비용",
+        str(cheapest["모델"]),
+        f"${cheapest['평균비용']:.5f} (≈₩{cheapest['평균비용'] * _KRW_PER_USD:.1f})",
+    )
 
 
 # ── 페이지 구성 ────────────────────────────────────────────────────────────────
@@ -804,19 +863,24 @@ with tab_summary:
 
     # 날짜별 상세
     if compare_results.model_runs:
-        st.subheader("날짜 × 모델 상세 결과")
+        st.subheader("날짜 x 모델 상세 결과")
         detail_rows: list[dict[str, object]] = []
         for run in compare_results.model_runs:
             if run.error:
                 continue
-            msg = run.scolding_message
+            msg  = run.scolding_message
+            cost = run.cost_usd or _calc_cost(run.model, run.prompt_tokens, run.completion_tokens)
             detail_rows.append(
                 {
                     "모델": run.model,
                     "날짜": run.analysis_date,
+                    "입력토큰": run.prompt_tokens,
+                    "출력토큰": run.completion_tokens,
                     "전체토큰": run.total_tokens,
                     "지연(초)": run.latency_sec,
                     "속도(tok/s)": run.tokens_per_sec,
+                    "비용($)": cost,
+                    "비용(₩)": round(cost * _KRW_PER_USD, 2),
                     "정확성": _score_accuracy(msg),
                     "구용성": _score_utility(msg),
                     "형식": _score_format(msg),
@@ -825,14 +889,14 @@ with tab_summary:
                 }
             )
         if detail_rows:
-            st.dataframe(pd.DataFrame(detail_rows), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
 
 with tab_charts:
+    # 상단: 토큰 효율 + 레이더
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
         _render_quality_per_token_chart(agg)
     with chart_col2:
-        # 레이더 차트 (이미 구현됨)
         categories = ["평균정확성", "평균구용성", "평균형식"]
         fig = go.Figure()
         for _, row in agg.iterrows():
@@ -854,6 +918,67 @@ with tab_charts:
             margin=dict(t=60, b=20, l=20, r=20),
         )
         st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # 하단: 비용 분석
+    if "평균비용" in agg.columns:
+        cost_col1, cost_col2 = st.columns(2)
+
+        with cost_col1:
+            agg_cost = agg.copy()
+            agg_cost["비용(₩)"] = (agg_cost["평균비용"] * _KRW_PER_USD).round(2)
+            fig_cost = px.bar(
+                agg_cost,
+                x="모델",
+                y="평균비용",
+                text=agg_cost["평균비용"].apply(lambda v: f"${v:.5f}"),
+                color="모델",
+                title="모델별 호출 평균 비용 (USD)",
+                hover_data={"비용(₩)": True, "평균비용": True},
+            )
+            fig_cost.update_traces(textposition="outside")
+            fig_cost.update_layout(
+                height=400,
+                margin=dict(t=50, b=20, l=20, r=20),
+                showlegend=False,
+                yaxis_title="비용 (USD)",
+                xaxis_title=None,
+            )
+            st.plotly_chart(fig_cost, use_container_width=True)
+
+        with cost_col2:
+            fig_scatter = px.scatter(
+                agg,
+                x="평균비용",
+                y="평균종합품질",
+                text="모델",
+                size="평균전체토큰",
+                color="모델",
+                title="비용 vs 품질 (버블=전체토큰)",
+                labels={"평균비용": "평균 비용 (USD)", "평균종합품질": "평균 종합 품질"},
+            )
+            fig_scatter.update_traces(textposition="top center")
+            fig_scatter.update_layout(
+                height=400,
+                margin=dict(t=50, b=20, l=20, r=20),
+                showlegend=False,
+            )
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+        with st.expander("사용된 모델 단가표 (수동 업데이트 필요)"):
+            pricing_rows = [
+                {
+                    "모델 (prefix)": k,
+                    "입력 ($/1M)": v[0],
+                    "출력 ($/1M)": v[1],
+                    "입력 (₩/1M)": round(v[0] * _KRW_PER_USD),
+                    "출력 (₩/1M)": round(v[1] * _KRW_PER_USD),
+                }
+                for k, v in _MODEL_PRICING.items()
+            ]
+            st.dataframe(pd.DataFrame(pricing_rows), hide_index=True)
+            st.caption("gpt-5 계열은 공식 출시 전 추정치입니다.")
 
 with tab_baseline:
     _render_shared_inputs_summary(compare_results.shared_inputs)
