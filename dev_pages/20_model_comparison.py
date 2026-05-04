@@ -67,7 +67,10 @@ _SHARED_INPUTS_KEY = "model_compare_shared_inputs"
 _DEFAULT_MODELS: list[str] = [
     "gpt-4o-mini",
     "gpt-4.1-mini",
+    "gpt-4.1-nano",
     "gpt-5-mini",
+    "gpt-5-nano",
+    "gpt5.4",
     "claude-haiku-4-5",
     "claude-sonnet-4-6",
 ]
@@ -88,6 +91,7 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
     "gpt-5": (10.00, 40.00),  # 추정치
     "gpt-5-mini": (1.00, 4.00),  # 추정치
     "gpt-5-nano": (0.50, 2.00),  # 추정치
+    "gpt5.4": (10.00, 40.00),  # 추정치
     "claude-opus-4": (15.00, 75.00),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-haiku-4": (0.80, 4.00),
@@ -271,7 +275,8 @@ def _render_date_picker_with_available(
 # ── 모델 실행 유틸 ─────────────────────────────────────────────────────────────
 def _get_temperature(model: str) -> float:
     """모델명에 따라 추천 temperature를 반환한다."""
-    return 1.0 if "gpt-5" in model else 0.0
+    m = model.lower()
+    return 1.0 if ("gpt-5" in m or m.startswith("gpt5")) else 0.0
 
 
 @traceable(name="run_feedback_for_model", tags=["model-comparison"])
@@ -301,7 +306,8 @@ def _run_feedback_for_model(
             "model": model,
             "temperature": temperature,
         }
-        if model.lower().startswith("gpt-5"):
+        _ml = model.lower()
+        if _ml.startswith("gpt-5") or _ml.startswith("gpt5"):
             # GPT-5 구조화 출력은 reasoning 토큰까지 completion 한도를 공유하므로 여유를 둔다.
             kwargs["max_completion_tokens"] = _GPT5_MAX_COMPLETION_TOKENS
             kwargs["reasoning_effort"] = _GPT5_REASONING_EFFORT
