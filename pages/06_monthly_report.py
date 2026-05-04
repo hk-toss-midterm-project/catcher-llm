@@ -1213,7 +1213,11 @@ def render_monthly_report(result, member_id: str, month: str):
         metric_card("최근 3개월 평균", money(recent_3_month_average), f"절약률 {saving_rate:.1f}%")
 
     with m3:
-        metric_card("이번 달 적립 포인트", f"{reward_point:,}P", "절약률 × 20, 최대 1,000P")
+        metric_card(
+            "최대 소비 카테고리",
+            _html_text(top_category),
+            f"{money(top_category_amount)} 사용"
+        )
 
     st.markdown('<div class="section">비교 기준으로 보기</div>', unsafe_allow_html=True)
 
