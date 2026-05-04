@@ -515,13 +515,34 @@ def inject_css():
             font-size:13px;
         }
 
-        .metric-value, .compare-value {
+        .metric-value {
             color:#0f172a;
             font-weight:950;
             font-size:24px;
             margin-top:10px;
             line-height:1.25;
             letter-spacing:-0.5px;
+        }
+
+        .compare-value {
+            font-weight:950;
+            font-size:24px;
+            margin-top:10px;
+            line-height:1.25;
+            letter-spacing:-0.5px;
+        }
+
+        /* 증가/감소 색상 */
+        .up-color {
+            color:#dc2626 !important;   /* 빨강 */
+        }
+
+        .down-color {
+            color:#2563eb !important;   /* 파랑 */
+        }
+
+        .neutral-color {
+            color:#475569 !important;   /* 회색 */
         }
 
         .metric-desc, .compare-desc {
@@ -707,29 +728,37 @@ def compare_card(label: str, current: int, base: int):
     if base <= 0:
         value = "비교 데이터 없음"
         desc = "해당 기준 주차의 소비 데이터가 없습니다."
-        color = "neutral-color"
+        color_class = "neutral-color"
+
     else:
         diff = current - base
         rate = calc_diff_rate(current, base)
 
+        # 증가 → 빨강
         if diff > 0:
             value = f"+{money(abs(diff))} 증가"
             desc = f"기준 {money(base)} 대비 +{rate:.1f}%"
-            color = "up-color"
+            color_class = "up-color"
+
+        # 감소 → 파랑
         elif diff < 0:
             value = f"-{money(abs(diff))} 감소"
             desc = f"기준 {money(base)} 대비 {rate:.1f}%"
-            color = "down-color"
+            color_class = "down-color"
+
+        # 동일 → 회색
         else:
             value = "변화 없음"
             desc = f"기준 {money(base)}와 동일"
-            color = "neutral-color"
+            color_class = "neutral-color"
 
     st.markdown(
         f"""
         <div class="compare-card">
             <div class="compare-label">{_html_text(label)}</div>
-            <div class="compare-value {color}">{value}</div>
+            <div class="compare-value {color_class}">
+                {value}
+            </div>
             <div class="compare-desc">{desc}</div>
         </div>
         """,
