@@ -1343,7 +1343,9 @@ def test_model_comparison_gpt5_uses_large_completion_limit() -> None:
 
     assert match is not None
     assert int(match.group(1)) >= 8192
-    assert 'model.lower().startswith("gpt-5")' in source
+    assert '_GPT5_REASONING_EFFORT = "low"' in source
+    assert "minimal" not in source
+    assert '_ml.startswith("gpt-5")' in source
     assert 'kwargs["max_completion_tokens"] = _GPT5_MAX_COMPLETION_TOKENS' in source
     assert 'kwargs["reasoning_effort"] = _GPT5_REASONING_EFFORT' in source
 

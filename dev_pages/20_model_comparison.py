@@ -77,7 +77,7 @@ _DEFAULT_MODELS: list[str] = [
 
 _EVAL_DATASET_NAME = "catcher-feedback-model-eval"
 _GPT5_MAX_COMPLETION_TOKENS = 8192
-_GPT5_REASONING_EFFORT = "minimal"
+_GPT5_REASONING_EFFORT = "low"
 
 # ── 모델 단가 테이블 (input_$/1M, output_$/1M) ────────────────────────────────
 # 출처: OpenAI / Anthropic 공식 pricing 페이지 기준
