@@ -118,6 +118,12 @@ def _to_store_safe_relative_path(config: Settings, path: Path) -> Path:
         return Path("_external").joinpath(*relative_parts)
 
 
+def _to_metadata_relative_path(config: Settings, path: Path | str) -> str:
+    """벡터스토어 메타데이터에 저장할 경로를 원본 루트 기준 상대 경로로 변환한다."""
+    relative_path = _to_store_safe_relative_path(config, Path(path))
+    return relative_path.as_posix()
+
+
 def _get_vectorstore_artifact_paths(
     config: Settings,
     raw_data_dir: Path | str,
@@ -127,6 +133,22 @@ def _get_vectorstore_artifact_paths(
     base_dir = ensure_vectorstore_dir(config)
     store_dir = base_dir / _get_store_relative_path(config, raw_data_dir, source_files)
     return (store_dir, store_dir / _VECTORSTORE_METADATA_FILENAME)
+
+
+def _get_metadata_file_signature(
+    config: Settings,
+    raw_data_dir: Path | str,
+    source_files: Sequence[Path] | None = None,
+) -> tuple[tuple[str, int, int], ...]:
+    """원본 파일 시그니처의 경로 부분을 메타데이터용 상대 경로로 바꾼다."""
+    return tuple(
+        (
+            _to_metadata_relative_path(config, Path(path)),
+            modified_at,
+            file_size,
+        )
+        for path, modified_at, file_size in _get_file_signature(raw_data_dir, source_files)
+    )
 
 
 def _build_store_metadata(
@@ -139,17 +161,20 @@ def _build_store_metadata(
     """저장된 벡터스토어가 현재 설정과 같은지 비교할 메타데이터를 구성한다."""
     actual_data_dir = Path(raw_data_dir)
     metadata = {
-        "raw_data_dir": str(actual_data_dir.resolve()),
+        "raw_data_dir": _to_metadata_relative_path(config, actual_data_dir),
         "embedding_provider": config.embedding_model_provider,
         "embedding_model": config.embedding_model_name,
         "chunk_size": chunk_size,
         "chunk_overlap": chunk_overlap,
         "file_signature": [
-            list(item) for item in _get_file_signature(actual_data_dir, source_files)
+            list(item)
+            for item in _get_metadata_file_signature(config, actual_data_dir, source_files)
         ],
     }
     if source_files is not None:
-        metadata["source_files"] = [str(path.resolve()) for path in source_files]
+        metadata["source_files"] = [
+            _to_metadata_relative_path(config, path) for path in source_files
+        ]
     return metadata
 
 
