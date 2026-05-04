@@ -1090,7 +1090,6 @@ def render_monthly_report(result, member_id: str, month: str):
     monthly_summary = monthly_data["monthly_summary"]
 
     feedback_message = _html_text(feedback.feedback_message)
-    next_month_mission = _html_text(feedback.next_month_mission)
 
     feedback_evidences = feedback.key_evidences or []
     feedback_action_items = feedback.action_items or []
@@ -1293,16 +1292,11 @@ def render_monthly_report(result, member_id: str, month: str):
         if "월간 소비 피드백" in str(summary_title):
             summary_title = "LLM 소비 코멘트"
 
-        mission_html = ""
-        if next_month_mission:
-            mission_html = f"<br><br><b>다음 달 미션</b><br>{next_month_mission}"
-
         st.markdown(
             f"""
             <div class="strategy-card">
                 <div class="strategy-title">{_html_text(summary_title)}</div>
-                {feedback_message}
-                {mission_html}<br><br>
+                {feedback_message}<br><br>
                 {repeat_text}
             </div>
             """,

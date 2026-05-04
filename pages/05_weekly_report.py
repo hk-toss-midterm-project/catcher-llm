@@ -1106,7 +1106,6 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
 
     summary_title = _html_text(feedback.summary_title)
     feedback_message = _html_text(feedback.feedback_message)
-    next_week_mission = _html_text(feedback.next_week_mission)
 
     if top_visit_count >= 2 and top_merchant != "-":
         hero_main = (
@@ -1265,16 +1264,11 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
     i1, i2 = st.columns([1.25, 1])
 
     with i1:
-        mission_html = ""
-        if next_week_mission:
-            mission_html = f"<br><br><b>다음 주 미션</b><br>{next_week_mission}"
-
         st.markdown(
             f"""
             <div class="orange-card">
                 <div class="orange-title">{summary_title}</div>
                 {feedback_message}
-                {mission_html}
             </div>
             """,
             unsafe_allow_html=True,
