@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.services.consumption_feedback.daily_feedback import (
     generate_daily_feedback,
     load_daily_session_for_date,
@@ -36,6 +37,7 @@ from catcher_llm.ui.report_auth import require_logged_in_user_id
 
 _USER_SCORE_COLUMN = "personal_score"
 _DAILY_REPORT_REGEN_KEY = "daily_report_force_regen"
+_DAILY_REPORT_PERSONA_KEY = "daily_report_persona"
 
 st.set_page_config(page_title="오늘의 소비 알림장", page_icon="🚨", layout="wide")
 
@@ -866,11 +868,41 @@ with top2:
         st.write("")
         run = st.button("생성", width="stretch")
 
+if _DAILY_REPORT_PERSONA_KEY not in st.session_state:
+    st.session_state[_DAILY_REPORT_PERSONA_KEY] = None
+
+_daily_report_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
+_daily_report_persona_labels = list(_daily_report_persona_label_to_key.keys())
+_daily_report_current_persona_key = st.session_state[_DAILY_REPORT_PERSONA_KEY]
+_daily_report_persona_title = (
+    "🎭 페르소나"
+    if _daily_report_current_persona_key is None
+    else f"🎭 페르소나 — {PERSONAS[_daily_report_current_persona_key]['label']}"
+)
+_daily_report_persona_index = (
+    None
+    if _daily_report_current_persona_key is None
+    else _daily_report_persona_labels.index(PERSONAS[_daily_report_current_persona_key]["label"])
+)
+with st.expander(_daily_report_persona_title, expanded=False):
+    _daily_report_selected_persona = st.radio(
+        "피드백을 전달할 페르소나를 선택하세요",
+        options=_daily_report_persona_labels,
+        index=_daily_report_persona_index,
+        key=f"{_DAILY_REPORT_PERSONA_KEY}_radio",
+    )
+    if _daily_report_selected_persona is not None:
+        st.session_state[_DAILY_REPORT_PERSONA_KEY] = _daily_report_persona_label_to_key[
+            _daily_report_selected_persona
+        ]
+
+daily_report_persona_key = st.session_state.get(_DAILY_REPORT_PERSONA_KEY)
 st.session_state.member_id = member_id
 
 selected_report_params = {
     "member_id": member_id,
     "analysis_date": analysis_date,
+    "persona_key": daily_report_persona_key,
 }
 if (
     not run
@@ -889,8 +921,14 @@ cached_session = load_daily_session_for_date(
     settings=settings,
 )
 has_cached_session = has_stored_feedback_payload(cached_session)
+use_cached_daily_session = daily_report_persona_key is None
 
-if cached_session is not None and has_cached_session and not force_regen:
+if (
+    cached_session is not None
+    and has_cached_session
+    and use_cached_daily_session
+    and not force_regen
+):
     st.session_state.daily_report_result = build_daily_report_result_from_session(cached_session)
     st.session_state.daily_report_params = selected_report_params
     st.session_state.daily_report_feedback = cached_session.feedback_reaction
@@ -922,6 +960,7 @@ elif run or force_regen:
             chunk_overlap=120,
             top_k=3,
             max_queries=4,
+            persona_key=st.session_state.get(_DAILY_REPORT_PERSONA_KEY),
             timing_callback=progress_callback,
         )
 

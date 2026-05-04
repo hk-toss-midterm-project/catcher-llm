@@ -10,6 +10,7 @@ import plotly.express as px
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.services.consumption_feedback.feedback_reaction import (
     save_session_feedback_reaction,
 )
@@ -43,6 +44,7 @@ PURPLE_LIGHT = "#8b5cf6"
 PURPLE_DARK = "#6d28d9"
 USER_SCORE_COLUMN = "personal_score"
 WEEKLY_REPORT_REGEN_KEY = "weekly_report_force_regen"
+WEEKLY_REPORT_PERSONA_KEY = "weekly_report_persona"
 
 
 def money(value: int | float) -> str:
@@ -1555,10 +1557,40 @@ with top2:
         st.write("")
         run = st.button("생성", width="stretch")
 
+if WEEKLY_REPORT_PERSONA_KEY not in st.session_state:
+    st.session_state[WEEKLY_REPORT_PERSONA_KEY] = None
+
+weekly_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
+weekly_persona_labels = list(weekly_persona_label_to_key.keys())
+weekly_current_persona_key = st.session_state[WEEKLY_REPORT_PERSONA_KEY]
+weekly_persona_title = (
+    "🎭 페르소나"
+    if weekly_current_persona_key is None
+    else f"🎭 페르소나 — {PERSONAS[weekly_current_persona_key]['label']}"
+)
+weekly_persona_index = (
+    None
+    if weekly_current_persona_key is None
+    else weekly_persona_labels.index(PERSONAS[weekly_current_persona_key]["label"])
+)
+with st.expander(weekly_persona_title, expanded=False):
+    weekly_selected_persona = st.radio(
+        "피드백을 전달할 페르소나를 선택하세요",
+        options=weekly_persona_labels,
+        index=weekly_persona_index,
+        key=f"{WEEKLY_REPORT_PERSONA_KEY}_radio",
+    )
+    if weekly_selected_persona is not None:
+        st.session_state[WEEKLY_REPORT_PERSONA_KEY] = weekly_persona_label_to_key[
+            weekly_selected_persona
+        ]
+
+weekly_report_persona_key = st.session_state.get(WEEKLY_REPORT_PERSONA_KEY)
 selected_params = {
     "member_id": int(member_id),
     "start_date": start_date,
     "end_date": end_date,
+    "persona_key": weekly_report_persona_key,
 }
 if (
     not run
@@ -1578,6 +1610,7 @@ params = st.session_state.weekly_report_params or selected_params
 settings = get_settings()
 regen_key = f"{WEEKLY_REPORT_REGEN_KEY}_{params['member_id']}_{params['start_date']}"
 force_regen = bool(st.session_state.get(regen_key, False))
+use_cached_weekly_session = weekly_report_persona_key is None
 
 if st.session_state.weekly_result is None:
     cached_session = load_weekly_session_for_date(
@@ -1588,6 +1621,7 @@ if st.session_state.weekly_result is None:
     if (
         cached_session is not None
         and has_stored_feedback_payload(cached_session)
+        and use_cached_weekly_session
         and not force_regen
     ):
         st.session_state.weekly_result = build_weekly_report_result_from_session(
@@ -1618,6 +1652,7 @@ if st.session_state.weekly_result is None:
                 chunk_overlap=120,
                 top_k=3,
                 max_queries=4,
+                persona_key=weekly_report_persona_key,
                 timing_callback=progress_callback,
             )
 

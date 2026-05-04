@@ -11,6 +11,7 @@ import plotly.express as px
 import streamlit as st
 
 from catcher_llm.config.settings import get_settings
+from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.services.consumption_feedback.feedback_reaction import (
     save_session_feedback_reaction,
 )
@@ -37,6 +38,7 @@ st.set_page_config(page_title="월간 소비 리포트", page_icon="🏆", layou
 
 USER_SCORE_COLUMN = "personal_score"
 MONTHLY_REPORT_REGEN_KEY = "monthly_report_force_regen"
+MONTHLY_REPORT_PERSONA_KEY = "monthly_report_persona"
 
 
 def money(value: int | float) -> str:
@@ -671,6 +673,7 @@ def compare_card(label: str, current: int, base: int):
         unsafe_allow_html=True,
     )
 
+
 def render_saving_point_card(
     member_id: int,
     month: str,
@@ -1006,8 +1009,9 @@ def make_top5_merchant_chart_from_sqlite(member_id: int, month: str):
 
 
 def call_monthly_feedback(
-    generate_monthly_feedback, *, member_id, month, settings, timing_callback
+    generate_monthly_feedback, *, member_id, month, settings, timing_callback, persona_key=None
 ):
+    """월간 피드백 서비스 시그니처 차이를 흡수해 호출 인자를 구성한다."""
     params = inspect.signature(generate_monthly_feedback).parameters
 
     base_kwargs = {
@@ -1018,6 +1022,7 @@ def call_monthly_feedback(
         "top_k": 3,
         "max_queries": 4,
         "timing_callback": timing_callback,
+        "persona_key": persona_key,
     }
 
     kwargs = {key: value for key, value in base_kwargs.items() if key in params}
@@ -1242,9 +1247,7 @@ def render_monthly_report(result, member_id: str, month: str):
 
     with m3:
         metric_card(
-            "최대 소비 카테고리",
-            _html_text(top_category),
-            f"{money(top_category_amount)} 사용"
+            "최대 소비 카테고리", _html_text(top_category), f"{money(top_category_amount)} 사용"
         )
 
     st.markdown('<div class="section">비교 기준으로 보기</div>', unsafe_allow_html=True)
@@ -1396,7 +1399,6 @@ def render_monthly_report(result, member_id: str, month: str):
             else:
                 st.info("가맹점 데이터가 없습니다.")
 
-
     with st.expander("상세 분석 & 데이터"):
         st.subheader("월간 분석 JSON")
         st.json(monthly_data)
@@ -1508,9 +1510,39 @@ with top2:
         st.write("")
         run = st.button("생성", width="stretch")
 
+if MONTHLY_REPORT_PERSONA_KEY not in st.session_state:
+    st.session_state[MONTHLY_REPORT_PERSONA_KEY] = None
+
+monthly_persona_label_to_key = {info["label"]: key for key, info in PERSONAS.items()}
+monthly_persona_labels = list(monthly_persona_label_to_key.keys())
+monthly_current_persona_key = st.session_state[MONTHLY_REPORT_PERSONA_KEY]
+monthly_persona_title = (
+    "🎭 페르소나"
+    if monthly_current_persona_key is None
+    else f"🎭 페르소나 — {PERSONAS[monthly_current_persona_key]['label']}"
+)
+monthly_persona_index = (
+    None
+    if monthly_current_persona_key is None
+    else monthly_persona_labels.index(PERSONAS[monthly_current_persona_key]["label"])
+)
+with st.expander(monthly_persona_title, expanded=False):
+    monthly_selected_persona = st.radio(
+        "피드백을 전달할 페르소나를 선택하세요",
+        options=monthly_persona_labels,
+        index=monthly_persona_index,
+        key=f"{MONTHLY_REPORT_PERSONA_KEY}_radio",
+    )
+    if monthly_selected_persona is not None:
+        st.session_state[MONTHLY_REPORT_PERSONA_KEY] = monthly_persona_label_to_key[
+            monthly_selected_persona
+        ]
+
+monthly_report_persona_key = st.session_state.get(MONTHLY_REPORT_PERSONA_KEY)
 selected_params = {
     "member_id": member_id,
     "month": month,
+    "persona_key": monthly_report_persona_key,
 }
 if (
     not run
@@ -1530,6 +1562,7 @@ if run:
 params = st.session_state.monthly_report_params if run else selected_params
 regen_key = f"{MONTHLY_REPORT_REGEN_KEY}_{params['member_id']}_{params['month']}"
 force_regen = bool(st.session_state.get(regen_key, False))
+use_cached_monthly_session = monthly_report_persona_key is None
 
 if st.session_state.monthly_report_result is None:
     settings = get_settings()
@@ -1541,6 +1574,7 @@ if st.session_state.monthly_report_result is None:
     if (
         cached_session is not None
         and has_stored_feedback_payload(cached_session)
+        and use_cached_monthly_session
         and not force_regen
     ):
         st.session_state.monthly_report_result = build_monthly_report_result_from_session(
@@ -1566,6 +1600,7 @@ if st.session_state.monthly_report_result is None:
                 member_id=params["member_id"],
                 month=params["month"],
                 settings=settings,
+                persona_key=monthly_report_persona_key,
                 timing_callback=progress_callback,
             )
 

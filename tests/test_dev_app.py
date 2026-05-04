@@ -886,6 +886,42 @@ def test_daily_interpretation_page_uses_default_sqlite_input_without_sample_sele
     assert "previous_day = analysis_day - timedelta(days=1)" in page_source
 
 
+def test_report_pages_render_persona_selector_and_pass_persona_key() -> None:
+    """일일·주간·월간 리포트 페이지가 페르소나 선택 UI와 생성 인자를 함께 제공하는지 검증한다."""
+    page_expectations = {
+        Path("pages/04_daily_report.py"): [
+            "from catcher_llm.prompts.persona_prompt import PERSONAS",
+            "_DAILY_REPORT_PERSONA_KEY",
+            "피드백을 전달할 페르소나를 선택하세요",
+            '"persona_key": daily_report_persona_key',
+            "use_cached_daily_session = daily_report_persona_key is None",
+            "persona_key=st.session_state.get(_DAILY_REPORT_PERSONA_KEY)",
+        ],
+        Path("pages/05_weekly_report.py"): [
+            "from catcher_llm.prompts.persona_prompt import PERSONAS",
+            "WEEKLY_REPORT_PERSONA_KEY",
+            "피드백을 전달할 페르소나를 선택하세요",
+            '"persona_key": weekly_report_persona_key',
+            "use_cached_weekly_session = weekly_report_persona_key is None",
+            "persona_key=weekly_report_persona_key",
+        ],
+        Path("pages/06_monthly_report.py"): [
+            "from catcher_llm.prompts.persona_prompt import PERSONAS",
+            "MONTHLY_REPORT_PERSONA_KEY",
+            "피드백을 전달할 페르소나를 선택하세요",
+            '"persona_key": persona_key',
+            '"persona_key": monthly_report_persona_key',
+            "use_cached_monthly_session = monthly_report_persona_key is None",
+            "persona_key=monthly_report_persona_key",
+        ],
+    }
+
+    for page_path, expected_fragments in page_expectations.items():
+        page_source = page_path.read_text(encoding="utf-8")
+        for expected_fragment in expected_fragments:
+            assert expected_fragment in page_source
+
+
 def test_daily_feedback_dev_page_renders_profile_and_memory_context() -> None:
     """일일 피드백 개발 페이지가 서비스의 사용자 프로필과 메모리 컨텍스트를 표시하는지 검증한다."""
     fake_result = DailyFeedbackServiceResult(
