@@ -268,6 +268,9 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("노출하지 마라", content)
         self.assertIn("결론은 반복 여부와 절대금액 점검 중심", content)
         self.assertIn("비중만으로 '급증', '습관 악화', '예산 초과'를 단정하지 마라", content)
+        self.assertIn("요일별 지출 흐름", content)
+        self.assertIn("카테고리별 지출 흐름", content)
+        self.assertIn("고액 결제 1건만으로", content)
 
     def test_make_weekly_feedback_input_serializes_contexts(self) -> None:
         """주간 피드백 체인 입력이 주간 분석, 해석, RAG, 프로필을 JSON 문자열로 직렬화하는지 검증한다."""

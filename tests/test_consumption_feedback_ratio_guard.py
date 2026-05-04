@@ -50,3 +50,26 @@ def test_coerce_ratio_context_message_keeps_safe_feedback() -> None:
     )
 
     assert rewritten == original
+
+
+def test_coerce_ratio_context_message_uses_weekly_period_expression() -> None:
+    """주간 피드백 보정문이 오늘이 아닌 이번 주 흐름 기준 표현을 사용하는지 검증한다."""
+    warning = {
+        "category": "쇼핑",
+        "current_amount": 1_194_200,
+        "current_count": 3,
+    }
+    original = "쇼핑 지출이 전체 지출의 70%를 차지하며 급증했습니다."
+
+    rewritten = coerce_ratio_context_message(
+        message=original,
+        warnings=[warning],
+        period_label="이번 주",
+        mission="다음 주에는 필요한 지출을 미리 계획해보세요.",
+    )
+
+    assert "오늘 한 번" not in rewritten
+    assert "이동 지출" not in rewritten
+    assert "이번 주 3건의 결제 흐름만으로" in rewritten
+    assert "쇼핑비 습관이 나빠졌다고 보기는 어렵습니다" in rewritten
+    assert "같은 금액대의 쇼핑 지출" in rewritten

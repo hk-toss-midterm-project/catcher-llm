@@ -50,18 +50,33 @@ def coerce_ratio_context_message(
     amount_text = f"{int(round(amount)):,}원" if amount is not None else "확인된 금액"
     count_text = f"{count}건" if count is not None else "많지 않은 거래"
     mission_text = mission.strip()
+    habit_sentence = _build_habit_sentence(
+        category=category,
+        period_label=period_label,
+        count_text=count_text,
+    )
 
     parts = [
         f"{category} 지출은 {amount_text}으로 확인됐습니다.",
-        (
-            f"{period_label} {count_text}의 결제라면 오늘 한 번의 지출만으로 "
-            f"{category}비 습관이 나빠졌다고 보기는 어렵습니다."
-        ),
-        "다만 같은 금액대의 이동 지출이 반복되는지만 확인해보세요.",
+        habit_sentence,
+        f"다만 같은 금액대의 {category} 지출이 반복되는지만 확인해보세요.",
     ]
     if mission_text:
         parts.append(mission_text)
     return " ".join(parts)
+
+
+def _build_habit_sentence(*, category: str, period_label: str, count_text: str) -> str:
+    """분석 기간에 맞는 습관 단정 방지 문장을 만든다."""
+    if period_label == "오늘":
+        return (
+            f"{period_label} {count_text}의 결제라면 오늘 한 번의 지출만으로 "
+            f"{category}비 습관이 나빠졌다고 보기는 어렵습니다."
+        )
+    return (
+        f"{period_label} {count_text}의 결제 흐름만으로 "
+        f"{category}비 습관이 나빠졌다고 보기는 어렵습니다."
+    )
 
 
 def _number_value(value: JsonValue | object) -> float | None:
