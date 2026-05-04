@@ -147,24 +147,30 @@ def save_session_feedback_reaction(
                         db_session.delete(fb_row)
                     db_session.flush()
                     for reason_text in ranked_lines:
-                        db_session.add(UserFeedbackMemoryModel(
-                            user_id=memory_row.user_id,
-                            period_type=normalized_period_type,
-                            reason=reason_text,
-                        ))
+                        db_session.add(
+                            UserFeedbackMemoryModel(
+                                user_id=memory_row.user_id,
+                                period_type=normalized_period_type,
+                                reason=reason_text,
+                            )
+                        )
                 else:
                     # 재정렬 실패 시 신규 항목만 추가
-                    db_session.add(UserFeedbackMemoryModel(
+                    db_session.add(
+                        UserFeedbackMemoryModel(
+                            user_id=memory_row.user_id,
+                            period_type=normalized_period_type,
+                            reason=normalized_reason,
+                        )
+                    )
+            else:
+                db_session.add(
+                    UserFeedbackMemoryModel(
                         user_id=memory_row.user_id,
                         period_type=normalized_period_type,
                         reason=normalized_reason,
-                    ))
-            else:
-                db_session.add(UserFeedbackMemoryModel(
-                    user_id=memory_row.user_id,
-                    period_type=normalized_period_type,
-                    reason=normalized_reason,
-                ))
+                    )
+                )
             db_session.flush()
 
         return FeedbackReactionSaveResult(

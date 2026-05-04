@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,10 +12,13 @@ from catcher_llm.config.settings import Settings
 from catcher_llm.db.models import SessionModel, UserMemoryModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.prompts.consumption_feedback import build_weekly_feedback_prompt
+from catcher_llm.prompts.consumption_feedback.weekly import (
+    build_weekly_consumption_action_prompt,
+    build_weekly_consumption_cause_prompt,
+)
 from catcher_llm.schemas.consumption_feedback import (
     CauseAnalysisResult,
     InterventionTarget,
-    RetrievedAdviceContext,
     UserProfileContext,
     WeeklyFeedbackAction,
     WeeklyFeedbackEvidence,
@@ -25,13 +29,11 @@ from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
 from catcher_llm.services.consumption_feedback.weekly_feedback import (
-    build_weekly_feedback_retrieval_queries,
     generate_weekly_feedback,
     make_weekly_feedback_input,
     make_weekly_spending_analysis_input,
     parse_weekly_spending_data,
 )
-from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.user_data_service import ensure_user_database
 
 
@@ -227,7 +229,7 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("비상금", analysis_input["user_profile_json"])
 
     def test_weekly_feedback_prompt_requires_weekly_inputs(self) -> None:
-        """최종 주간 피드백 프롬프트가 주간 분석·해석·문서 근거를 입력으로 받는지 검증한다."""
+        """최종 주간 피드백 프롬프트가 RAG 없이 주간 분석·해석·메모리를 입력으로 받는지 검증한다."""
         prompt = build_weekly_feedback_prompt()
 
         self.assertEqual(
@@ -235,7 +237,6 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             {
                 "weekly_json",
                 "interpretation_json",
-                "retrieved_contexts",
                 "user_profile_json",
                 "memory_context_json",
             },
@@ -245,7 +246,6 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             {
                 "weekly_json": '{"weekly_summary": {"this_week_total": 112000}}',
                 "interpretation_json": '{"cause_result": {"intervention_targets": []}}',
-                "retrieved_contexts": '[{"source": "guide.pdf", "content": "배달비 절약"}]',
                 "user_profile_json": '{"saving_goal_text": "비상금"}',
                 "memory_context_json": "{}",
             }
@@ -253,13 +253,13 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         content = str(rendered.messages[-1].content)
 
         self.assertIn("주간 소비", content)
-        self.assertIn("배달비 절약", content)
         self.assertIn("비상금", content)
         self.assertIn("JSON 수치 근거", content)
-        self.assertIn("cause_result.intervention_targets는 RAG 검색용 중간 후보", content)
+        self.assertIn("cause_result.intervention_targets는 최종 행동 확정 전 검토 후보", content)
         self.assertIn("action_result가 포함된 경우에도 최종 행동이 아니므로", content)
-        self.assertIn("RAG 문서 근거와 사용자 메모리", content)
+        self.assertIn("사용자 메모리", content)
         self.assertIn("그대로 복사하지 마라", content)
+        self.assertNotIn("RAG", content)
         self.assertIn("feedback_message", content)
         self.assertNotIn("scolding_message", content)
         self.assertIn("ratio_context_warning", content)
@@ -272,8 +272,37 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("카테고리별 지출 흐름", content)
         self.assertIn("고액 결제 1건만으로", content)
 
-    def test_make_weekly_feedback_input_serializes_contexts(self) -> None:
-        """주간 피드백 체인 입력이 주간 분석, 해석, RAG, 프로필을 JSON 문자열로 직렬화하는지 검증한다."""
+    def test_weekly_interpretation_prompts_do_not_describe_rag_candidates(self) -> None:
+        """주간 해석 프롬프트가 개선 후보를 RAG 검색용이 아닌 최종 피드백 검토용으로 설명하는지 검증한다."""
+        common_inputs = {
+            "user_profile_json": "{}",
+            "raw_json": "{}",
+            "indicator_json": "{}",
+            "pattern_text": "{}",
+            "problem_text": "{}",
+        }
+        rendered_prompts = [
+            build_weekly_consumption_cause_prompt().invoke(common_inputs),
+            build_weekly_consumption_action_prompt().invoke(
+                {
+                    **common_inputs,
+                    "cause_text": "{}",
+                }
+            ),
+        ]
+        prompt_contents = [
+            str(message.content)
+            for rendered_prompt in rendered_prompts
+            for message in rendered_prompt.messages
+        ]
+        combined_content = "\n".join(prompt_contents)
+
+        self.assertNotIn("RAG", combined_content)
+        self.assertIn("최종 피드백 검토 후보", combined_content)
+        self.assertIn("최종 행동 지시로 쓰지 마라", combined_content)
+
+    def test_make_weekly_feedback_input_omits_rag_contexts(self) -> None:
+        """주간 피드백 체인 입력이 RAG 없이 분석, 해석, 프로필, 메모리만 직렬화하는지 검증한다."""
         with TemporaryDirectory() as tmp_dir:
             settings = _make_weekly_settings(Path(tmp_dir))
             weekly_payload = build_weekly_consumption_analysis_json(
@@ -283,17 +312,10 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 settings=settings,
             )
         weekly_data = parse_weekly_spending_data(weekly_payload)
-        context = RetrievedAdviceContext(
-            query="배달 소비 절약 방법",
-            source="guide.pdf",
-            content="배달 주문 횟수를 미리 제한한다.",
-            page_number=2,
-        )
 
         payload = make_weekly_feedback_input(
             weekly_data=weekly_data,
             interpretation_result={"cause_result": CauseAnalysisResult()},
-            advice_contexts=[context],
             user_profile=UserProfileContext(
                 user_id=1,
                 name="김토스",
@@ -306,21 +328,19 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
             {
                 "weekly_json",
                 "interpretation_json",
-                "retrieved_contexts",
                 "user_profile_json",
                 "memory_context_json",
             },
         )
         self.assertIn("weekly_summary", payload["weekly_json"])
         self.assertIn("cause_result", payload["interpretation_json"])
-        self.assertIn("배달 소비 절약 방법", payload["retrieved_contexts"])
         self.assertIn("비상금 300만원 만들기", payload["user_profile_json"])
         self.assertIn("{}", payload["memory_context_json"])
 
-    def test_generate_weekly_feedback_orchestrates_analysis_interpretation_rag_and_feedback(
+    def test_generate_weekly_feedback_orchestrates_analysis_interpretation_and_feedback(
         self,
     ) -> None:
-        """주간 분석, 해석, RAG 검색, 최종 피드백 체인이 순서대로 실행되는지 검증한다."""
+        """주간 생성이 RAG 없이 분석, 해석, 메모리, 최종 피드백 체인만 실행하는지 검증한다."""
         interpretation_result = {
             "cause_result": CauseAnalysisResult(
                 intervention_targets=[
@@ -335,11 +355,6 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 ]
             )
         }
-        advice_context = RetrievedAdviceContext(
-            query="배달 주문 1회 줄이기 실천 방법",
-            source="saving.pdf",
-            content="주간 외식 예산을 먼저 정한다.",
-        )
         feedback_result = WeeklyFeedbackResult(
             summary_title="이번 주는 배달과 통신비를 같이 봐야 합니다",
             feedback_message="배달과 고정비가 주간 지출을 키웠습니다.",
@@ -372,7 +387,11 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         timing_records: list[FeedbackTimingRecord] = []
 
         with TemporaryDirectory() as tmp_dir:
-            settings = _make_weekly_settings(Path(tmp_dir))
+            settings = replace(
+                _make_weekly_settings(Path(tmp_dir)),
+                embedding_provider="upstage",
+                upstage_api_key="",
+            )
             ensure_user_database(settings=settings)
             with session_scope(settings) as db_session:
                 db_session.add(
@@ -412,11 +431,6 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 ),
                 patch(
                     "catcher_llm.services.consumption_feedback.weekly_feedback."
-                    "retrieve_feedback_contexts",
-                    return_value=[advice_context],
-                ) as retrieve_contexts,
-                patch(
-                    "catcher_llm.services.consumption_feedback.weekly_feedback."
                     "build_weekly_feedback_chain",
                     return_value=feedback_chain,
                 ),
@@ -454,26 +468,19 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIsNotNone(result.feedback)
         assert result.feedback is not None
         self.assertEqual(result.feedback.next_week_mission, "다음 주 배달 주문은 1회만 허용합니다.")
-        self.assertEqual(result.retrieved_contexts, [advice_context])
-        self.assertGreaterEqual(len(result.retrieval_queries), 1)
-        retrieve_contexts.assert_called_once()
-        self.assertEqual(
-            retrieve_contexts.call_args.kwargs["document_kinds"],
-            (DocumentKind.USER_REPORT,),
-        )
+        self.assertEqual(result.retrieved_contexts, [])
+        self.assertEqual(result.retrieval_queries, [])
         interpretation_payload = interpretation_chain.invoke.call_args.args[0]
         feedback_payload = feedback_chain.invoke.call_args.args[0]
-        retrieval_query_text = "\n".join(result.retrieval_queries)
         self.assertIn("weekly_summary.this_week_total", interpretation_payload["indicator_json"])
         self.assertIn(
             "weekly_metrics.weekend_spending_ratio_percent",
             interpretation_payload["indicator_json"],
         )
         self.assertIn("비상금 300만원 만들기", interpretation_payload["user_profile_json"])
-        self.assertIn("배달 주문 빈도 점검", retrieval_query_text)
         self.assertIn("weekly_json", feedback_payload)
         self.assertIn("interpretation_json", feedback_payload)
-        self.assertIn("retrieved_contexts", feedback_payload)
+        self.assertNotIn("retrieved_contexts", feedback_payload)
         self.assertIn("user_profile_json", feedback_payload)
         self.assertIn("memory_context_json", feedback_payload)
         self.assertIsNotNone(result.memory_context)
@@ -495,8 +502,6 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
                 "parse_weekly_analysis",
                 "user_profile",
                 "interpretation_chain",
-                "retrieval_queries",
-                "rag_retrieval",
                 "memory_context",
                 "feedback_chain",
                 "save_session",
@@ -505,47 +510,6 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         )
         self.assertTrue(all(record.elapsed_seconds >= 0 for record in timing_records))
         self.assertTrue(all(record.status == "success" for record in timing_records))
-
-    def test_weekly_feedback_retrieval_queries_use_weekly_signals(self) -> None:
-        """주간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""
-        with TemporaryDirectory() as tmp_dir:
-            settings = _make_weekly_settings(Path(tmp_dir))
-            weekly_payload = build_weekly_consumption_analysis_json(
-                member_id=1,
-                week_start="2024-04-01",
-                week_end="2024-04-07",
-                settings=settings,
-            )
-        weekly_data = parse_weekly_spending_data(weekly_payload)
-        queries = build_weekly_feedback_retrieval_queries(
-            weekly_data,
-            interpretation_result={
-                "cause_result": CauseAnalysisResult(
-                    intervention_targets=[
-                        InterventionTarget(
-                            target_type="cafe_micro_spending_review",
-                            title="카페 소액 반복 결제 점검 타겟",
-                            linked_cause="소액 반복 소비 가능성",
-                            target_json_path="waste_detection.micro_spending.count",
-                            reason="소액 결제 누적이 주간 소비에 영향을 줄 수 있음",
-                            query_hint="카페 소액 반복 결제 점검",
-                        )
-                    ]
-                )
-            },
-            user_profile=UserProfileContext(
-                user_id=1,
-                job="개발자",
-                saving_goal_text="비상금 300만원 만들기",
-            ),
-            max_queries=5,
-        )
-
-        self.assertEqual(len(queries), len(set(queries)))
-        self.assertTrue(any("식비" in query or "생활" in query for query in queries))
-        self.assertTrue(any("SKT통신비" in query for query in queries))
-        self.assertTrue(any("카페 소액 반복 결제 점검" in query for query in queries))
-        self.assertTrue(any("비상금" in query for query in queries))
 
 
 if __name__ == "__main__":

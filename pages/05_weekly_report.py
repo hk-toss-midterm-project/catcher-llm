@@ -1485,9 +1485,6 @@ def render_weekly_report(result, member_id: int, start_date: date, end_date: dat
         else:
             st.info("표시할 행동 항목이 없습니다.")
 
-        st.subheader("RAG 검색 질의")
-        st.write(getattr(result, "retrieval_queries", []))
-
 
 # =========================
 # Page
@@ -1648,10 +1645,6 @@ if st.session_state.weekly_result is None:
                 week_start=params["start_date"],
                 week_end=params["end_date"],
                 settings=settings,
-                chunk_size=800,
-                chunk_overlap=120,
-                top_k=3,
-                max_queries=4,
                 persona_key=weekly_report_persona_key,
                 timing_callback=progress_callback,
             )

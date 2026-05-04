@@ -47,8 +47,6 @@ WEEKLY_FEEDBACK_PROGRESS_STEPS: tuple[FeedbackProgressStep, ...] = (
     FeedbackProgressStep("parse_weekly_analysis", "주간 분석 모델 검증"),
     FeedbackProgressStep("user_profile", "사용자 프로필 조회"),
     FeedbackProgressStep("interpretation_chain", "소비 해석 체인 실행"),
-    FeedbackProgressStep("retrieval_queries", "RAG 검색 질의 생성"),
-    FeedbackProgressStep("rag_retrieval", "RAG 문서 검색"),
     FeedbackProgressStep("memory_context", "피드백 메모리 조회"),
     FeedbackProgressStep("feedback_chain", "최종 피드백 체인 실행"),
     FeedbackProgressStep("save_session", "피드백 세션 저장"),

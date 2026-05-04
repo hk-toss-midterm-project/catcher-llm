@@ -39,8 +39,8 @@ _TRANSACTION_MERCHANT_NAME_COLUMN_NAME = "merchant_name"
 # 주기별 메모리 만료 기간 (일 단위)
 _MEMORY_EXPIRY_DAYS: dict[str, int] = {
     "daily": 7,
-    "weekly": 28,   # 4주
-    "monthly": 365, # 1년
+    "weekly": 28,  # 4주
+    "monthly": 365,  # 1년
 }
 _USER_REGISTRATION_COLUMNS: tuple[str, ...] = (
     "id",
@@ -449,25 +449,29 @@ def _migrate_feedback_memory_column_to_table(config: Settings) -> None:
 
         rows = list(
             session.execute(
-                sa_text("SELECT id, user_id, period_type, user_feedback_memory FROM user_memories"
-                        " WHERE user_feedback_memory IS NOT NULL AND user_feedback_memory != ''")
+                sa_text(
+                    "SELECT id, user_id, period_type, user_feedback_memory FROM user_memories"
+                    " WHERE user_feedback_memory IS NOT NULL AND user_feedback_memory != ''"
+                )
             )
         )
         now = datetime.now(UTC)
         for row in rows:
             raw: str = row[3] or ""
-            lines = [l.strip() for l in raw.splitlines() if l.strip()]
+            lines = [line.strip() for line in raw.splitlines() if line.strip()]
             seen: set[str] = set()
             for line in lines:
                 reason = _extract_reason(line)
                 if reason and reason not in seen:
                     seen.add(reason)
-                    session.add(UserFeedbackMemoryModel(
-                        user_id=row[1],
-                        period_type=row[2],
-                        reason=reason,
-                        created_at=now,
-                    ))
+                    session.add(
+                        UserFeedbackMemoryModel(
+                            user_id=row[1],
+                            period_type=row[2],
+                            reason=reason,
+                            created_at=now,
+                        )
+                    )
 
 
 def _ensure_transaction_merchant_name_column(config: Settings) -> None:

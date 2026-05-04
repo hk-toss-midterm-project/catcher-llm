@@ -32,7 +32,6 @@ from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
 from catcher_llm.services.consumption_feedback.weekly_feedback import (
-    build_weekly_feedback_retrieval_queries,
     extract_weekly_spending_indicators,
     generate_weekly_feedback,
     make_weekly_feedback_input,
@@ -46,7 +45,6 @@ __all__ = [
     "build_monthly_consumption_analysis_json",
     "build_monthly_feedback_retrieval_queries",
     "build_weekly_consumption_analysis_json",
-    "build_weekly_feedback_retrieval_queries",
     "extract_monthly_spending_indicators",
     "extract_spending_indicators",
     "extract_weekly_spending_indicators",

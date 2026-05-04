@@ -1086,7 +1086,6 @@ def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
             next_week_mission="새 다음 주 미션입니다.",
         ),
         user_profile=UserProfileContext(user_id=1, name="김토스"),
-        retrieval_queries=["주간 재생성 테스트 질의"],
     )
     call_kwargs: dict[str, object] = {}
 
@@ -1114,6 +1113,10 @@ def test_weekly_feedback_dev_page_can_regenerate_cached_session() -> None:
     assert len(app.exception) == 0
     assert call_kwargs["week_start"].isoformat() == "2026-03-29"
     assert call_kwargs["week_end"].isoformat() == "2026-04-04"
+    assert "chunk_size" not in call_kwargs
+    assert "chunk_overlap" not in call_kwargs
+    assert "top_k" not in call_kwargs
+    assert "max_queries" not in call_kwargs
     assert any(subheader.value == "재생성된 주간 피드백" for subheader in app.subheader)
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
@@ -1259,6 +1262,37 @@ def test_feedback_dev_pages_render_generation_progress() -> None:
         page_source = page_path.read_text(encoding="utf-8")
         assert "create_feedback_progress_callback" in page_source
         assert "timing_callback=progress_callback" in page_source
+
+
+def test_weekly_feedback_generation_pages_do_not_configure_rag() -> None:
+    """주간 피드백 생성 화면이 RAG 검색 파라미터와 문서 근거 출력을 제공하지 않는지 검증한다."""
+    from catcher_llm.ui.feedback_progress import WEEKLY_FEEDBACK_PROGRESS_STEPS
+
+    page_sources = {
+        "dev": Path("dev_pages/09_weekly_feedback.py").read_text(encoding="utf-8"),
+        "report": Path("pages/05_weekly_report.py").read_text(encoding="utf-8"),
+    }
+    weekly_step_keys = {step.step_key for step in WEEKLY_FEEDBACK_PROGRESS_STEPS}
+
+    assert "retrieval_queries" not in weekly_step_keys
+    assert "rag_retrieval" not in weekly_step_keys
+
+    for page_source in page_sources.values():
+        assert "RAG 검색" not in page_source
+        assert "검색된 문서 근거" not in page_source
+        assert "retrieved_contexts" not in page_source
+        assert "retrieval_queries" not in page_source
+        assert "chunk_size=" not in page_source
+        assert "chunk_overlap=" not in page_source
+        assert "top_k=" not in page_source
+        assert "max_queries=" not in page_source
+
+    dev_source = page_sources["dev"]
+    assert "retrieval_controls" not in dev_source
+    assert "Chunk size" not in dev_source
+    assert "Chunk overlap" not in dev_source
+    assert "Top K" not in dev_source
+    assert "Max queries" not in dev_source
 
 
 def test_report_pages_render_generated_feedback_fields() -> None:
@@ -1594,8 +1628,8 @@ def test_weekly_interpretation_dev_page_renders_weekly_indicators() -> None:
     assert any(expander.label == "체인 입력 JSON" for expander in app.expander)
 
 
-def test_weekly_feedback_dev_page_renders_feedback_and_contexts() -> None:
-    """주간 피드백 개발 페이지가 최종 피드백과 RAG 컨텍스트를 표시하는지 검증한다."""
+def test_weekly_feedback_dev_page_renders_feedback_without_rag_contexts() -> None:
+    """주간 피드백 개발 페이지가 RAG 없이 최종 피드백과 개인화 컨텍스트를 표시하는지 검증한다."""
     fake_result = WeeklyFeedbackServiceResult(
         member_id=1,
         week_start="2024-04-01",
@@ -1612,7 +1646,6 @@ def test_weekly_feedback_dev_page_renders_feedback_and_contexts() -> None:
             name="김토스",
             saving_goal_text="비상금 300만원 만들기",
         ),
-        retrieval_queries=["배달 소비 절약 방법"],
     )
 
     with (

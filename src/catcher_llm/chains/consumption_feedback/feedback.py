@@ -40,7 +40,7 @@ def build_weekly_feedback_chain(
     temperature: float = 0.0,
     persona_key: str | None = None,
 ) -> Runnable[dict[str, str], WeeklyFeedbackResult]:
-    """주간 소비 분석 JSON, 해석 JSON, RAG 근거로 최종 피드백을 생성하는 체인을 만든다."""
+    """주간 소비 분석 JSON, 해석 JSON, 프로필·메모리로 최종 피드백을 생성하는 체인을 만든다."""
     chat_model = llm or get_chat_model(settings, temperature=temperature)
     persona_override = (
         PERSONAS[persona_key]["prompt"] if persona_key and persona_key in PERSONAS else None

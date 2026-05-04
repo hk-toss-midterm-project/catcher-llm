@@ -98,7 +98,7 @@ def build_daily_feedback_prompt(persona_override: str | None = None) -> ChatProm
 
 
 def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPromptTemplate:
-    """주간 소비 분석, 해석 결과, RAG 문서 근거 기반 최종 피드백 프롬프트를 생성한다."""
+    """주간 소비 분석, 해석 결과, 사용자 메모리 기반 최종 피드백 프롬프트를 생성한다."""
     _base_system = (
         "### 1. 역할 및 목표\n"
         "당신은 사용자의 한 주 소비 데이터를 꼼꼼히 분석하여 올바른 습관을 잡아주는 금융 잔소리꾼이다. "
@@ -122,7 +122,7 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
         "- 주간 흐름 우선: 고액 결제 1건만으로 문제를 단정하지 말고, weekday_pattern의 요일별 지출 흐름과 category_summary의 카테고리별 지출 흐름을 먼저 종합해 이번 주의 구조적 패턴을 판단하라.\n"
         + _build_ratio_context_instruction()
         + "- 단순 해석 지양: 분석 수치를 나열한 뒤 '이는 ~을 의미합니다'로 끝맺지 말고, 이 수치가 실제 생활에 어떤 결과를 가져오는지 연결해서 설명하라.\n"
-        "- 일관성: 분석한 '우선 점검 카테고리'와 '다음 주 미션'의 대상을 일치시키고, 추측이 아닌 JSON 수치와 RAG 문서 근거를 바탕으로 작성하라.\n\n"
+        "- 일관성: 분석한 '우선 점검 카테고리'와 '다음 주 미션'의 대상을 일치시키고, 추측이 아닌 JSON 수치와 사용자 프로필·메모리 근거를 바탕으로 작성하라.\n\n"
         "### 5. 올바른 피드백 출력 예시\n"
         "[예시 — 소비가 줄었으나 특정 카페 방문 횟수가 많은 경우]\n"
         "주말 지출을 평소보다 잘 관리하신 점은 아주 인상적이에요. 노력하신 게 느껴집니다! 다만 특정 카페 가맹점 방문 횟수가 이번 주에만 5회에 달하며 소액 지출이 끊이지 않고 있어요. 이런 무심코 반복되는 소비가 모이면 결국 주간 예산의 가장 큰 구멍이 됩니다. 다음 주에는 해당 가맹점 방문을 주 2회로 제한하고, 대신 직접 내린 커피를 챙겨보는 '절약 챌린지'를 시작해보는 건 어떨까요?"
@@ -140,8 +140,7 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
                 "아래 데이터를 바탕으로 주간 소비 피드백을 구조화해 작성하라.\n"
                 "필수 조건:\n"
                 "- JSON 수치 근거를 최소 2개 이상 사용한다.\n"
-                "- 소비 해석 JSON의 cause_result.intervention_targets는 RAG 검색용 중간 후보이다. action_result가 포함된 경우에도 최종 행동이 아니므로 RAG 문서 근거와 사용자 메모리(있는 경우 최근 세션 포함)를 종합해 최종 행동을 새로 확정하고 후보 문구를 그대로 복사하지 마라.\n"
-                "- RAG 문서 근거가 있는 행동 조언을 우선 제안한다.\n"
+                "- 소비 해석 JSON의 cause_result.intervention_targets는 최종 행동 확정 전 검토 후보이다. action_result가 포함된 경우에도 최종 행동이 아니므로 사용자 메모리(있는 경우 최근 세션 포함)와 주간 분석 수치를 종합해 최종 행동을 새로 확정하고 후보 문구를 그대로 복사하지 마라.\n"
                 "- key_evidences에는 source_json_path 또는 source/page_number를 가능한 한 채운다.\n"
                 "- 금액이 100만 원 이상일 경우 예외 없이 '금액원(약 X만 원)' 형식을 사용하여 병기한다.\n"
                 "- feedback_message는 어떤 모드에서든 분량이 너무 짧아지지 않도록 최소 3~4문장, 100자 이상으로 풍부하게 작성한다.\n"
@@ -151,8 +150,7 @@ def build_weekly_feedback_prompt(persona_override: str | None = None) -> ChatPro
                 + "\n사용자 프로필 JSON:\n{user_profile_json}\n\n"
                 "사용자 메모리 및 최근 세션 JSON:\n{memory_context_json}\n\n"
                 "주간 소비 분석 JSON:\n{weekly_json}\n\n"
-                "소비 해석 JSON:\n{interpretation_json}\n\n"
-                "RAG 검색 문서 근거:\n{retrieved_contexts}",
+                "소비 해석 JSON:\n{interpretation_json}",
             ),
         ]
     )

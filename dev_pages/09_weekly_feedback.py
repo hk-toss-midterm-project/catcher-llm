@@ -12,7 +12,6 @@ from catcher_llm.db.models import SessionModel
 from catcher_llm.prompts.persona_prompt import PERSONAS
 from catcher_llm.schemas.consumption_feedback import (
     DailyFeedbackMemoryContext,
-    RetrievedAdviceContext,
     UserProfileContext,
     WeeklyFeedbackAction,
     WeeklyFeedbackEvidence,
@@ -71,21 +70,6 @@ def _render_action_table(actions: Sequence[WeeklyFeedbackAction]) -> None:
         st.info("표시할 행동 항목이 없습니다.")
         return
     st.dataframe(frame, width="stretch", hide_index=True)
-
-
-def _render_contexts(contexts: Sequence[RetrievedAdviceContext]) -> None:
-    """RAG에서 수집한 문서 청크를 쿼리와 출처별 expander로 표시한다."""
-    if not contexts:
-        st.info("검색된 문서 근거가 없습니다.")
-        return
-
-    for index, context in enumerate(contexts, start=1):
-        page_label = f" | p.{context.page_number}" if context.page_number is not None else ""
-        with st.expander(
-            f"{index}. {context.query} | {context.source}{page_label}",
-            expanded=index == 1,
-        ):
-            st.write(context.content)
 
 
 def _render_weekly_analysis_summary(weekly_analysis: WeeklySpendingData | None) -> None:
@@ -158,7 +142,7 @@ def _render_cached_weekly_session(session_row: SessionModel) -> None:
 
 with st.sidebar:
     st.title("🧪 Catcher Dev")
-    st.caption("주간 분석, 해석, RAG 조회, 최종 주간 소비 피드백을 한 번에 실행합니다.")
+    st.caption("주간 분석, 해석, 메모리 조회, 최종 주간 소비 피드백을 한 번에 실행합니다.")
     st.write(f"SQLite: `{settings.sqlite_db_path}`")
     st.write(f"Raw data: `{settings.raw_data_dir}`")
 
@@ -175,12 +159,6 @@ with controls[1]:
         default_start=DEFAULT_CALENDAR_DATE,
         key="weekly_feedback_week",
     )
-
-retrieval_controls = st.columns(4)
-chunk_size = retrieval_controls[0].number_input("Chunk size", min_value=100, value=800, step=50)
-chunk_overlap = retrieval_controls[1].number_input("Chunk overlap", min_value=0, value=120, step=10)
-top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=3, step=1)
-max_queries = retrieval_controls[3].number_input("Max queries", min_value=1, value=4, step=1)
 
 if _WEEKLY_PERSONA_KEY not in st.session_state:
     st.session_state[_WEEKLY_PERSONA_KEY] = None
@@ -240,19 +218,12 @@ else:
                 week_start=week_start,
                 week_end=week_end,
                 settings=settings,
-                chunk_size=int(chunk_size),
-                chunk_overlap=int(chunk_overlap),
-                top_k=int(top_k),
-                max_queries=int(max_queries),
                 persona_key=st.session_state.get(_WEEKLY_PERSONA_KEY),
                 timing_callback=progress_callback,
             )
 
         if result.error:
             st.error(f"주간 피드백 생성 실패: {result.error}")
-            if result.retrieval_queries:
-                st.subheader("생성된 RAG 검색 질의")
-                st.write(result.retrieval_queries)
             _render_weekly_analysis_summary(result.weekly_analysis)
             if result.weekly_analysis is not None:
                 with st.expander("주간 분석 JSON"):
@@ -283,12 +254,6 @@ else:
 
         st.subheader("다음 주 할 일")
         _render_action_table(feedback.action_items)
-
-        st.subheader("RAG 검색 질의")
-        st.write(result.retrieval_queries)
-
-        st.subheader("검색된 문서 근거")
-        _render_contexts(result.retrieved_contexts)
 
         _render_profile_and_memory_context(
             user_profile=result.user_profile,

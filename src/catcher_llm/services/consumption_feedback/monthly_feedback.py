@@ -1080,22 +1080,3 @@ def generate_monthly_feedback(
         retrieval_queries=retrieval_queries,
         retrieved_contexts=advice_contexts,
     )
-nth,
-            error=str(exc),
-            user_profile=user_profile,
-            memory_context=memory_context,
-        )
-
-    return MonthlyFeedbackServiceResult(
-        member_id=member_id,
-        analysis_month=analysis_month,
-        feedback=feedback_result,
-        monthly_analysis=monthly_data,
-        interpretation_result=_to_json_object(interpretation_result),
-        user_profile=user_profile,
-        memory_context=memory_context,
-        retrieval_queries=retrieval_queries,
-        retrieved_contexts=advice_contexts,
-    )
-ontexts,
-    )

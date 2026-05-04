@@ -18,13 +18,9 @@ from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import SessionModel, UserFeedbackMemoryModel, UserMemoryModel
 from catcher_llm.db.session import session_scope
 from catcher_llm.schemas.consumption_feedback import (
-    ActionAnalysisResult,
-    ActionMission,
     CategoryDirection,
-    CauseAnalysisResult,
     DailyFeedbackMemoryContext,
     DailyFeedbackSessionContext,
-    InterventionTarget,
     JsonObject,
     JsonScalar,
     JsonValue,
@@ -34,15 +30,11 @@ from catcher_llm.schemas.consumption_feedback import (
     WeeklyCategoryChangeIndicator,
     WeeklyFeedbackResult,
     WeeklyFeedbackServiceResult,
-    WeeklyHighSpendingItem,
-    WeeklyMerchantVisit,
     WeeklySpendingData,
     WeeklySpendingIndicatorPayload,
 )
 from catcher_llm.services.consumption_feedback.daily_feedback import (
     load_user_profile_context,
-    retrieve_feedback_contexts,
-    serialize_advice_contexts,
     serialize_context_object,
     serialize_interpretation_result,
 )
@@ -63,14 +55,10 @@ from catcher_llm.services.consumption_feedback.timing import (
 from catcher_llm.services.consumption_feedback.weekly_analysis import (
     build_weekly_consumption_analysis_json,
 )
-from catcher_llm.services.rag.config import DocumentKind
 from catcher_llm.services.user_data_service import ensure_user_database
 
 _WEEKLY_MEMORY_PERIOD_TYPE = "weekly"
 _DEFAULT_WEEKLY_MEMORY_SESSION_LIMIT = 8
-
-_DEFAULT_WEEKLY_RETRIEVAL_QUERY = "주간 소비 절약 실천 방법"
-_WEEKLY_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (DocumentKind.USER_REPORT,)
 
 
 def _parse_week_date(value: str | date) -> date:
@@ -408,149 +396,19 @@ def make_weekly_spending_analysis_input(
     }
 
 
-def _append_unique_query(queries: list[str], query: str) -> None:
-    """비어 있지 않고 아직 없는 RAG 검색 질의만 목록에 추가한다."""
-    normalized_query = " ".join(query.split())
-    if normalized_query and normalized_query not in queries:
-        queries.append(normalized_query)
-
-
-def _iter_action_missions(action_result: object) -> list[ActionMission]:
-    """주간 해석 결과의 개선 후보 모델 또는 dict에서 RAG 검색 후보 목록을 추출한다."""
-    if isinstance(action_result, ActionAnalysisResult):
-        return [
-            *action_result.immediate_cuts,
-            *action_result.substitution_opportunities,
-            *action_result.budget_control_areas,
-            *action_result.next_week_missions,
-        ]
-    if not isinstance(action_result, dict):
-        return []
-
-    missions: list[ActionMission] = []
-    for key in (
-        "immediate_cuts",
-        "substitution_opportunities",
-        "budget_control_areas",
-        "next_week_missions",
-    ):
-        raw_items = action_result.get(key)
-        if not isinstance(raw_items, list):
-            continue
-        for raw_item in raw_items:
-            try:
-                missions.append(ActionMission.model_validate(raw_item))
-            except ValueError:
-                continue
-    return missions
-
-
-def _iter_intervention_targets(cause_result: object) -> list[InterventionTarget]:
-    """주간 원인 해석 모델 또는 dict에서 RAG 검색용 개입 타겟 후보를 추출한다."""
-    if isinstance(cause_result, CauseAnalysisResult):
-        return list(cause_result.intervention_targets)
-    if not isinstance(cause_result, dict):
-        return []
-
-    raw_items = cause_result.get("intervention_targets")
-    if not isinstance(raw_items, list):
-        return []
-
-    targets: list[InterventionTarget] = []
-    for raw_item in raw_items:
-        try:
-            targets.append(InterventionTarget.model_validate(raw_item))
-        except ValueError:
-            continue
-    return targets
-
-
-def _intervention_target_query_text(target: InterventionTarget) -> str:
-    """주간 개입 타겟 후보에서 RAG 검색에 사용할 질의 문구를 선택한다."""
-    return target.query_hint or target.title
-
-
-def _append_weekly_high_spending_queries(
-    queries: list[str],
-    items: Sequence[WeeklyHighSpendingItem],
-) -> None:
-    """고액 결제 항목을 기반으로 주간 피드백용 RAG 검색 질의를 추가한다."""
-    for item in sorted(
-        items, key=lambda high_spending_item: high_spending_item.amount, reverse=True
-    ):
-        _append_unique_query(queries, f"{item.category} {item.merchant} 지출 줄이는 방법")
-
-
-def _append_top_merchant_queries(
-    queries: list[str],
-    merchants: Sequence[WeeklyMerchantVisit],
-) -> None:
-    """반복 가맹점 정보를 기반으로 주간 피드백용 RAG 검색 질의를 추가한다."""
-    for merchant in sorted(merchants, key=lambda item: item.visit_count, reverse=True)[:2]:
-        if merchant.visit_count < 2:
-            continue
-        _append_unique_query(queries, f"{merchant.merchant} 반복 소비 줄이는 방법")
-
-
-def build_weekly_feedback_retrieval_queries(
-    weekly_data: WeeklySpendingData,
-    *,
-    interpretation_result: dict[str, object] | None = None,
-    user_profile: UserProfileContext | None = None,
-    max_queries: int = 4,
-) -> list[str]:
-    """주간 분석, 해석 결과, 사용자 프로필에서 최종 피드백용 RAG 검색 질의를 생성한다."""
-    indicators = extract_weekly_spending_indicators(weekly_data)
-    queries: list[str] = []
-
-    if indicators.largest_category_increase is not None:
-        category = indicators.largest_category_increase.category
-        _append_unique_query(queries, f"{category} 주간 소비 절약 방법")
-
-    _append_weekly_high_spending_queries(queries, indicators.high_spending_items)
-
-    cause_result = (interpretation_result or {}).get("cause_result")
-    for target in _iter_intervention_targets(cause_result):
-        _append_unique_query(queries, f"{_intervention_target_query_text(target)} 절약 방법")
-
-    action_result = (interpretation_result or {}).get("action_result")
-    for mission in _iter_action_missions(action_result):
-        _append_unique_query(queries, f"{mission.title} 실천 방법")
-
-    if user_profile is not None:
-        if user_profile.saving_goal_text:
-            _append_unique_query(
-                queries, f"{user_profile.saving_goal_text} 목표 주간 소비 절약 방법"
-            )
-        if user_profile.job and indicators.largest_category_increase is not None:
-            category = indicators.largest_category_increase.category
-            _append_unique_query(queries, f"{user_profile.job} {category} 소비 줄이는 방법")
-        if user_profile.persona:
-            _append_unique_query(queries, f"{user_profile.persona} 주간 소비 습관 개선 방법")
-
-    _append_top_merchant_queries(queries, indicators.top_merchants)
-
-    # 소비 탄성: 치팅 데이 패턴이 확인된 경우 관련 쿼리 추가
-    if weekly_data.elasticity_analysis.cheat_effective:
-        _append_unique_query(queries, "소비 탄성 관리 가심비 지출 전략")
-
-    _append_unique_query(queries, _DEFAULT_WEEKLY_RETRIEVAL_QUERY)
-    return queries[:max_queries]
-
-
 def make_weekly_feedback_input(
     *,
     weekly_data: WeeklySpendingData,
     interpretation_result: dict[str, object],
-    advice_contexts: Sequence[RetrievedAdviceContext],
+    advice_contexts: Sequence[RetrievedAdviceContext] | None = None,
     user_profile: object | None = None,
     memory_context: object | None = None,
 ) -> dict[str, str]:
-    """최종 주간 피드백 체인에 전달할 분석, 해석, RAG, 개인화 컨텍스트 입력을 만든다."""
+    """최종 주간 피드백 체인에 전달할 분석, 해석, 개인화 컨텍스트 입력을 만든다."""
+    _ = advice_contexts
     return {
         "weekly_json": weekly_data.model_dump_json(),
         "interpretation_json": serialize_interpretation_result(interpretation_result),
-        "retrieved_contexts": serialize_advice_contexts(advice_contexts),
         "user_profile_json": serialize_context_object(user_profile or {}),
         "memory_context_json": serialize_context_object(memory_context or {}),
     }
@@ -825,10 +683,6 @@ def generate_weekly_feedback(
     week_start: str | date = "2024-04-01",
     week_end: str | date = "2024-04-07",
     settings: Settings | None = None,
-    chunk_size: int = 800,
-    chunk_overlap: int = 120,
-    top_k: int = 3,
-    max_queries: int = 4,
     raw_data_dir: Path | str | None = None,
     source_files: Sequence[Path] | None = None,
     interpretation_temperature: float = 0.0,
@@ -836,7 +690,7 @@ def generate_weekly_feedback(
     persona_key: str | None = None,
     timing_callback: FeedbackTimingCallback | None = None,
 ) -> WeeklyFeedbackServiceResult:
-    """주간 소비 분석, 해석, RAG 검색, 최종 주간 피드백 생성을 한 번에 실행한다."""
+    """주간 소비 분석, 해석, 메모리 조회, 최종 주간 피드백 생성을 한 번에 실행한다."""
     config = settings or get_settings()
     start_day = _parse_week_date(week_start)
     end_day = _parse_week_date(week_end)
@@ -848,15 +702,6 @@ def generate_weekly_feedback(
             week_start=start_day,
             week_end=end_day,
             error=chat_model_error,
-        )
-
-    embedding_model_error = config.embedding_model_error
-    if embedding_model_error is not None:
-        return _build_error_result(
-            member_id=member_id,
-            week_start=start_day,
-            week_end=end_day,
-            error=embedding_model_error,
         )
 
     user_profile: UserProfileContext | None = None
@@ -907,50 +752,6 @@ def generate_weekly_feedback(
                 )
             ),
         )
-        retrieval_queries = run_timed_feedback_step(
-            step_key="retrieval_queries",
-            step_name="RAG 검색 질의 생성",
-            detail=f"max_queries={max_queries}",
-            timing_callback=timing_callback,
-            operation=lambda: build_weekly_feedback_retrieval_queries(
-                weekly_data,
-                interpretation_result=interpretation_result,
-                user_profile=user_profile,
-                max_queries=max_queries,
-            ),
-        )
-        advice_contexts = run_timed_feedback_step(
-            step_key="rag_retrieval",
-            step_name="RAG 문서 검색",
-            detail=(
-                f"queries={len(retrieval_queries)}, top_k={top_k}, "
-                f"chunk_size={chunk_size}, chunk_overlap={chunk_overlap}"
-            ),
-            timing_callback=timing_callback,
-            operation=lambda: retrieve_feedback_contexts(
-                retrieval_queries,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                top_k=top_k,
-                raw_data_dir=raw_data_dir,
-                source_files=source_files,
-                document_kinds=_WEEKLY_FEEDBACK_DOCUMENT_KINDS,
-                settings=config,
-            ),
-        )
-        if not advice_contexts:
-            return _build_error_result(
-                member_id=member_id,
-                week_start=start_day,
-                week_end=end_day,
-                error="missing_documents",
-                weekly_analysis=weekly_data,
-                interpretation_result=interpretation_result,
-                user_profile=user_profile,
-                memory_context=memory_context,
-                retrieval_queries=retrieval_queries,
-            )
-
         memory_context = run_timed_feedback_step(
             step_key="memory_context",
             step_name="피드백 메모리 조회",
@@ -970,13 +771,12 @@ def generate_weekly_feedback(
         feedback = run_timed_feedback_step(
             step_key="feedback_chain",
             step_name="최종 피드백 체인 실행",
-            detail="분석/해석/RAG/프로필/메모리 기반 구조화 LLM 호출",
+            detail="분석/해석/프로필/메모리 기반 구조화 LLM 호출",
             timing_callback=timing_callback,
             operation=lambda: feedback_chain.invoke(
                 make_weekly_feedback_input(
                     weekly_data=weekly_data,
                     interpretation_result=interpretation_result,
-                    advice_contexts=advice_contexts,
                     user_profile=user_profile,
                     memory_context=memory_context,
                 )
@@ -1035,25 +835,6 @@ def generate_weekly_feedback(
         interpretation_result=_to_json_object(interpretation_result),
         user_profile=user_profile,
         memory_context=memory_context,
-        retrieval_queries=retrieval_queries,
-        retrieved_contexts=advice_contexts,
-    )
-r(exc),
-            user_profile=user_profile,
-            memory_context=memory_context,
-        )
-
-    return WeeklyFeedbackServiceResult(
-        member_id=member_id,
-        week_start=str(start_day),
-        week_end=str(end_day),
-        feedback=feedback_result,
-        weekly_analysis=weekly_data,
-        interpretation_result=_to_json_object(interpretation_result),
-        user_profile=user_profile,
-        memory_context=memory_context,
-        retrieval_queries=retrieval_queries,
-        retrieved_contexts=advice_contexts,
-    )
-ontexts,
+        retrieval_queries=[],
+        retrieved_contexts=[],
     )
