@@ -21,7 +21,7 @@ from catcher_llm.services.transaction_upload_service import (
 def _write_seed_csvs(csv_dir: Path) -> None:
     """거래 업로드 테스트에 사용할 최소 사용자·거래 CSV를 작성한다."""
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "users_v3.csv").write_text(
+    (csv_dir / "users_v4.csv").write_text(
         "\n".join(
             [
                 "id,name,age,occupation,gender,annual_income,region,persona,personal_score,saving_goal_text,target_max_spending_amount",
@@ -30,7 +30,7 @@ def _write_seed_csvs(csv_dir: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (csv_dir / "transactions_v3.csv").write_text(
+    (csv_dir / "transactions_v4.csv").write_text(
         "\n".join(
             [
                 "id,user_id,amount,transaction_time,description,merchant_name,is_installment,installment_months,is_interest_free,status,is_overseas,category,payment_channel",

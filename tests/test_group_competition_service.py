@@ -28,7 +28,7 @@ get_group_member_feedback_status = _SERVICE_MODULE.get_group_member_feedback_sta
 def _write_seed_csvs(csv_dir: Path) -> None:
     """그룹 경쟁 테스트에 필요한 최소 사용자와 거래 CSV를 만든다."""
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "users_v3.csv").write_text(
+    (csv_dir / "users_v4.csv").write_text(
         "\n".join(
             [
                 "id,name,age,occupation,gender,annual_income,region,persona,personal_score,saving_goal_text,target_max_spending_amount",
@@ -38,7 +38,7 @@ def _write_seed_csvs(csv_dir: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (csv_dir / "transactions_v3.csv").write_text(
+    (csv_dir / "transactions_v4.csv").write_text(
         "\n".join(
             [
                 "id,user_id,amount,transaction_time,description,merchant_name,is_installment,installment_months,is_interest_free,status,is_overseas,category,payment_channel",
@@ -53,7 +53,7 @@ def _write_seed_csvs(csv_dir: Path) -> None:
 def _write_numeric_sort_seed_csvs(csv_dir: Path) -> None:
     """문자열 점수 컬럼에서도 숫자 정렬을 검증할 수 있는 사용자 CSV를 만든다."""
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "users_v3.csv").write_text(
+    (csv_dir / "users_v4.csv").write_text(
         "\n".join(
             [
                 "id,name,age,occupation,gender,annual_income,region,persona,personal_score,saving_goal_text,target_max_spending_amount",
@@ -65,7 +65,7 @@ def _write_numeric_sort_seed_csvs(csv_dir: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (csv_dir / "transactions_v3.csv").write_text(
+    (csv_dir / "transactions_v4.csv").write_text(
         "\n".join(
             [
                 "id,user_id,amount,transaction_time,description,merchant_name,is_installment,installment_months,is_interest_free,status,is_overseas,category,payment_channel",

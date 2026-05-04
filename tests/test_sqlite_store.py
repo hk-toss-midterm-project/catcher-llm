@@ -67,9 +67,9 @@ def _hash_file_for_seed_metadata(path: Path) -> str:
 
 
 def _write_seed_csvs(csv_dir: Path, *, encoding: str = "utf-8") -> None:
-    """SQLite 시드 테스트에 사용할 v3 사용자·거래 CSV를 작성한다."""
+    """SQLite 시드 테스트에 사용할 v4 사용자·거래 CSV를 작성한다."""
     csv_dir.mkdir(parents=True, exist_ok=True)
-    (csv_dir / "users_v3.csv").write_text(
+    (csv_dir / "users_v4.csv").write_text(
         "\n".join(
             [
                 "id,name,age,occupation,gender,annual_income,region,persona,personal_score,saving_goal_text,target_max_spending_amount",
@@ -79,7 +79,7 @@ def _write_seed_csvs(csv_dir: Path, *, encoding: str = "utf-8") -> None:
         ),
         encoding=encoding,
     )
-    (csv_dir / "transactions_v3.csv").write_text(
+    (csv_dir / "transactions_v4.csv").write_text(
         "\n".join(
             [
                 "id,user_id,amount,transaction_time,description,merchant_name,is_installment,installment_months,is_interest_free,status,is_overseas,category,payment_channel",
@@ -113,8 +113,8 @@ def test_ensure_user_database_seeds_sqlite_from_csv(tmp_path: Path) -> None:
 
     result = ensure_user_database(settings=settings)
 
-    assert settings.members_csv_path.name == "users_v3.csv"
-    assert settings.consumption_csv_path.name == "transactions_v3.csv"
+    assert settings.members_csv_path.name == "users_v4.csv"
+    assert settings.consumption_csv_path.name == "transactions_v4.csv"
     assert settings.sqlite_db_path.exists()
     assert result.user_count == 2
     assert result.transaction_count == 3
@@ -363,8 +363,8 @@ def test_authenticate_user_and_load_transactions_from_sqlite(tmp_path: Path) -> 
     assert transactions[0]["id"] == 100
 
 
-def test_get_user_registration_columns_reads_users_v3_header(tmp_path: Path) -> None:
-    """회원가입 폼 구성을 위해 v3 사용자 CSV 헤더를 순서대로 읽는지 검증한다."""
+def test_get_user_registration_columns_reads_users_v4_header(tmp_path: Path) -> None:
+    """회원가입 폼 구성을 위해 v4 사용자 CSV 헤더를 순서대로 읽는지 검증한다."""
     settings = _make_settings(tmp_path)
 
     columns = get_user_registration_columns(settings=settings)
