@@ -196,7 +196,7 @@ def _run_eval(pairs: list[QAPair], settings: Settings) -> EvalResult:
 
     result = evaluate(
         dataset=dataset,
-        metrics=[Faithfulness(), AnswerRelevancy(strictness=1),
+        metrics=[Faithfulness(), AnswerRelevancy(strictness=3),
                  ContextPrecision(), ContextRecall()],
         llm=get_chat_model(settings),
         embeddings=get_embeddings_model(settings),

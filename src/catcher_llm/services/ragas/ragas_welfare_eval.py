@@ -86,7 +86,7 @@ def run_welfare_ragas_eval(settings: Settings | None = None) -> EvaluationResult
 
     metrics = [
         Faithfulness(),
-        AnswerRelevancy(strictness=1),
+        AnswerRelevancy(strictness=3),
         ContextPrecision(),
         ContextRecall(),
     ]
