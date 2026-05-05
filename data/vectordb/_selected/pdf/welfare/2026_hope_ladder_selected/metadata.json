@@ -1,5 +1,5 @@
 {
-  "raw_data_dir": "pdf/kca_report",
+  "raw_data_dir": ".",
   "embedding_provider": "upstage",
   "embedding_model": "solar-embedding-1-large",
   "document_loader_version": "2026-05-05-frontmatter-v1",
@@ -7,9 +7,12 @@
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "pdf/kca_report/0417_kca_split.pdf",
-      1777247390120093700,
-      3103159
+      "pdf/welfare/2026_hope_ladder_selected.pdf",
+      1777247390167414900,
+      1939687
     ]
+  ],
+  "source_files": [
+    "pdf/welfare/2026_hope_ladder_selected.pdf"
   ]
 }
