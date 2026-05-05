@@ -11,6 +11,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 SUPPORTED_EXTENSIONS = {".md", ".pdf", ".txt"}
+DOCUMENT_LOADER_VERSION = "2026-05-05-frontmatter-v1"
 
 _MARKDOWN_HEADERS = [
     ("#", "header1"),
@@ -23,6 +24,78 @@ _PDF_MARKDOWN_PAGE_SEPARATOR_PATTERN = re.compile(r"<!-- catcher-page:(\d+) -->"
 _WELFARE_SOURCE_PATH_MARKER = (Path("pdf") / "welfare").parts
 
 
+def _strip_frontmatter_quotes(value: str) -> str:
+    """YAML front matter의 단순 문자열 값을 감싼 따옴표를 제거한다."""
+    stripped_value = value.strip()
+    if len(stripped_value) >= 2 and stripped_value[0] == stripped_value[-1]:
+        if stripped_value[0] in {'"', "'"}:
+            return stripped_value[1:-1]
+    return stripped_value
+
+
+def _parse_markdown_frontmatter(frontmatter: str) -> dict[str, str]:
+    """Markdown YAML front matter의 단순 key-value와 문자열 목록을 메타데이터로 파싱한다."""
+    metadata: dict[str, str] = {}
+    current_list_key: str | None = None
+    current_list_values: list[str] = []
+
+    def flush_current_list() -> None:
+        """진행 중인 목록 값을 쉼표로 연결해 메타데이터에 저장한다."""
+        nonlocal current_list_key, current_list_values
+        if current_list_key is not None:
+            metadata[current_list_key] = ", ".join(current_list_values)
+            current_list_key = None
+            current_list_values = []
+
+    for raw_line in frontmatter.splitlines():
+        line = raw_line.rstrip()
+        stripped_line = line.strip()
+        if not stripped_line or stripped_line.startswith("#"):
+            continue
+
+        if current_list_key is not None and stripped_line.startswith("- "):
+            current_list_values.append(_strip_frontmatter_quotes(stripped_line[2:]))
+            continue
+
+        flush_current_list()
+        if ":" not in stripped_line:
+            continue
+
+        key, raw_value = stripped_line.split(":", maxsplit=1)
+        normalized_key = key.strip()
+        normalized_value = raw_value.strip()
+        if not normalized_key:
+            continue
+        if normalized_value:
+            metadata[normalized_key] = _strip_frontmatter_quotes(normalized_value)
+        else:
+            current_list_key = normalized_key
+            current_list_values = []
+
+    flush_current_list()
+    return metadata
+
+
+def _extract_markdown_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    """Markdown 문서 시작 YAML front matter를 본문과 분리해 메타데이터로 반환한다."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, text
+
+    closing_index: int | None = None
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            closing_index = index
+            break
+
+    if closing_index is None:
+        return {}, text
+
+    frontmatter_text = "\n".join(lines[1:closing_index])
+    body_text = "\n".join(lines[closing_index + 1 :]).lstrip("\n")
+    return _parse_markdown_frontmatter(frontmatter_text), body_text
+
+
 def load_markdown_file(path: Path) -> list[Document]:
     """마크다운 파일을 헤더 계층 구조 기준으로 분할해 Document 목록으로 변환한다.
 
@@ -30,13 +103,15 @@ def load_markdown_file(path: Path) -> list[Document]:
     어느 절에서 나온 청크인지 추적할 수 있다.
     """
     text = path.read_text(encoding="utf-8", errors="ignore")
+    frontmatter_metadata, markdown_body = _extract_markdown_frontmatter(text)
     splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=_MARKDOWN_HEADERS,
         strip_headers=False,
     )
-    docs = splitter.split_text(text)
+    docs = splitter.split_text(markdown_body)
     source = str(path)
     for doc in docs:
+        doc.metadata = {**frontmatter_metadata, **doc.metadata}
         doc.metadata.setdefault("source", source)
         doc.metadata["source"] = source
     return docs

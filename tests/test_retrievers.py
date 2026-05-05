@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 
 from catcher_llm.config.settings import Settings
 from catcher_llm.retrievers.loaders import (
+    DOCUMENT_LOADER_VERSION,
     iter_source_files,
     load_local_documents,
     load_split_local_documents,
@@ -112,6 +113,60 @@ class RetrieverTests(unittest.TestCase):
 
             self.assertGreater(len(documents), 1)
             self.assertIn("chunk_index", documents[0].metadata)
+
+    def test_load_split_local_documents_preserves_markdown_frontmatter_metadata(self) -> None:
+        """Markdown front matter가 헤더 분할과 2차 청킹 이후에도 청크 메타데이터에 유지되는지 검증한다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            report_path = root / "report.md"
+            report_path.write_text(
+                """---
+document_kind: user_report
+report_type: monthly
+report_period: 2026-04
+period_start: 2026-04-01
+period_end: 2026-04-30
+included_months:
+  - 2026-04
+source_metrics_dir: data/processed/user_trend_metrics
+---
+
+# 사용자 소비 RAG 근거 문서
+
+## RAG 근거 카드
+
+### evidence_card: monthly_2026_04_category_ratio_쇼핑
+- metric_name: category_monthly_ratio_percent
+- metric_value: 25.4561
+""",
+                encoding="utf-8",
+            )
+
+            documents = load_split_local_documents(
+                root,
+                chunk_size=300,
+                chunk_overlap=20,
+            )
+
+            target = next(
+                document
+                for document in documents
+                if "category_monthly_ratio_percent" in document.page_content
+            )
+            self.assertEqual(target.metadata["document_kind"], "user_report")
+            self.assertEqual(target.metadata["report_type"], "monthly")
+            self.assertEqual(target.metadata["report_period"], "2026-04")
+            self.assertEqual(target.metadata["period_start"], "2026-04-01")
+            self.assertEqual(target.metadata["period_end"], "2026-04-30")
+            self.assertEqual(target.metadata["included_months"], "2026-04")
+            self.assertEqual(
+                target.metadata["source_metrics_dir"],
+                "data/processed/user_trend_metrics",
+            )
+            self.assertEqual(
+                target.metadata["header3"], "evidence_card: monthly_2026_04_category_ratio_쇼핑"
+            )
+            self.assertEqual(target.metadata["source"], str(report_path))
 
     def test_load_split_local_documents_preserves_welfare_pdf_pages(self) -> None:
         """복지 정책 PDF는 문자수 재청킹 없이 opendataloader-pdf 페이지 단위를 유지하는지 검증한다."""
@@ -229,6 +284,7 @@ class RetrieverTests(unittest.TestCase):
             self.assertTrue(metadata_path.exists())
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             self.assertEqual(metadata["embedding_model"], settings.embedding_model_name)
+            self.assertEqual(metadata["document_loader_version"], DOCUMENT_LOADER_VERSION)
             self.assertEqual(metadata["chunk_size"], 100)
             self.assertEqual(metadata["chunk_overlap"], 10)
             self.assertEqual(metadata["raw_data_dir"], "pdf/saving_tips")
@@ -253,6 +309,7 @@ class RetrieverTests(unittest.TestCase):
                         "raw_data_dir": "pdf/saving_tips",
                         "embedding_provider": settings.embedding_model_provider,
                         "embedding_model": settings.embedding_model_name,
+                        "document_loader_version": DOCUMENT_LOADER_VERSION,
                         "chunk_size": 100,
                         "chunk_overlap": 10,
                         "file_signature": [

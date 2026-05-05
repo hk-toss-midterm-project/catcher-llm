@@ -2,12 +2,13 @@
   "raw_data_dir": "pdf/welfare",
   "embedding_provider": "upstage",
   "embedding_model": "solar-embedding-1-large",
+  "document_loader_version": "2026-05-05-frontmatter-v1",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
       "pdf/welfare/2026_hope_ladder_selected.pdf",
-      1777247390167414900,
+      1777822643750291383,
       1939687
     ]
   ]

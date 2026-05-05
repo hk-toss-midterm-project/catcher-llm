@@ -257,6 +257,14 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
     assert all(spec.path.is_file() for spec in specs)
 
 
+def test_user_trend_report_page_wraps_dev_page_from_pages_directory() -> None:
+    """사용자 동향 보고서 pages 래퍼가 개발 페이지 구현을 실행하는지 검증한다."""
+    page_source = Path("pages/07_user_trend_report.py").read_text(encoding="utf-8")
+
+    assert "runpy.run_path" in page_source
+    assert "dev_pages/16_user_trend_report.py" in page_source
+
+
 def test_user_trend_report_dev_page_wires_metric_and_report_scripts() -> None:
     """사용자 동향 보고서 개발 페이지가 지표·보고서 생성 스크립트를 호출하는지 검증한다."""
     page_source = Path("dev_pages/16_user_trend_report.py").read_text(encoding="utf-8")

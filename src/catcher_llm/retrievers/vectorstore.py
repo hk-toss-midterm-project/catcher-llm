@@ -10,7 +10,11 @@ from langchain_community.vectorstores import FAISS
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.llm.models import get_embeddings_model
-from catcher_llm.retrievers.loaders import iter_source_files, load_split_local_documents
+from catcher_llm.retrievers.loaders import (
+    DOCUMENT_LOADER_VERSION,
+    iter_source_files,
+    load_split_local_documents,
+)
 
 _VECTORSTORE_CACHE: dict[tuple[object, ...], FAISS] = {}
 _VECTORSTORE_METADATA_FILENAME = "metadata.json"
@@ -59,6 +63,7 @@ def _build_cache_key(
         str(actual_data_dir.resolve()),
         config.embedding_model_provider,
         config.embedding_model_name,
+        DOCUMENT_LOADER_VERSION,
         chunk_size,
         chunk_overlap,
         tuple(str(path) for path in normalized_source_files),
@@ -164,6 +169,7 @@ def _build_store_metadata(
         "raw_data_dir": _to_metadata_relative_path(config, actual_data_dir),
         "embedding_provider": config.embedding_model_provider,
         "embedding_model": config.embedding_model_name,
+        "document_loader_version": DOCUMENT_LOADER_VERSION,
         "chunk_size": chunk_size,
         "chunk_overlap": chunk_overlap,
         "file_signature": [

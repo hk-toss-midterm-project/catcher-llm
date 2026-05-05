@@ -2,12 +2,13 @@
   "raw_data_dir": "pdf/catcher_consumption_benchmark",
   "embedding_provider": "upstage",
   "embedding_model": "solar-embedding-1-large",
+  "document_loader_version": "2026-05-05-frontmatter-v1",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
       "pdf/catcher_consumption_benchmark/catcher_consumption_benchmark_201807_201812.pdf",
-      1777532996295915200,
+      1776931207130412385,
       1344180
     ]
   ]

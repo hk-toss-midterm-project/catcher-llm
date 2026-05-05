@@ -286,6 +286,12 @@ monthly_report_pg = st.Page(
     icon="📈",
     url_path="monthly-report",
 )
+user_trend_report_pg = st.Page(
+    "pages/07_user_trend_report.py",
+    title="사용자 동향 보고서",
+    icon="📑",
+    url_path="user-trend-report",
+)
 group_pg = st.Page(
     "pages/03_group_competition.py",
     title="그룹 경쟁",
@@ -304,6 +310,7 @@ else:
             daily_report_pg,
             weekly_report_pg,
             monthly_report_pg,
+            user_trend_report_pg,
             group_pg,
         ],
         position="hidden",
@@ -371,6 +378,7 @@ with st.sidebar:
         st.page_link(profile_pg, label="프로필", icon="🙀")
         st.page_link(upload_pg, label="CSV 업로드", icon="📥")
         st.page_link(report_pg, label="리포트 조회", icon="📫")
+        st.page_link(user_trend_report_pg, label="사용자 동향 보고서", icon="📑")
         st.page_link(group_pg, label="그룹 경쟁", icon="🏁")
 
         st.markdown("---")

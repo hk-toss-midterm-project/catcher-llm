@@ -2,23 +2,39 @@
   "raw_data_dir": "markdown/users_report",
   "embedding_provider": "upstage",
   "embedding_model": "solar-embedding-1-large",
+  "document_loader_version": "2026-05-05-frontmatter-v1",
   "chunk_size": 800,
   "chunk_overlap": 120,
   "file_signature": [
     [
-      "markdown/users_report/period_2026-01-01_to_2026-01-31/users_trend_report.md",
-      1777442923101723800,
-      6285
+      "markdown/users_report/monthly/2026-01.md",
+      1777956838290879442,
+      23261
     ],
     [
-      "markdown/users_report/period_2026-01-01_to_2026-04-30/users_trend_report.md",
-      1777442852256674000,
-      13402
+      "markdown/users_report/monthly/2026-02.md",
+      1777956936095387353,
+      39332
     ],
     [
-      "markdown/users_report/users_trend_report.md",
-      1777435915349945900,
-      13984
+      "markdown/users_report/monthly/2026-03.md",
+      1777956838306626028,
+      39333
+    ],
+    [
+      "markdown/users_report/monthly/2026-04.md",
+      1777956838315157404,
+      39343
+    ],
+    [
+      "markdown/users_report/quarterly/2026-Q1.md",
+      1777956838330001907,
+      38505
+    ],
+    [
+      "markdown/users_report/quarterly/2026-Q2.md",
+      1777956838341058117,
+      23393
     ]
   ]
 }

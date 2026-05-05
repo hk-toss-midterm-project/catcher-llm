@@ -97,7 +97,7 @@ def test_report_page_titles_follow_streamlit_theme_text_color() -> None:
 
 
 def test_app_registers_report_detail_pages_for_logged_in_navigation() -> None:
-    """메인 앱이 로그인 사용자 내비게이션에 상세 리포트 페이지를 등록하는지 검증한다."""
+    """메인 앱이 로그인 사용자 내비게이션에 상세 리포트와 동향 보고서 페이지를 등록하는지 검증한다."""
     app_source = Path("app.py").read_text(encoding="utf-8")
 
     expected_snippets = [
@@ -110,12 +110,17 @@ def test_app_registers_report_detail_pages_for_logged_in_navigation() -> None:
         "daily_report_pg",
         "weekly_report_pg",
         "monthly_report_pg",
+        "user_trend_report_pg = st.Page(",
+        '"pages/07_user_trend_report.py"',
+        "user_trend_report_pg",
     ]
 
     for snippet in expected_snippets:
         assert snippet in app_source
 
     assert 'title="일일 리포트"' in app_source
+    assert 'title="사용자 동향 보고서"' in app_source
+    assert 'st.page_link(user_trend_report_pg, label="사용자 동향 보고서", icon="📑")' in app_source
 
 
 def test_report_pages_use_logged_in_user_id_when_session_exists() -> None:

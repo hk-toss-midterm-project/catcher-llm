@@ -21,6 +21,7 @@ from scripts.generate_user_trend_report import (
     DEFAULT_REPORT_ROOT,
     ReportGenerationResult,
     generate_latest_user_trend_report,
+    generate_user_trend_rag_reports_from_metrics,
     resolve_metrics_dir,
 )
 
@@ -163,6 +164,11 @@ with st.sidebar:
         value=0.2,
         step=0.1,
     )
+    report_mode = st.selectbox(
+        "보고서 생성 방식",
+        options=("월간+분기 RAG 보고서", "기간 전체 보고서"),
+        index=0,
+    )
 
 users_path = _path_from_input(users_path_text)
 transactions_path = _path_from_input(transactions_path_text)
@@ -233,16 +239,39 @@ with action_columns[1]:
                 manual_metrics_dir=manual_metrics_dir_text,
             )
             with st.spinner("LangChain으로 Markdown 보고서를 생성하는 중..."):
-                report_result: ReportGenerationResult = generate_latest_user_trend_report(
-                    metrics_dir=target_metrics_dir,
-                    metrics_root=metrics_root,
-                    output_root=report_root,
-                    settings=settings,
-                    temperature=float(report_temperature),
-                )
-            st.session_state[SESSION_METRICS_DIR_KEY] = str(report_result.metrics_dir)
-            st.session_state[SESSION_REPORT_PATH_KEY] = str(report_result.output_path)
-            st.success(f"보고서 생성 완료: `{_path_label(report_result.output_path)}`")
+                if report_mode == "월간+분기 RAG 보고서":
+                    batch_result = generate_user_trend_rag_reports_from_metrics(
+                        metrics_dir=target_metrics_dir,
+                        output_root=report_root,
+                        settings=settings,
+                        temperature=float(report_temperature),
+                    )
+                    report_paths = {
+                        (
+                            report.report_scope.period
+                            if report.report_scope is not None
+                            else report.output_path.stem
+                        ): report.output_path
+                        for report in batch_result.reports
+                    }
+                    st.session_state[SESSION_METRICS_DIR_KEY] = str(batch_result.metrics_dir)
+                    if batch_result.reports:
+                        st.session_state[SESSION_REPORT_PATH_KEY] = str(
+                            batch_result.reports[-1].output_path
+                        )
+                    st.success(f"RAG 보고서 {len(batch_result.reports)}개 생성 완료")
+                    _render_generated_paths("생성된 RAG 보고서", report_paths, max_items=20)
+                else:
+                    report_result: ReportGenerationResult = generate_latest_user_trend_report(
+                        metrics_dir=target_metrics_dir,
+                        metrics_root=metrics_root,
+                        output_root=report_root,
+                        settings=settings,
+                        temperature=float(report_temperature),
+                    )
+                    st.session_state[SESSION_METRICS_DIR_KEY] = str(report_result.metrics_dir)
+                    st.session_state[SESSION_REPORT_PATH_KEY] = str(report_result.output_path)
+                    st.success(f"보고서 생성 완료: `{_path_label(report_result.output_path)}`")
         except Exception as error:
             st.error(f"보고서 생성 실패: {error}")
 
