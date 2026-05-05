@@ -170,7 +170,7 @@ with controls[1]:
 retrieval_controls = st.columns(4)
 chunk_size = retrieval_controls[0].number_input("Chunk size", min_value=100, value=800, step=50)
 chunk_overlap = retrieval_controls[1].number_input("Chunk overlap", min_value=0, value=120, step=10)
-top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=3, step=1)
+top_k = retrieval_controls[2].number_input("Top K", min_value=1, value=6, step=1)
 max_queries = retrieval_controls[3].number_input("Max queries", min_value=1, value=4, step=1)
 
 if _MONTHLY_PERSONA_KEY not in st.session_state:

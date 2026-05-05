@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
@@ -76,6 +77,16 @@ _MONTHLY_MEMORY_PERIOD_TYPE = "monthly"
 _DEFAULT_MONTHLY_MEMORY_SESSION_LIMIT = 6
 
 _DEFAULT_MONTHLY_RETRIEVAL_QUERY = "월간 소비 절약 실천 방법"
+_PERCENT_TEXT_PATTERN = re.compile(r"\d+(?:\.\d+)?\s*%")
+_GENERIC_MONTHLY_MISSION_TERMS: tuple[str, ...] = (
+    "각각",
+    "목표를 세",
+    "목표를 설정",
+    "줄이는 목표",
+    "줄이기 목표",
+    "절감 목표",
+    "감축 목표",
+)
 _MONTHLY_FEEDBACK_DOCUMENT_KINDS: tuple[DocumentKind, ...] = (
     DocumentKind.USER_REPORT,
     DocumentKind.CATCHER_CONSUMPTION_BENCHMARK,
@@ -604,6 +615,148 @@ def _append_top_merchant_queries(
         _append_unique_query(queries, f"{merchant.merchant} 반복 소비 줄이는 방법")
 
 
+def _append_monthly_report_category_candidates(
+    categories: list[str],
+    monthly_data: MonthlySpendingData,
+    indicators: MonthlySpendingIndicatorPayload,
+) -> None:
+    """월간 USER_REPORT 비교 질의에 사용할 개인 소비 카테고리 후보를 우선순위대로 추가한다."""
+    if indicators.largest_category_increase is not None:
+        _append_unique_query(categories, indicators.largest_category_increase.category)
+    if indicators.largest_category_decrease is not None:
+        _append_unique_query(categories, indicators.largest_category_decrease.category)
+
+    top_1_category = monthly_data.spending_concentration.top_1_category
+    if top_1_category:
+        _append_unique_query(categories, top_1_category)
+
+    for category in sorted(
+        monthly_data.top_savable_categories,
+        key=lambda item: item.total_amount,
+        reverse=True,
+    ):
+        _append_unique_query(categories, category.category)
+
+    for item in sorted(
+        indicators.high_spending_items,
+        key=lambda high_spending_item: high_spending_item.amount,
+        reverse=True,
+    ):
+        _append_unique_query(categories, item.category)
+
+
+def _build_user_report_monthly_queries(
+    monthly_data: MonthlySpendingData,
+    *,
+    max_queries: int,
+) -> list[str]:
+    """월간 USER_REPORT 카드 검색에 맞는 전체 사용자 비교 근거 질의를 생성한다."""
+    indicators = extract_monthly_spending_indicators(monthly_data)
+    analysis_month = monthly_data.analysis_month
+    categories: list[str] = []
+    _append_monthly_report_category_candidates(categories, monthly_data, indicators)
+
+    queries: list[str] = []
+    category_query_limit = max(1, max_queries - 2)
+    for category in categories[:category_query_limit]:
+        _append_unique_query(
+            queries,
+            f"{analysis_month} {category} 카테고리 전체 사용자 월간 소비 비중 전월 대비 변화",
+        )
+
+    _append_unique_query(
+        queries,
+        f"{analysis_month} 전체 사용자 결제 행동 온라인 할부 야간 마찰없는 결제 비중",
+    )
+    _append_unique_query(
+        queries,
+        f"{analysis_month} 전체 사용자 목표 사용률 초과 분포 예산 초과 위험군",
+    )
+    return queries[:max_queries]
+
+
+def _build_monthly_trend_categories(
+    monthly_data: MonthlySpendingData,
+    indicators: MonthlySpendingIndicatorPayload,
+    *,
+    max_categories: int,
+) -> list[str]:
+    """월간 소비 동향 문서 질의에 넣을 개인 소비 카테고리 후보를 고른다."""
+    categories: list[str] = []
+    _append_monthly_report_category_candidates(categories, monthly_data, indicators)
+
+    for category in sorted(
+        monthly_data.category_deep,
+        key=lambda category_item: category_item.total_amount,
+        reverse=True,
+    ):
+        _append_unique_query(categories, category.category)
+
+    return categories[:max_categories]
+
+
+def _build_consumption_benchmark_monthly_queries(
+    monthly_data: MonthlySpendingData,
+    *,
+    max_queries: int,
+) -> list[str]:
+    """CATCHER 카드 결제 소비 동향 보고서에 맞는 월간 벤치마크 질의를 생성한다."""
+    indicators = extract_monthly_spending_indicators(monthly_data)
+    categories = _build_monthly_trend_categories(
+        monthly_data,
+        indicators,
+        max_categories=max(1, max_queries - 1),
+    )
+
+    queries: list[str] = []
+    for category in categories:
+        _append_unique_query(
+            queries,
+            f"{category} 카테고리 카드 결제 소비 동향 벤치마크",
+        )
+
+    _append_unique_query(
+        queries,
+        "월간 카드 결제 소비 동향 온라인 할부 야간 결제 패턴",
+    )
+    _append_unique_query(
+        queries,
+        "카테고리별 카드 결제 소비 패턴 비교",
+    )
+    return queries[:max_queries]
+
+
+def _build_kca_monthly_trend_queries(
+    monthly_data: MonthlySpendingData,
+    *,
+    max_queries: int,
+) -> list[str]:
+    """한국 소비자원 소비 동향 보고서에 맞는 월간 카테고리 동향 질의를 생성한다."""
+    indicators = extract_monthly_spending_indicators(monthly_data)
+    categories = _build_monthly_trend_categories(
+        monthly_data,
+        indicators,
+        max_categories=max(1, max_queries - 1),
+    )
+
+    queries: list[str] = []
+    for category in categories:
+        _append_unique_query(
+            queries,
+            f"{category} 카테고리 한국 소비자원 소비 동향",
+        )
+
+    _append_unique_query(
+        queries,
+        "한국 소비자원 월간 소비 동향 카테고리 변화",
+    )
+    _append_unique_query(
+        queries,
+        "소비자원 결제 행태 소비 동향 카테고리별 변화",
+    )
+    return queries[:max_queries]
+
+
 def build_monthly_feedback_retrieval_queries(
     monthly_data: MonthlySpendingData,
     *,
@@ -650,6 +803,118 @@ def build_monthly_feedback_retrieval_queries(
 
     _append_unique_query(queries, _DEFAULT_MONTHLY_RETRIEVAL_QUERY)
     return queries[:max_queries]
+
+
+def build_monthly_feedback_retrieval_queries_by_document_kind(
+    monthly_data: MonthlySpendingData,
+    *,
+    interpretation_result: dict[str, object] | None = None,
+    user_profile: UserProfileContext | None = None,
+    max_queries: int = 4,
+) -> dict[DocumentKind, list[str]]:
+    """월간 피드백 RAG 검색 질의를 문서 종류별 역할에 맞게 분리해 생성한다."""
+    user_report_queries = _build_user_report_monthly_queries(
+        monthly_data,
+        max_queries=max_queries,
+    )
+    benchmark_queries = _build_consumption_benchmark_monthly_queries(
+        monthly_data,
+        max_queries=max_queries,
+    )
+    kca_queries = _build_kca_monthly_trend_queries(
+        monthly_data,
+        max_queries=max_queries,
+    )
+    return {
+        DocumentKind.USER_REPORT: user_report_queries,
+        DocumentKind.CATCHER_CONSUMPTION_BENCHMARK: benchmark_queries,
+        DocumentKind.KCA_REPORT: kca_queries,
+    }
+
+
+def _flatten_monthly_retrieval_query_plan(
+    query_plan: dict[DocumentKind, list[str]],
+) -> list[str]:
+    """문서 종류별 월간 RAG 질의 계획을 화면 표시와 결과 저장용 단일 목록으로 펼친다."""
+    queries: list[str] = []
+    for document_kind, document_queries in query_plan.items():
+        for query in document_queries:
+            _append_unique_query(queries, f"[{document_kind.value}] {query}")
+    return queries
+
+
+def _is_generic_percent_reduction_mission(mission: str) -> bool:
+    """월간 미션이 구체 행동이 아닌 비율 감축 목표형 문장인지 판단한다."""
+    normalized_mission = " ".join(mission.split())
+    has_percent = _PERCENT_TEXT_PATTERN.search(normalized_mission) is not None
+    if has_percent and any(term in normalized_mission for term in ("줄", "절감", "감축")):
+        return True
+    return any(term in normalized_mission for term in _GENERIC_MONTHLY_MISSION_TERMS)
+
+
+def _select_monthly_mission_category(monthly_data: MonthlySpendingData) -> str:
+    """구체 월간 미션에 사용할 우선 점검 카테고리를 선택한다."""
+    indicators = extract_monthly_spending_indicators(monthly_data)
+    if indicators.largest_category_increase is not None:
+        return indicators.largest_category_increase.category
+
+    if monthly_data.spending_concentration.top_1_category:
+        return monthly_data.spending_concentration.top_1_category
+
+    if monthly_data.top_savable_categories:
+        return monthly_data.top_savable_categories[0].category
+
+    if monthly_data.category_deep:
+        largest_category = max(
+            monthly_data.category_deep,
+            key=lambda category: category.total_amount,
+        )
+        return largest_category.category
+
+    return "변동비"
+
+
+def _select_monthly_mission_high_spending_item(
+    monthly_data: MonthlySpendingData,
+    category: str,
+) -> MonthlyHighSpendingItem | None:
+    """우선 카테고리와 연결된 고액 결제 항목을 월간 미션 근거로 선택한다."""
+    sorted_items = sorted(
+        monthly_data.high_spending.items,
+        key=lambda item: item.amount,
+        reverse=True,
+    )
+    for item in sorted_items:
+        if item.category == category:
+            return item
+    return sorted_items[0] if sorted_items else None
+
+
+def _build_concrete_monthly_mission(monthly_data: MonthlySpendingData) -> str:
+    """비율 감축 목표를 대신할 결제 전 확인 중심의 구체 월간 미션을 만든다."""
+    category = _select_monthly_mission_category(monthly_data)
+    high_spending_item = _select_monthly_mission_high_spending_item(monthly_data, category)
+    if high_spending_item is not None:
+        merchant = high_spending_item.merchant
+        return (
+            f"다음 달 첫째 주에는 {category} 결제 전에 {merchant} 같은 고액 결제를 "
+            "하루 보류하고 필수 구매 목록에 있는지 확인합니다."
+        )
+
+    return (
+        f"다음 달 첫째 주에는 {category} 결제 전 필수 구매 목록을 먼저 적고, "
+        "목록 밖 결제는 하루 보류한 뒤 다시 확인합니다."
+    )
+
+
+def _sanitize_monthly_feedback_result(
+    feedback: MonthlyFeedbackResult,
+    monthly_data: MonthlySpendingData,
+) -> MonthlyFeedbackResult:
+    """최종 월간 피드백에서 목표형 미션을 실행 가능한 행동 미션으로 보정한다."""
+    if _is_generic_percent_reduction_mission(feedback.next_month_mission):
+        feedback.next_month_mission = _build_concrete_monthly_mission(monthly_data)
+    return feedback
 
 
 def make_monthly_feedback_input(
@@ -947,7 +1212,7 @@ def generate_monthly_feedback(
     settings: Settings | None = None,
     chunk_size: int = 800,
     chunk_overlap: int = 120,
-    top_k: int = 3,
+    top_k: int = 6,
     max_queries: int = 4,
     raw_data_dir: Path | str | None = None,
     source_files: Sequence[Path] | None = None,
@@ -1023,23 +1288,28 @@ def generate_monthly_feedback(
                 )
             ),
         )
-        retrieval_queries = run_timed_feedback_step(
+        retrieval_query_plan = run_timed_feedback_step(
             step_key="retrieval_queries",
             step_name="RAG 검색 질의 생성",
-            detail=f"max_queries={max_queries}",
+            detail=f"document_kinds={len(_MONTHLY_FEEDBACK_DOCUMENT_KINDS)}, max_queries={max_queries}",
             timing_callback=timing_callback,
-            operation=lambda: build_monthly_feedback_retrieval_queries(
+            operation=lambda: build_monthly_feedback_retrieval_queries_by_document_kind(
                 monthly_data,
                 interpretation_result=interpretation_result,
                 user_profile=user_profile,
                 max_queries=max_queries,
             ),
         )
+        retrieval_queries = _flatten_monthly_retrieval_query_plan(retrieval_query_plan)
+        queries_by_document_kind = (
+            None if raw_data_dir is not None or source_files is not None else retrieval_query_plan
+        )
         advice_contexts = run_timed_feedback_step(
             step_key="rag_retrieval",
             step_name="RAG 문서 검색",
             detail=(
-                f"queries={len(retrieval_queries)}, top_k={top_k}, "
+                f"queries={sum(len(queries) for queries in retrieval_query_plan.values())}, "
+                f"top_k={top_k}, "
                 f"chunk_size={chunk_size}, chunk_overlap={chunk_overlap}"
             ),
             timing_callback=timing_callback,
@@ -1051,6 +1321,7 @@ def generate_monthly_feedback(
                 raw_data_dir=raw_data_dir,
                 source_files=source_files,
                 document_kinds=_MONTHLY_FEEDBACK_DOCUMENT_KINDS,
+                queries_by_document_kind=queries_by_document_kind,
                 settings=config,
             ),
         )
@@ -1103,6 +1374,7 @@ def generate_monthly_feedback(
             if isinstance(feedback, MonthlyFeedbackResult)
             else MonthlyFeedbackResult.model_validate(feedback)
         )
+        feedback_result = _sanitize_monthly_feedback_result(feedback_result, monthly_data)
         feedback_result.feedback_message = coerce_ratio_context_message(
             message=feedback_result.feedback_message,
             warnings=collect_ratio_context_warnings(monthly_data.category_deep),

@@ -257,12 +257,35 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
     assert all(spec.path.is_file() for spec in specs)
 
 
-def test_user_trend_report_page_wraps_dev_page_from_pages_directory() -> None:
-    """사용자 동향 보고서 pages 래퍼가 개발 페이지 구현을 실행하는지 검증한다."""
+def test_user_trend_report_page_shows_generated_metrics_preview_only() -> None:
+    """사용자 동향 보고서 pages가 생성 UI 없이 지표 CSV와 그래프 미리보기만 표시하는지 검증한다."""
     page_source = Path("pages/07_user_trend_report.py").read_text(encoding="utf-8")
 
-    assert "runpy.run_path" in page_source
-    assert "dev_pages/16_user_trend_report.py" in page_source
+    assert "runpy.run_path" not in page_source
+    assert "dev_pages/16_user_trend_report.py" not in page_source
+    assert "build_and_save_trend_metrics" not in page_source
+    assert "generate_latest_user_trend_report" not in page_source
+    assert "st.button" not in page_source
+    assert "지표 생성" not in page_source
+    assert "보고서 생성" not in page_source
+    assert "생성 지표 미리보기" in page_source
+    assert "LLM long-form 지표" in page_source
+    assert "월별 지표" in page_source
+    assert "st.tabs" in page_source
+    assert "pd.read_csv" in page_source
+    assert "st.dataframe" in page_source
+    assert "charts" in page_source
+    assert "st.image" in page_source
+    assert "chart_paths[:4]" not in page_source
+    chart_order_source = page_source.split("CHART_CAPTIONS: dict[str, str] = {", maxsplit=1)[
+        1
+    ].split("}", maxsplit=1)[0]
+    assert chart_order_source.index("category_monthly_amount.png") < chart_order_source.index(
+        "monthly_total_amount.png"
+    )
+    assert chart_order_source.index("weekly_total_amount.png") > chart_order_source.index(
+        "payment_behavior_ratios.png"
+    )
 
 
 def test_user_trend_report_dev_page_wires_metric_and_report_scripts() -> None:
@@ -1207,6 +1230,7 @@ def test_monthly_feedback_dev_page_can_regenerate_cached_session() -> None:
 
     assert len(app.exception) == 0
     assert call_kwargs["analysis_month"] == "2026-04"
+    assert call_kwargs["top_k"] == 6
     assert any(subheader.value == "재생성된 월간 피드백" for subheader in app.subheader)
     assert any(expander.label == "최종 피드백 JSON" for expander in app.expander)
 
@@ -1358,8 +1382,8 @@ def test_model_comparison_gpt5_uses_large_completion_limit() -> None:
     assert 'kwargs["reasoning_effort"] = _GPT5_REASONING_EFFORT' in source
 
 
-def test_main_profile_page_renders_long_persona_as_collapsible_panel() -> None:
-    """메인 사용자 프로필 페이지가 긴 페르소나를 접이식 패널로 표시하는지 검증한다."""
+def test_main_profile_page_renders_persona_as_visible_text_panel() -> None:
+    """메인 사용자 프로필 페이지가 페르소나를 절약 목표처럼 항상 보이는 패널로 표시하는지 검증한다."""
     app_source = Path("app.py").read_text(encoding="utf-8")
 
     assert 'st.metric("최상위 카드 등급"' not in app_source
@@ -1368,7 +1392,11 @@ def test_main_profile_page_renders_long_persona_as_collapsible_panel() -> None:
     assert "나의 페르소나" in app_source
     assert "아직 등록된 페르소나가 없습니다." in app_source
     assert "with st.expander(title, expanded=expanded):" in app_source
-    assert "collapsible=True" in app_source
+    persona_panel_call = app_source.split('title="🧩 나의 페르소나"', maxsplit=1)[1].split(
+        'st.markdown("---")',
+        maxsplit=1,
+    )[0]
+    assert "collapsible=True" not in persona_panel_call
 
 
 def test_signup_page_uses_korean_labels_and_grouped_layout() -> None:

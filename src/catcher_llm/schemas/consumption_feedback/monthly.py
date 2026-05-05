@@ -404,8 +404,13 @@ class MonthlyFeedbackEvidence(BaseModel):
 class MonthlyFeedbackAction(BaseModel):
     """월간 소비 피드백에서 사용자가 다음 달에 실행할 행동을 표현한다."""
 
-    title: str
-    detail: str
+    title: str = Field(description="비율 감축 목표가 아니라 사용자가 실행할 행동 제목")
+    detail: str = Field(
+        description=(
+            "언제, 어떤 결제나 카테고리를, 어떻게 점검할지 설명하는 구체 행동. "
+            "근거 없는 20% 감축 같은 비율 목표만 쓰지 않는다."
+        )
+    )
     target_json_path: str
     urgency: ActionUrgency
     related_source: str | None = None
@@ -418,7 +423,13 @@ class MonthlyFeedbackResult(BaseModel):
     feedback_message: str
     key_evidences: list[MonthlyFeedbackEvidence]
     action_items: list[MonthlyFeedbackAction]
-    next_month_mission: str
+    next_month_mission: str = Field(
+        description=(
+            "다음 달에 바로 실행할 한 문장 행동 미션. 비율 감축 목표가 아니라 "
+            "결제 전 보류, 필수 구매 목록 확인, 자동이체 목록 점검처럼 언제/무엇/어떻게가 "
+            "드러나는 구체 행동으로 작성한다."
+        )
+    )
 
 
 class MonthlyFeedbackServiceResult(BaseModel):

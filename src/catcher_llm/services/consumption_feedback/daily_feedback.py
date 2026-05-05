@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -795,6 +795,20 @@ def _build_feedback_query_texts(queries: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(normalized_queries))
 
 
+def _normalize_feedback_queries_by_document_kind(
+    queries_by_document_kind: Mapping[DocumentKind | str, Sequence[str]] | None,
+) -> dict[DocumentKind, list[str]]:
+    """문서 종류별 RAG 검색 질의를 중복 없는 표준 enum 키 딕셔너리로 정규화한다."""
+    if queries_by_document_kind is None:
+        return {}
+
+    normalized_queries: dict[DocumentKind, list[str]] = {}
+    for raw_kind, raw_queries in queries_by_document_kind.items():
+        document_kind = _coerce_feedback_document_kind(raw_kind)
+        normalized_queries[document_kind] = _build_feedback_query_texts(raw_queries)
+    return normalized_queries
+
+
 def _build_document_kind_query(document_kind: DocumentKind, query_summary: str) -> str:
     """문서 종류의 역할을 반영한 피드백 RAG 검색 질의를 만든다."""
     suffix = _DOCUMENT_KIND_QUERY_SUFFIXES[document_kind]
@@ -1011,6 +1025,7 @@ def retrieve_feedback_contexts(
     raw_data_dir: Path | str | None = None,
     source_files: Sequence[Path] | None = None,
     document_kinds: Sequence[DocumentKind | str] | None = None,
+    queries_by_document_kind: Mapping[DocumentKind | str, Sequence[str]] | None = None,
     usefulness_threshold: float = _DEFAULT_USEFULNESS_THRESHOLD,
     settings: Settings | None = None,
 ) -> list[RetrievedAdviceContext]:
@@ -1027,14 +1042,20 @@ def retrieve_feedback_contexts(
         )
 
     config = settings or get_settings()
-    query_texts = _build_feedback_query_texts(queries)
+    query_texts = _build_feedback_query_texts(queries) if queries else []
+    query_texts_by_document_kind = _normalize_feedback_queries_by_document_kind(
+        queries_by_document_kind
+    )
     normalized_document_kinds = _normalize_feedback_document_kinds(document_kinds)
     contexts: list[RetrievedAdviceContext] = []
     fallback_candidates: list[RetrievedAdviceContext] = []
     seen_contexts: set[tuple[str, str, int | None, str]] = set()
 
     for document_kind in normalized_document_kinds:
-        for query_text in query_texts:
+        document_query_texts = query_texts_by_document_kind.get(document_kind, query_texts)
+        if not document_query_texts:
+            continue
+        for query_text in document_query_texts:
             query = _build_document_kind_query(document_kind, query_text)
             records = retrieve_context_records(
                 query,
