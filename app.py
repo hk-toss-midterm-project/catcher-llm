@@ -217,7 +217,6 @@ def profile_page() -> None:
         title="🧩 나의 페르소나",
         text=persona_text,
         empty_message="아직 등록된 페르소나가 없습니다.",
-        collapsible=True,
     )
 
     st.markdown("---")
@@ -310,8 +309,8 @@ else:
             daily_report_pg,
             weekly_report_pg,
             monthly_report_pg,
-            user_trend_report_pg,
             group_pg,
+            user_trend_report_pg,
         ],
         position="hidden",
     )
@@ -378,8 +377,8 @@ with st.sidebar:
         st.page_link(profile_pg, label="프로필", icon="🙀")
         st.page_link(upload_pg, label="CSV 업로드", icon="📥")
         st.page_link(report_pg, label="리포트 조회", icon="📫")
-        st.page_link(user_trend_report_pg, label="사용자 동향 보고서", icon="📑")
         st.page_link(group_pg, label="그룹 경쟁", icon="🏁")
+        st.page_link(user_trend_report_pg, label="사용자 동향 보고서", icon="📑")
 
         st.markdown("---")
 

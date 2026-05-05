@@ -514,6 +514,54 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertTrue(all(" / " not in question for question in searched_questions))
         self.assertEqual(len(contexts), 2)
 
+    def test_retrieve_feedback_contexts_uses_document_kind_specific_queries(self) -> None:
+        """문서 종류별 질의 계획이 있으면 각 문서 종류에 맞는 질의만 검색하는지 검증한다."""
+
+        def fake_retrieve_context_records(
+            question: str,
+            chunk_size: int,
+            chunk_overlap: int,
+            top_k: int,
+            *,
+            raw_data_dir: Path | str | None = None,
+            source_files: object | None = None,
+            settings: Settings | None = None,
+        ) -> list[dict[str, str | int | None]]:
+            """문서 종류별 검색 질의를 그대로 포함한 테스트용 청크를 반환한다."""
+            return [
+                {
+                    "source": "doc.md",
+                    "content": f"{question} 전체 사용자 절약 방법",
+                    "page_number": None,
+                }
+            ]
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_feedback_settings(Path(tmp_dir))
+
+            with patch(
+                "catcher_llm.services.consumption_feedback.daily_feedback.retrieve_context_records",
+                side_effect=fake_retrieve_context_records,
+            ) as retrieve_records:
+                retrieve_feedback_contexts(
+                    [],
+                    top_k=2,
+                    document_kinds=[DocumentKind.USER_REPORT, DocumentKind.SAVING_TIPS],
+                    queries_by_document_kind={
+                        DocumentKind.USER_REPORT: ["2026-04 쇼핑 전체 사용자 월간 소비 비중"],
+                        DocumentKind.SAVING_TIPS: ["쇼핑 지출 줄이는 방법"],
+                    },
+                    usefulness_threshold=0.1,
+                    settings=settings,
+                )
+
+        searched_questions = [call.args[0] for call in retrieve_records.call_args_list]
+        self.assertEqual(retrieve_records.call_count, 2)
+        self.assertIn("2026-04 쇼핑 전체 사용자 월간 소비 비중", searched_questions[0])
+        self.assertIn("쇼핑 지출 줄이는 방법", searched_questions[1])
+        self.assertNotIn("지출 줄이는 방법", searched_questions[0])
+        self.assertNotIn("전체 사용자 월간 소비 비중", searched_questions[1])
+
     def test_retrieve_feedback_contexts_balances_document_kinds_before_final_limit(
         self,
     ) -> None:

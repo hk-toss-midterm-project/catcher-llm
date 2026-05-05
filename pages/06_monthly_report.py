@@ -1178,7 +1178,7 @@ def render_monthly_report(result, member_id: str, month: str):
     if repeat_count > 0 and repeat_merchant != "-":
         repeat_text = f"반복 가맹점: {_html_text(repeat_merchant)} · {repeat_count}회"
     else:
-        repeat_text = f"우선 점검 카테고리: {_html_text(worst_category)}"
+        repeat_text = ""
 
     expected_saving = getattr(feedback, "expected_saving_amount", 0)
 
@@ -1300,7 +1300,7 @@ def render_monthly_report(result, member_id: str, month: str):
         summary_title = getattr(feedback, "summary_title", f"다음 달 줄일 1순위: {worst_category}")
 
         if "월간 소비 피드백" in str(summary_title):
-            summary_title = "LLM 소비 코멘트"
+            summary_title = "Catcher LLM 소비 코멘트"
 
         st.markdown(
             f"""

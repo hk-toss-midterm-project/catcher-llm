@@ -25,6 +25,7 @@ from catcher_llm.services.consumption_feedback.monthly_analysis import (
 )
 from catcher_llm.services.consumption_feedback.monthly_feedback import (
     build_monthly_feedback_retrieval_queries,
+    build_monthly_feedback_retrieval_queries_by_document_kind,
     generate_monthly_feedback,
     make_monthly_feedback_input,
     make_monthly_spending_analysis_input,
@@ -193,6 +194,26 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertIn("action_result가 포함된 경우에도 최종 행동이 아니므로", content)
         self.assertIn("RAG 문서 근거와 사용자 메모리", content)
         self.assertIn("그대로 복사하지 마라", content)
+        self.assertIn("월간 RAG 문서는 절약 팁이 아니라 비교·동향 근거", content)
+        self.assertIn("USER_REPORT", content)
+        self.assertIn("CATCHER_CONSUMPTION_BENCHMARK", content)
+        self.assertIn("KCA_REPORT", content)
+        self.assertIn("feedback_message에는 RAG 문서에서 확인한 비교·동향 문장", content)
+        self.assertIn("evidence_type='document'", content)
+        self.assertIn("임의 감축률", content)
+        self.assertIn("같은 방향과 비슷한 수준을 구분", content)
+        self.assertIn("전체 사용자 변화율보다 개인 변화율이 3배 이상", content)
+        self.assertIn("유사한 경향", content)
+        self.assertIn("개인적으로 두드러진 변화", content)
+        self.assertIn("소수점 둘째 자리", content)
+        self.assertIn("단위를 맞춘다", content)
+        self.assertIn("납부 카테고리만으로 고정비라고 단정하지 마라", content)
+        self.assertIn("feedback_message는 판단", content)
+        self.assertIn("next_month_mission은 실행", content)
+        self.assertIn("같은 문장을 반복하지 마라", content)
+        self.assertIn("20% 줄이기", content)
+        self.assertIn("필수 구매 목록", content)
+        self.assertIn("하루 보류", content)
         self.assertIn("feedback_message", content)
         self.assertNotIn("scolding_message", content)
         self.assertIn("ratio_context_warning", content)
@@ -480,6 +501,7 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertEqual(result.retrieved_contexts, [advice_context])
         self.assertGreaterEqual(len(result.retrieval_queries), 1)
         retrieve_contexts.assert_called_once()
+        self.assertEqual(retrieve_contexts.call_args.kwargs["top_k"], 6)
         self.assertEqual(
             retrieve_contexts.call_args.kwargs["document_kinds"],
             (
@@ -488,6 +510,20 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
                 DocumentKind.KCA_REPORT,
             ),
         )
+        query_plan = retrieve_contexts.call_args.kwargs["queries_by_document_kind"]
+        self.assertIn(DocumentKind.USER_REPORT, query_plan)
+        self.assertTrue(
+            all("전체 사용자" in query for query in query_plan[DocumentKind.USER_REPORT])
+        )
+        benchmark_queries = query_plan[DocumentKind.CATCHER_CONSUMPTION_BENCHMARK]
+        kca_queries = query_plan[DocumentKind.KCA_REPORT]
+        for external_query in [*benchmark_queries, *kca_queries]:
+            self.assertNotIn("지출 줄이는 방법", external_query)
+            self.assertNotIn("절약 방법", external_query)
+        self.assertTrue(any("카드 결제" in query for query in benchmark_queries))
+        self.assertTrue(any("소비 동향" in query for query in benchmark_queries))
+        self.assertTrue(any("한국 소비자원" in query for query in kca_queries))
+        self.assertTrue(any("소비 동향" in query for query in kca_queries))
         interpretation_payload = interpretation_chain.invoke.call_args.args[0]
         feedback_payload = feedback_chain.invoke.call_args.args[0]
         retrieval_query_text = "\n".join(result.retrieval_queries)
@@ -500,7 +536,10 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
             interpretation_payload["indicator_json"],
         )
         self.assertIn("비상금 300만원 만들기", interpretation_payload["user_profile_json"])
-        self.assertIn("자동이체 항목 점검", retrieval_query_text)
+        self.assertIn("[user_report]", retrieval_query_text)
+        self.assertIn("[catcher_consumption_benchmark]", retrieval_query_text)
+        self.assertIn("[kca_report]", retrieval_query_text)
+        self.assertIn("소비 동향", retrieval_query_text)
         self.assertIn("monthly_json", feedback_payload)
         self.assertIn("interpretation_json", feedback_payload)
         self.assertIn("retrieved_contexts", feedback_payload)
@@ -541,6 +580,96 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertTrue(all(record.elapsed_seconds >= 0 for record in timing_records))
         self.assertTrue(all(record.status == "success" for record in timing_records))
 
+    def test_generate_monthly_feedback_replaces_percent_goal_with_concrete_mission(
+        self,
+    ) -> None:
+        """월간 최종 미션이 비율 감축 목표로 나오면 결제 전 확인 행동으로 보정하는지 검증한다."""
+        interpretation_chain = MagicMock()
+        interpretation_chain.invoke.return_value = {"cause_result": CauseAnalysisResult()}
+        feedback_chain = MagicMock()
+        feedback_chain.invoke.return_value = MonthlyFeedbackResult(
+            summary_title="이번 달은 쇼핑 지출을 점검하세요",
+            feedback_message="쇼핑 지출이 전체 흐름보다 두드러졌습니다.",
+            key_evidences=[
+                MonthlyFeedbackEvidence(
+                    evidence_type="spending_metric",
+                    title="쇼핑 지출",
+                    detail="쇼핑 지출 점검이 필요합니다.",
+                    source_json_path="category_deep[0].total_amount",
+                )
+            ],
+            action_items=[
+                MonthlyFeedbackAction(
+                    title="쇼핑과 여가 지출 감축",
+                    detail="다음 달에는 쇼핑과 여가 지출을 각각 20% 줄입니다.",
+                    target_json_path="category_deep",
+                    urgency="this_month",
+                )
+            ],
+            next_month_mission="다음 달에는 쇼핑과 여가 지출을 각각 20% 줄이는 목표를 세워보세요.",
+        )
+        memory_summary_chain = MagicMock()
+        memory_summary_chain.invoke.return_value = "비율 목표 대신 구체 행동을 저장합니다."
+
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_monthly_settings(Path(tmp_dir))
+            ensure_user_database(settings=settings)
+            monthly_json = build_monthly_consumption_analysis_json(
+                member_id=1,
+                analysis_month="2024-04",
+                settings=settings,
+            )
+
+            with (
+                patch(
+                    "catcher_llm.services.consumption_feedback.monthly_feedback."
+                    "build_monthly_consumption_analysis_json",
+                    return_value=monthly_json,
+                ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.monthly_feedback."
+                    "build_monthly_spending_analysis_chain",
+                    return_value=interpretation_chain,
+                ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.monthly_feedback."
+                    "retrieve_feedback_contexts",
+                    return_value=[
+                        RetrievedAdviceContext(
+                            query="쇼핑 카테고리 전체 사용자 비교",
+                            source="users_report.md",
+                            content="쇼핑 카테고리 비교 근거",
+                            document_kind="user_report",
+                        )
+                    ],
+                ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.monthly_feedback."
+                    "build_monthly_feedback_chain",
+                    return_value=feedback_chain,
+                ),
+                patch(
+                    "catcher_llm.services.consumption_feedback.monthly_feedback."
+                    "build_memory_summary_chain",
+                    return_value=memory_summary_chain,
+                ),
+            ):
+                result = generate_monthly_feedback(
+                    member_id=1,
+                    analysis_month="2024-04",
+                    settings=settings,
+                )
+
+        self.assertIsNone(result.error)
+        self.assertIsNotNone(result.feedback)
+        assert result.feedback is not None
+        mission = result.feedback.next_month_mission
+        self.assertNotIn("20%", mission)
+        self.assertNotIn("각각", mission)
+        self.assertNotIn("목표를 세", mission)
+        self.assertIn("결제 전", mission)
+        self.assertIn("확인", mission)
+
     def test_monthly_feedback_retrieval_queries_use_monthly_signals(self) -> None:
         """월간 분석 지표와 행동 미션에서 최종 피드백용 RAG 검색 질의를 생성하는지 검증한다."""
         with TemporaryDirectory() as tmp_dir:
@@ -580,6 +709,63 @@ class ConsumptionFeedbackMonthlyFeedbackTests(unittest.TestCase):
         self.assertTrue(any("SKT통신비" in query for query in queries))
         self.assertTrue(any("카페 소액 반복 결제 점검" in query for query in queries))
         self.assertTrue(any("비상금" in query for query in queries))
+
+    def test_monthly_feedback_retrieval_queries_are_split_by_document_kind(self) -> None:
+        """월간 문서 종류별로 전체 사용자 비교와 소비 동향 근거 질의를 분리하는지 검증한다."""
+        with TemporaryDirectory() as tmp_dir:
+            settings = _make_monthly_settings(Path(tmp_dir))
+            monthly_payload = build_monthly_consumption_analysis_json(
+                member_id=1,
+                analysis_month="2024-04",
+                settings=settings,
+            )
+        monthly_data = parse_monthly_spending_data(monthly_payload)
+
+        query_plan = build_monthly_feedback_retrieval_queries_by_document_kind(
+            monthly_data,
+            interpretation_result={
+                "cause_result": CauseAnalysisResult(
+                    intervention_targets=[
+                        InterventionTarget(
+                            target_type="cafe_micro_spending_review",
+                            title="카페 소액 반복 결제 점검 타겟",
+                            linked_cause="소액 반복 소비 가능성",
+                            target_json_path="monthly_micro_spending.count",
+                            reason="소액 결제 누적이 월간 소비에 영향을 줄 수 있음",
+                            query_hint="카페 소액 반복 결제 점검",
+                        )
+                    ]
+                )
+            },
+            user_profile=UserProfileContext(
+                user_id=1,
+                job="개발자",
+                saving_goal_text="비상금 300만원 만들기",
+            ),
+            max_queries=4,
+        )
+
+        user_report_queries = query_plan[DocumentKind.USER_REPORT]
+        benchmark_queries = query_plan[DocumentKind.CATCHER_CONSUMPTION_BENCHMARK]
+        kca_queries = query_plan[DocumentKind.KCA_REPORT]
+        self.assertTrue(any(query.startswith("2024-04 ") for query in user_report_queries))
+        self.assertTrue(any("전체 사용자" in query for query in user_report_queries))
+        self.assertTrue(any("월간 소비 비중" in query for query in user_report_queries))
+        self.assertTrue(any("전월 대비 변화" in query for query in user_report_queries))
+        self.assertTrue(any("결제 행동" in query for query in user_report_queries))
+        self.assertTrue(any("목표 사용률 초과 분포" in query for query in user_report_queries))
+        self.assertFalse(any("하이마트" in query for query in user_report_queries))
+        self.assertFalse(any("지출 줄이는 방법" in query for query in user_report_queries))
+        self.assertTrue(any("카드 결제" in query for query in benchmark_queries))
+        self.assertTrue(any("소비 동향" in query for query in benchmark_queries))
+        self.assertTrue(any("카테고리" in query for query in benchmark_queries))
+        self.assertTrue(any("한국 소비자원" in query for query in kca_queries))
+        self.assertTrue(any("소비 동향" in query for query in kca_queries))
+        self.assertTrue(any("카테고리" in query for query in kca_queries))
+        for external_query in [*benchmark_queries, *kca_queries]:
+            self.assertNotIn("카페 소액 반복 결제 점검", external_query)
+            self.assertNotIn("지출 줄이는 방법", external_query)
+            self.assertNotIn("절약 방법", external_query)
 
 
 if __name__ == "__main__":

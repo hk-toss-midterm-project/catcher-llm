@@ -121,6 +121,12 @@ def test_app_registers_report_detail_pages_for_logged_in_navigation() -> None:
     assert 'title="일일 리포트"' in app_source
     assert 'title="사용자 동향 보고서"' in app_source
     assert 'st.page_link(user_trend_report_pg, label="사용자 동향 보고서", icon="📑")' in app_source
+    assert app_source.index("group_pg,") < app_source.index("user_trend_report_pg,")
+    assert app_source.index(
+        'st.page_link(group_pg, label="그룹 경쟁", icon="🏁")'
+    ) < app_source.index(
+        'st.page_link(user_trend_report_pg, label="사용자 동향 보고서", icon="📑")'
+    )
 
 
 def test_report_pages_use_logged_in_user_id_when_session_exists() -> None:
@@ -137,6 +143,15 @@ def test_report_pages_use_logged_in_user_id_when_session_exists() -> None:
         assert "dev_report_member_id_input_enabled" in page_source
         assert "st.number_input(" in page_source
         assert '"Member ID"' in page_source
+
+
+def test_monthly_report_does_not_render_priority_category_repeat_text() -> None:
+    """월간 리포트가 반복 가맹점 대체 문구로 우선 점검 카테고리를 표시하지 않는지 검증한다."""
+    page_source = Path("pages/06_monthly_report.py").read_text(encoding="utf-8")
+
+    assert "우선 점검 카테고리" not in page_source
+    assert 'repeat_text = ""' in page_source
+    assert "{repeat_text}" in page_source
 
 
 def test_report_session_user_id_coercion() -> None:
