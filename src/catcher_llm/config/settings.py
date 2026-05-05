@@ -17,7 +17,12 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 load_dotenv(PROJECT_ROOT / ".env", override=True)
 
-_LANGCHAIN_ENV_KEYS = (
+_LANGSMITH_ENV_KEYS = (
+    "LANGSMITH_TRACING",
+    "LANGSMITH_TRACING_V2",
+    "LANGSMITH_API_KEY",
+    "LANGSMITH_PROJECT",
+    "LANGSMITH_ENDPOINT",
     "LANGCHAIN_TRACING_V2",
     "LANGCHAIN_API_KEY",
     "LANGCHAIN_PROJECT",
@@ -225,15 +230,20 @@ def get_settings() -> Settings:
 
 
 def configure_langsmith_env(settings: Settings | None = None) -> Settings:
-    """LangSmith tracing에 필요한 LangChain 환경변수를 현재 설정값으로 반영한다."""
+    """LangSmith tracing에 필요한 최신/legacy 환경변수를 현재 설정값으로 반영한다."""
     config = settings or get_settings()
     if config.langsmith_tracing:
+        os.environ["LANGSMITH_TRACING"] = "true"
+        os.environ["LANGSMITH_TRACING_V2"] = "true"
+        os.environ["LANGSMITH_API_KEY"] = config.langsmith_api_key
+        os.environ["LANGSMITH_PROJECT"] = config.langsmith_project
+        os.environ["LANGSMITH_ENDPOINT"] = config.langsmith_endpoint
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_API_KEY"] = config.langsmith_api_key
         os.environ["LANGCHAIN_PROJECT"] = config.langsmith_project
         os.environ["LANGCHAIN_ENDPOINT"] = config.langsmith_endpoint
     else:
-        for key in _LANGCHAIN_ENV_KEYS:
+        for key in _LANGSMITH_ENV_KEYS:
             os.environ.pop(key, None)
 
     return config

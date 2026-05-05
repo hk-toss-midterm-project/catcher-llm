@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from langsmith import traceable
 
 from catcher_llm.config.settings import Settings, configure_langsmith_env, get_settings
 from catcher_llm.evaluation.monthly_rag import (
@@ -46,6 +47,20 @@ from catcher_llm.ui.feedback_progress import (
 )
 
 _SESSION_KEY = "monthly_rag_evaluation_result"
+_TRACE_INPUT_KEYS: tuple[str, ...] = (
+    "member_id",
+    "analysis_month",
+    "chunk_size",
+    "chunk_overlap",
+    "top_k",
+    "max_queries",
+    "run_ragas",
+    "run_langsmith",
+    "run_llm_judge",
+    "langsmith_dataset_name",
+    "langsmith_experiment_prefix",
+    "feedback_temperature",
+)
 
 
 @dataclass
@@ -83,6 +98,53 @@ def _score_color(value: float | None) -> str:
     return "red"
 
 
+def _summarize_trace_inputs(inputs: dict[str, object]) -> dict[str, object]:
+    """LangSmith trace에 API 키 없이 평가 실행 입력 요약만 남긴다."""
+    trace_inputs = {key: inputs.get(key) for key in _TRACE_INPUT_KEYS}
+    settings_value = inputs.get("settings")
+    if isinstance(settings_value, Settings):
+        trace_inputs["chat_model"] = settings_value.chat_model_label
+        trace_inputs["embedding_model"] = settings_value.embedding_model_label
+        trace_inputs["langsmith_project"] = settings_value.langsmith_project
+        trace_inputs["langsmith_tracing"] = settings_value.langsmith_tracing
+    return trace_inputs
+
+
+def _summarize_trace_output(result: MonthlyRagEvaluationPageResult) -> dict[str, object]:
+    """LangSmith trace 출력에 월간 RAG 평가 결과의 핵심 요약만 남긴다."""
+    langsmith_experiment_name = ""
+    langsmith_experiment_url = ""
+    if result.langsmith_result is not None:
+        langsmith_experiment_name = result.langsmith_result.experiment_name
+        langsmith_experiment_url = result.langsmith_result.experiment_url
+
+    llm_judge_score = None
+    if result.llm_judge_result is not None:
+        llm_judge_score = result.llm_judge_result.total_score
+
+    return {
+        "ran_at": result.ran_at,
+        "has_feedback": result.service_result.feedback is not None,
+        "service_error": result.service_result.error,
+        "retrieved_context_count": len(result.service_result.retrieved_contexts),
+        "rule_pass_rate": result.rule_summary.pass_rate,
+        "ragas_record_count": len(result.ragas_records),
+        "ragas_summary": result.ragas_summary,
+        "ragas_error": result.ragas_error,
+        "langsmith_experiment_name": langsmith_experiment_name,
+        "langsmith_experiment_url": langsmith_experiment_url,
+        "langsmith_error": result.langsmith_error,
+        "llm_judge_score": llm_judge_score,
+        "llm_judge_error": result.llm_judge_error,
+    }
+
+
+@traceable(
+    name="monthly_feedback_rag_evaluation",
+    tags=["dev-page", "monthly-rag-evaluation"],
+    process_inputs=_summarize_trace_inputs,
+    process_outputs=_summarize_trace_output,
+)
 def _run_monthly_rag_evaluation(
     *,
     member_id: int,

@@ -266,7 +266,7 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
 
 
 def test_monthly_rag_evaluation_dev_page_wires_recommended_evaluators() -> None:
-    """월간 RAG 평가 개발 페이지가 RAGAS, 규칙 기반 평가, LLM Judge를 연결하는지 검증한다."""
+    """월간 RAG 평가 개발 페이지가 평가기와 LangSmith 추적 루트를 연결하는지 검증한다."""
     page_source = Path("dev_pages/22_monthly_rag_evaluation.py").read_text(encoding="utf-8")
 
     assert "generate_monthly_feedback" in page_source
@@ -281,6 +281,9 @@ def test_monthly_rag_evaluation_dev_page_wires_recommended_evaluators() -> None:
     assert "LangSmith 평가 실행" in page_source
     assert "LLM Judge 실행" in page_source
     assert "Rule Pass Rate" in page_source
+    assert "traceable" in page_source
+    assert "monthly_feedback_rag_evaluation" in page_source
+    assert "_summarize_trace_output" in page_source
 
 
 def test_user_trend_report_page_shows_generated_metrics_preview_only() -> None:

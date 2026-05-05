@@ -29,8 +29,12 @@ class TestLangSmith(unittest.TestCase):
                 self.assertIsNone(os.environ.get("LANGCHAIN_TRACING_V2"))
                 self.assertIsNone(os.environ.get("LANGCHAIN_API_KEY"))
                 self.assertIsNone(os.environ.get("LANGCHAIN_PROJECT"))
+                self.assertIsNone(os.environ.get("LANGSMITH_TRACING_V2"))
+                self.assertIsNone(os.environ.get("LANGSMITH_API_KEY"))
+                self.assertIsNone(os.environ.get("LANGSMITH_PROJECT"))
 
-    def test_configure_langsmith_env_sets_langchain_env_vars(self):
+    def test_configure_langsmith_env_sets_langsmith_and_langchain_env_vars(self):
+        """LangSmith 최신 환경변수와 LangChain legacy 환경변수를 함께 설정하는지 검증한다."""
         mock_settings = MagicMock()
         mock_settings.langsmith_tracing = True
         mock_settings.langsmith_api_key = "test-key"
@@ -47,8 +51,17 @@ class TestLangSmith(unittest.TestCase):
                 os.environ.get("LANGCHAIN_ENDPOINT"),
                 "https://api.smith.langchain.com",
             )
+            self.assertEqual(os.environ.get("LANGSMITH_TRACING"), "true")
+            self.assertEqual(os.environ.get("LANGSMITH_TRACING_V2"), "true")
+            self.assertEqual(os.environ.get("LANGSMITH_API_KEY"), "test-key")
+            self.assertEqual(os.environ.get("LANGSMITH_PROJECT"), "test-project")
+            self.assertEqual(
+                os.environ.get("LANGSMITH_ENDPOINT"),
+                "https://api.smith.langchain.com",
+            )
 
     def test_configure_langsmith_env_clears_env_if_tracing_disabled(self):
+        """tracing 비활성화 시 최신/legacy LangSmith 환경변수를 모두 제거하는지 검증한다."""
         mock_settings = MagicMock()
         mock_settings.langsmith_tracing = False
 
@@ -59,6 +72,11 @@ class TestLangSmith(unittest.TestCase):
                 "LANGCHAIN_API_KEY": "test-key",
                 "LANGCHAIN_PROJECT": "test-project",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
+                "LANGSMITH_TRACING": "true",
+                "LANGSMITH_TRACING_V2": "true",
+                "LANGSMITH_API_KEY": "test-key",
+                "LANGSMITH_PROJECT": "test-project",
+                "LANGSMITH_ENDPOINT": "https://api.smith.langchain.com",
             },
             clear=True,
         ):
@@ -68,6 +86,11 @@ class TestLangSmith(unittest.TestCase):
             self.assertIsNone(os.environ.get("LANGCHAIN_API_KEY"))
             self.assertIsNone(os.environ.get("LANGCHAIN_PROJECT"))
             self.assertIsNone(os.environ.get("LANGCHAIN_ENDPOINT"))
+            self.assertIsNone(os.environ.get("LANGSMITH_TRACING"))
+            self.assertIsNone(os.environ.get("LANGSMITH_TRACING_V2"))
+            self.assertIsNone(os.environ.get("LANGSMITH_API_KEY"))
+            self.assertIsNone(os.environ.get("LANGSMITH_PROJECT"))
+            self.assertIsNone(os.environ.get("LANGSMITH_ENDPOINT"))
 
 
 if __name__ == "__main__":
