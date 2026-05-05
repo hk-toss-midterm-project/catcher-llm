@@ -1,5 +1,5 @@
 {
-  "raw_data_dir": "pdf/catcher_consumption_benchmark",
+  "raw_data_dir": ".",
   "embedding_provider": "upstage",
   "embedding_model": "solar-embedding-1-large",
   "document_loader_version": "2026-05-05-frontmatter-v1",
@@ -11,5 +11,8 @@
       1776931207130412385,
       1344180
     ]
+  ],
+  "source_files": [
+    "pdf/catcher_consumption_benchmark/catcher_consumption_benchmark_201807_201812.pdf"
   ]
 }

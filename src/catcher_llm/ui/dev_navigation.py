@@ -24,6 +24,8 @@ _DEV_PAGE_METADATA: dict[str, tuple[str, str]] = {
     "18_daily_interpretation_compare": ("일일 해석 방식 비교", "🧪"),
     "19_daily_feedback_unified": ("일일 통합 피드백", "📣"),
     "20_model_comparison": ("GPT 모델 성능 비교", "🔬"),
+    "21_ragas": ("RAGAS 평가", "🧪"),
+    "22_monthly_rag_evaluation": ("월간 피드백 RAG 평가", "🧪"),
 }
 
 

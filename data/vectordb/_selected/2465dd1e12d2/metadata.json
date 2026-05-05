@@ -1,5 +1,5 @@
 {
-  "raw_data_dir": "markdown/users_report",
+  "raw_data_dir": ".",
   "embedding_provider": "upstage",
   "embedding_model": "solar-embedding-1-large",
   "document_loader_version": "2026-05-05-frontmatter-v1",
@@ -36,5 +36,13 @@
       1777956838341058117,
       23393
     ]
+  ],
+  "source_files": [
+    "markdown/users_report/monthly/2026-01.md",
+    "markdown/users_report/monthly/2026-02.md",
+    "markdown/users_report/monthly/2026-03.md",
+    "markdown/users_report/monthly/2026-04.md",
+    "markdown/users_report/quarterly/2026-Q1.md",
+    "markdown/users_report/quarterly/2026-Q2.md"
   ]
 }

@@ -187,6 +187,8 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "18_daily_interpretation_compare.py",
         "19_daily_feedback_unified.py",
         "20_model_comparison.py",
+        "21_ragas.py",
+        "22_monthly_rag_evaluation.py",
     ]
     assert [spec.title for spec in specs] == [
         "Chat",
@@ -209,6 +211,8 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "일일 해석 방식 비교",
         "일일 통합 피드백",
         "GPT 모델 성능 비교",
+        "RAGAS 평가",
+        "월간 피드백 RAG 평가",
     ]
     assert [spec.icon for spec in specs] == [
         "💬",
@@ -231,6 +235,8 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         "🧪",
         "📣",
         "🔬",
+        "🧪",
+        "🧪",
     ]
     assert [spec.default for spec in specs] == [
         True,
@@ -253,8 +259,28 @@ def test_get_dev_page_specs_registers_dev_pages_directory() -> None:
         False,
         False,
         False,
+        False,
+        False,
     ]
     assert all(spec.path.is_file() for spec in specs)
+
+
+def test_monthly_rag_evaluation_dev_page_wires_recommended_evaluators() -> None:
+    """월간 RAG 평가 개발 페이지가 RAGAS, 규칙 기반 평가, LLM Judge를 연결하는지 검증한다."""
+    page_source = Path("dev_pages/22_monthly_rag_evaluation.py").read_text(encoding="utf-8")
+
+    assert "generate_monthly_feedback" in page_source
+    assert "build_monthly_rag_query_specs" in page_source
+    assert "run_monthly_rag_query_generation" in page_source
+    assert "run_monthly_ragas_evaluation" in page_source
+    assert "run_monthly_langsmith_evaluation" in page_source
+    assert "build_monthly_ragas_record" not in page_source
+    assert "evaluate_monthly_feedback_rules" in page_source
+    assert "run_monthly_llm_judge" in page_source
+    assert "RAGAS 실행" in page_source
+    assert "LangSmith 평가 실행" in page_source
+    assert "LLM Judge 실행" in page_source
+    assert "Rule Pass Rate" in page_source
 
 
 def test_user_trend_report_page_shows_generated_metrics_preview_only() -> None:

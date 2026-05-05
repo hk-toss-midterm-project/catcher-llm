@@ -93,7 +93,7 @@ _PATTERN_QA: dict[str, list[str]] = {
 class QAPair:
     question: str
     reference: str = ""
-    tag: str = "baseline"   # "baseline" | category name
+    tag: str = "baseline"  # "baseline" | category name
 
 
 @dataclass
@@ -118,6 +118,7 @@ class EvalResult:
 def _top_cats(settings: Settings, user_id: int = 1) -> list[str]:
     try:
         from catcher_llm.config.settings import PROJECT_ROOT
+
         path = PROJECT_ROOT / _V5_CSV_REL
         df = pd.read_csv(str(path), encoding="utf-8-sig")
         df["transaction_time"] = pd.to_datetime(df["transaction_time"])
@@ -162,7 +163,7 @@ def _run_eval(pairs: list[QAPair], settings: Settings) -> EvalResult:
     n = len(pairs)
 
     for i, p in enumerate(pairs):
-        prog.progress(int(i / n * 60), text=f"[{i+1}/{n}] {p.question[:40]}...")
+        prog.progress(int(i / n * 60), text=f"[{i + 1}/{n}] {p.question[:40]}...")
         try:
             rag = generate_welfare_rag_reply(p.question, settings=settings)
             answer = _extract_answer(rag)
@@ -171,14 +172,16 @@ def _run_eval(pairs: list[QAPair], settings: Settings) -> EvalResult:
         except Exception as exc:
             answer, contexts, err = "", [], str(exc)[:200]
 
-        records.append(RAGRecord(
-            question=p.question,
-            answer=answer,
-            contexts=contexts,
-            reference=p.reference if p.reference else answer,
-            tag=p.tag,
-            error=err,
-        ))
+        records.append(
+            RAGRecord(
+                question=p.question,
+                answer=answer,
+                contexts=contexts,
+                reference=p.reference if p.reference else answer,
+                tag=p.tag,
+                error=err,
+            )
+        )
 
     prog.progress(65, text="RAGAS 채점 중...")
 
@@ -187,17 +190,23 @@ def _run_eval(pairs: list[QAPair], settings: Settings) -> EvalResult:
         prog.progress(100, text="완료")
         return EvalResult(records=records, ran_at=_now())
 
-    dataset = Dataset.from_dict({
-        "user_input":        [r.question for r in valid],
-        "response":          [r.answer for r in valid],
-        "retrieved_contexts":[r.contexts for r in valid],
-        "reference":         [r.reference for r in valid],
-    })
+    dataset = Dataset.from_dict(
+        {
+            "user_input": [r.question for r in valid],
+            "response": [r.answer for r in valid],
+            "retrieved_contexts": [r.contexts for r in valid],
+            "reference": [r.reference for r in valid],
+        }
+    )
 
     result = evaluate(
         dataset=dataset,
-        metrics=[Faithfulness(), AnswerRelevancy(strictness=3),
-                 ContextPrecision(), ContextRecall()],
+        metrics=[
+            Faithfulness(),
+            AnswerRelevancy(strictness=3),
+            ContextPrecision(),
+            ContextRecall(),
+        ],
         llm=get_chat_model(settings),
         embeddings=get_embeddings_model(settings),
     )
@@ -233,18 +242,17 @@ def _show_summary_cards(summary: dict[str, float]) -> None:
 def _show_bar(summary: dict[str, float]) -> None:
     labels = [_METRIC_KO[m] for m in _METRICS if m in summary]
     values = [summary[m] for m in _METRICS if m in summary]
-    colors = [
-        "#2ecc71" if v >= 0.7 else "#f39c12" if v >= 0.4 else "#e74c3c"
-        for v in values
-    ]
-    fig = go.Figure(go.Bar(
-        x=labels,
-        y=values,
-        marker_color=colors,
-        text=[f"{v:.3f}" for v in values],
-        textposition="outside",
-        width=0.5,
-    ))
+    colors = ["#2ecc71" if v >= 0.7 else "#f39c12" if v >= 0.4 else "#e74c3c" for v in values]
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=values,
+            marker_color=colors,
+            text=[f"{v:.3f}" for v in values],
+            textposition="outside",
+            width=0.5,
+        )
+    )
     fig.update_layout(
         yaxis=dict(range=[0, 1.15], title="점수", tickformat=".2f"),
         xaxis_title="메트릭",
@@ -255,7 +263,7 @@ def _show_bar(summary: dict[str, float]) -> None:
     )
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.15)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _show_heatmap(df: pd.DataFrame) -> None:
@@ -267,18 +275,25 @@ def _show_heatmap(df: pd.DataFrame) -> None:
     z = [[float(df.iloc[ri][c]) for ri in range(len(df))] for c in cols]
     text = [[f"{v:.2f}" for v in row] for row in z]
 
-    fig = go.Figure(go.Heatmap(
-        z=z, x=q_labels, y=y_labels,
-        colorscale="RdYlGn", zmin=0, zmax=1,
-        text=text, texttemplate="%{text}",
-        colorbar=dict(title="점수", thickness=14),
-    ))
+    fig = go.Figure(
+        go.Heatmap(
+            z=z,
+            x=q_labels,
+            y=y_labels,
+            colorscale="RdYlGn",
+            zmin=0,
+            zmax=1,
+            text=text,
+            texttemplate="%{text}",
+            colorbar=dict(title="점수", thickness=14),
+        )
+    )
     fig.update_layout(
         height=max(260, 58 * len(cols) + 120),
         xaxis_tickangle=-35,
         margin=dict(t=10, b=140, l=170, r=10),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _show_per_question(df: pd.DataFrame, records: list[RAGRecord]) -> None:
@@ -290,7 +305,7 @@ def _show_per_question(df: pd.DataFrame, records: list[RAGRecord]) -> None:
         rec = rec_map.get(q)
         scores = "  ".join(f"{_METRIC_KO[c]}={row[c]:.2f}" for c in cols)
         tag_icon = "🔵" if row.get("tag") == "baseline" else "🟢"
-        label = f"{tag_icon} Q{int(i)+1} | {scores}"
+        label = f"{tag_icon} Q{int(i) + 1} | {scores}"
         with st.expander(label, expanded=False):
             st.markdown(f"**질문:** {q}")
             if rec:
@@ -302,7 +317,7 @@ def _show_per_question(df: pd.DataFrame, records: list[RAGRecord]) -> None:
                 if rec.contexts:
                     st.markdown(f"**검색 문맥 ({len(rec.contexts)}개)**")
                     for j, ctx in enumerate(rec.contexts):
-                        with st.expander(f"문맥 {j+1}", expanded=False):
+                        with st.expander(f"문맥 {j + 1}", expanded=False):
                             st.text(ctx[:600] + ("..." if len(ctx) > 600 else ""))
                 if rec.error:
                     st.error(f"RAG 오류: {rec.error}")
@@ -335,10 +350,7 @@ with st.sidebar:
     )
 
 # -- 예시 질문 레퍼런스 (접기) ------------------------------------------------
-_ALL_EXAMPLES = (
-    [q for q, _ in _BASELINE_QA]
-    + [q for qs in _PATTERN_QA.values() for q in qs]
-)
+_ALL_EXAMPLES = [q for q, _ in _BASELINE_QA] + [q for qs in _PATTERN_QA.values() for q in qs]
 _EXAMPLE_TEXT = "\n".join(_ALL_EXAMPLES)
 
 with st.expander("📋 예시 질문 보기 (복사해서 사용)", expanded=False):
@@ -366,7 +378,7 @@ for line in raw_input.splitlines():
     q = line.strip()
     if not q:
         continue
-    ref = _KNOWN_REF.get(q, "")   # 알려진 질문이면 reference 자동 매칭
+    ref = _KNOWN_REF.get(q, "")  # 알려진 질문이면 reference 자동 매칭
     tag = "baseline" if ref else "custom"
     final_pairs.append(QAPair(question=q, reference=ref, tag=tag))
 
@@ -383,7 +395,7 @@ if not final_pairs:
     st.warning("질문이 없습니다.")
     st.stop()
 
-if st.button("▶ RAGAS 평가 실행", use_container_width=True, type="primary"):
+if st.button("▶ RAGAS 평가 실행", width="stretch", type="primary"):
     st.session_state.pop(_SESSION_KEY, None)
     try:
         ev = _run_eval(final_pairs, settings)
@@ -426,11 +438,16 @@ _show_per_question(ev.df, ev.records)
 
 # CSV 저장 (접기)
 with st.expander("CSV 저장", expanded=False):
-    fname = st.text_input("파일명", value=f"welfare_ragas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv")
+    fname = st.text_input(
+        "파일명", value=f"welfare_ragas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+    )
     if st.button("저장"):
         out = Path("evaluate")
         out.mkdir(exist_ok=True)
         ev.df.to_csv(str(out / fname), index=False, encoding="utf-8-sig")
         st.success(f"저장 완료: evaluate/{fname}")
-    st.dataframe(ev.df[[c for c in ["user_input","tag"] + _METRICS if c in ev.df.columns]],
-                 hide_index=True, use_container_width=True)
+    st.dataframe(
+        ev.df[[c for c in ["user_input", "tag"] + _METRICS if c in ev.df.columns]],
+        hide_index=True,
+        width="stretch",
+    )
