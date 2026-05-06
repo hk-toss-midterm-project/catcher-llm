@@ -58,6 +58,7 @@ from catcher_llm.ui.date_picker import (
     _render_picker_popover,
     _session_key,
     render_date_picker_styles,
+    select_week_range,
 )
 
 # ── 상수 ──────────────────────────────────────────────────────────────────────
@@ -715,12 +716,11 @@ if period == "daily":
 elif period == "weekly":
     date_col, _ = st.columns([1, 2])
     with date_col:
-        picked_date = _render_date_picker_with_available(_available_dates, 0, "mc_weekly_date")
-        if "catcher_date_picker_mc_weekly_date" not in st.session_state:
-            st.session_state["catcher_date_picker_mc_weekly_date"] = _default_date.isoformat()
-            picked_date = _default_date
-    week_start = picked_date if picked_date is not None else _default_date
-    week_end = week_start + timedelta(days=6)
+        week_start, week_end = select_week_range(
+            "분석 주",
+            default_start=_default_date,
+            key="mc_weekly_date",
+        )
     date_label = week_start.isoformat()
     st.caption(f"주간 범위: **{week_start}** ~ **{week_end}** (7일, 자동 설정)")
 

@@ -272,6 +272,18 @@ class ConsumptionFeedbackWeeklyFeedbackTests(unittest.TestCase):
         self.assertIn("요일별 지출 흐름", content)
         self.assertIn("카테고리별 지출 흐름", content)
         self.assertIn("고액 결제 1건만으로", content)
+        self.assertIn("주간 이전 카드 데이터 활용", content)
+        self.assertIn("weekly_comparisons.previous_week", content)
+        self.assertIn("weekly_comparisons.recent_4week_average", content)
+        self.assertIn("weekly_comparisons.same_week_last_month", content)
+        self.assertIn("전주 대비는 직전 주의 단기 변화", content)
+        self.assertIn("최근 4주 평균 대비는 최근 주간 루틴 기준선", content)
+        self.assertIn("지난달 같은 주차 대비는 월간 주차 반복성", content)
+        self.assertIn("세 기준을 모두 확인", content)
+        self.assertIn("최소 2개 이상", content)
+        self.assertIn("현재 소비 패턴", content)
+        self.assertIn("일시적 고액 결제인지 반복 루틴인지", content)
+        self.assertIn("key_evidences", content)
 
     def test_weekly_interpretation_prompts_do_not_describe_rag_candidates(self) -> None:
         """주간 해석 프롬프트가 개선 후보를 RAG 검색용이 아닌 최종 피드백 검토용으로 설명하는지 검증한다."""

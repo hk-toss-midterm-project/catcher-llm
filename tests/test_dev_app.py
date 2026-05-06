@@ -1411,6 +1411,20 @@ def test_model_comparison_gpt5_uses_large_completion_limit() -> None:
     assert 'kwargs["reasoning_effort"] = _GPT5_REASONING_EFFORT' in source
 
 
+def test_model_comparison_weekly_setting_uses_week_picker() -> None:
+    """모델 성능 비교 페이지의 주간 설정이 날짜 picker가 아니라 주간 picker를 쓰는지 검증한다."""
+    source = Path("dev_pages/20_model_comparison.py").read_text(encoding="utf-8")
+    weekly_source = source.split('elif period == "weekly":', maxsplit=1)[1].split(
+        "else:  # monthly",
+        maxsplit=1,
+    )[0]
+
+    assert "select_week_range" in source
+    assert "select_week_range(" in weekly_source
+    assert "_render_date_picker_with_available" not in weekly_source
+    assert "week_end = week_start + timedelta(days=6)" not in weekly_source
+
+
 def test_main_profile_page_renders_persona_as_visible_text_panel() -> None:
     """메인 사용자 프로필 페이지가 페르소나를 절약 목표처럼 항상 보이는 패널로 표시하는지 검증한다."""
     app_source = Path("app.py").read_text(encoding="utf-8")

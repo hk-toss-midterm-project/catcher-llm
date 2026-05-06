@@ -177,6 +177,19 @@ class ConsumptionFeedbackDailyFeedbackTests(unittest.TestCase):
         self.assertIn("노출하지 마라", content)
         self.assertIn("결론은 반복 여부와 절대금액 점검 중심", content)
         self.assertIn("비중만으로 '급증', '습관 악화', '예산 초과'를 단정하지 마라", content)
+        self.assertIn("이전 카드 데이터 활용", content)
+        self.assertIn("daily_comparisons.previous_day", content)
+        self.assertIn("daily_comparisons.same_weekday_last_week", content)
+        self.assertIn("daily_comparisons.recent_4week_same_weekday_average", content)
+        self.assertIn("어제 대비는 단기 변동", content)
+        self.assertIn("지난주 같은 요일 대비는 요일 루틴 변화", content)
+        self.assertIn("최근 4주 같은 요일 평균 대비는 반복 패턴 기준선", content)
+        self.assertIn("세 기준을 모두 확인", content)
+        self.assertIn("최소 2개 이상", content)
+        self.assertIn("같은 요일의 주된 카테고리", content)
+        self.assertIn("원인 가설", content)
+        self.assertIn("key_evidences", content)
+        self.assertIn("daily_comparisons", content)
 
     def test_daily_feedback_result_expands_blank_scolding_message(self) -> None:
         """최종 일일 피드백 본문이 비어 있으면 근거와 미션으로 저장 가능한 본문을 보강하는지 검증한다."""
