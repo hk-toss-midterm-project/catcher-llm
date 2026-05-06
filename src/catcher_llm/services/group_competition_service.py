@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from sqlalchemy import Integer, cast, func, select
+from sqlalchemy.orm import aliased
 
 from catcher_llm.config.settings import Settings, get_settings
 from catcher_llm.db.models import (
@@ -329,6 +330,8 @@ def list_user_groups(
     ensure_user_database(settings=config)
     _get_user_or_raise(config, user_id=user_id)
 
+    user_membership = aliased(GroupMembershipModel)
+    group_membership = aliased(GroupMembershipModel)
     with session_scope(config) as session:
         rows = session.execute(
             select(
@@ -336,13 +339,19 @@ def list_user_groups(
                 GroupModel.name,
                 GroupModel.description,
                 GroupModel.owner_user_id,
-                GroupMembershipModel.role,
-                func.count(GroupMembershipModel.id)
-                .over(partition_by=GroupMembershipModel.group_id)
-                .label("member_count"),
+                user_membership.role,
+                func.count(group_membership.id).label("member_count"),
             )
-            .join(GroupMembershipModel, GroupMembershipModel.group_id == GroupModel.id)
-            .where(GroupMembershipModel.user_id == user_id)
+            .join(user_membership, user_membership.group_id == GroupModel.id)
+            .join(group_membership, group_membership.group_id == GroupModel.id)
+            .where(user_membership.user_id == user_id)
+            .group_by(
+                GroupModel.id,
+                GroupModel.name,
+                GroupModel.description,
+                GroupModel.owner_user_id,
+                user_membership.role,
+            )
             .order_by(GroupModel.id.asc())
         ).all()
 

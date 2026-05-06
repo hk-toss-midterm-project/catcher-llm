@@ -23,6 +23,7 @@ GroupCreateInput = _SERVICE_MODULE.GroupCreateInput
 create_group = _SERVICE_MODULE.create_group
 get_group_leaderboard_for_group = _SERVICE_MODULE.get_group_leaderboard_for_group
 get_group_member_feedback_status = _SERVICE_MODULE.get_group_member_feedback_status
+list_user_groups = _SERVICE_MODULE.list_user_groups
 
 
 def _write_seed_csvs(csv_dir: Path) -> None:
@@ -124,6 +125,29 @@ def test_create_group_creates_owner_membership(tmp_path: Path) -> None:
     assert result.group_id == 1
     assert result.owner_user_id == 1
     assert result.member_count == 2
+
+
+def test_list_user_groups_counts_all_group_members(tmp_path: Path) -> None:
+    """내 그룹 목록의 멤버 수가 조회 사용자뿐 아니라 전체 그룹원을 세는지 검증한다."""
+    settings = _make_settings(tmp_path)
+    ensure_user_database(settings=settings)
+    create_group(
+        GroupCreateInput(
+            owner_user_id=1,
+            name="멤버 수 검증반",
+            description="목록에 전체 멤버 수를 표시하는 그룹",
+            member_user_ids=[2],
+        ),
+        settings=settings,
+    )
+
+    owner_groups = list_user_groups(1, settings=settings)
+    member_groups = list_user_groups(2, settings=settings)
+
+    assert owner_groups[0]["member_count"] == 2
+    assert owner_groups[0]["role"] == "owner"
+    assert member_groups[0]["member_count"] == 2
+    assert member_groups[0]["role"] == "member"
 
 
 def test_group_leaderboard_for_group_uses_personal_score_without_competition(
